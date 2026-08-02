@@ -38,6 +38,10 @@ public final class SchemaMigrator {
             if (!isMigrationApplied(connection, 3)) {
                 applyMigrationV3(connection);
             }
+
+            if (!isMigrationApplied(connection, 4)) {
+                applyMigrationV4StateReconciliation(connection);
+            }
         } finally {
             connection.setAutoCommit(autoCommit);
         }
@@ -86,27 +90,15 @@ public final class SchemaMigrator {
                 }
             }
 
-            // Reconciliation Step: Convert unselected ACTIVE pets to AVAILABLE (Does not affect DISABLED pets)
-            String reconcileSql = "UPDATE pets SET state = 'AVAILABLE' WHERE state = 'ACTIVE' AND NOT EXISTS (" +
-                    "SELECT 1 FROM player_active_pets active WHERE active.pet_id = pets.pet_id AND active.owner_id = pets.owner_id" +
-                    ");";
-            int reconciledCount = 0;
-            try (Statement stmt = connection.createStatement()) {
-                reconciledCount = stmt.executeUpdate(reconcileSql);
-            }
-
             recordMigrationApplied(connection, 2);
             connection.commit();
 
             int retainedCount = totalInspected - supersededCount;
-            LOGGER.info("[PetSistemi] Migration V2 (Ownership Clean & Reconciliation) Raporu:");
+            LOGGER.info("[PetSistemi] Migration V2 (Ownership Clean) Raporu:");
             LOGGER.info("  - " + totalInspected + " seçim kaydı incelendi");
             LOGGER.info("  - " + allSelectedPetIds.size() + " aktif pet seçimi incelendi");
             LOGGER.info("  - " + retainedCount + " gerçek sahibi doğrulanan seçim korundu");
             LOGGER.info("  - " + supersededCount + " geçersiz/yabancı seçim silindi");
-            if (reconciledCount > 0) {
-                LOGGER.info("  - " + reconciledCount + " seçimi bulunmayan ACTIVE pet AVAILABLE yapıldı");
-            }
 
         } catch (SQLException e) {
             connection.rollback();
@@ -168,6 +160,46 @@ public final class SchemaMigrator {
         } catch (SQLException e) {
             connection.rollback();
             LOGGER.severe("Migration V3 başarısız oldu: " + e.getMessage());
+            throw e;
+        } finally {
+            connection.setAutoCommit(autoCommit);
+        }
+    }
+
+    private static void applyMigrationV4StateReconciliation(Connection connection) throws SQLException {
+        boolean autoCommit = connection.getAutoCommit();
+        try {
+            connection.setAutoCommit(false);
+
+            try (Statement stmt = connection.createStatement()) {
+                // 1. Delete all active selection records for pets that are DISABLED
+                stmt.execute("DELETE FROM player_active_pets WHERE pet_id IN (" +
+                        "SELECT pet_id FROM pets WHERE state = 'DISABLED'" +
+                        ");");
+
+                // 2. Delete any imposter selection records where (pet_id, owner_id) pair doesn't exist in pets
+                stmt.execute("DELETE FROM player_active_pets WHERE NOT EXISTS (" +
+                        "SELECT 1 FROM pets p WHERE p.pet_id = player_active_pets.pet_id AND p.owner_id = player_active_pets.owner_id" +
+                        ");");
+
+                // 3. Convert unselected ACTIVE pets to AVAILABLE (does NOT touch DISABLED pets)
+                stmt.execute("UPDATE pets SET state = 'AVAILABLE' WHERE state = 'ACTIVE' AND NOT EXISTS (" +
+                        "SELECT 1 FROM player_active_pets active WHERE active.pet_id = pets.pet_id AND active.owner_id = pets.owner_id" +
+                        ");");
+
+                // 4. Convert selected AVAILABLE pets to ACTIVE (does NOT touch DISABLED pets)
+                stmt.execute("UPDATE pets SET state = 'ACTIVE' WHERE state = 'AVAILABLE' AND EXISTS (" +
+                        "SELECT 1 FROM player_active_pets active WHERE active.pet_id = pets.pet_id AND active.owner_id = pets.owner_id" +
+                        ");");
+            }
+
+            recordMigrationApplied(connection, 4);
+            connection.commit();
+            LOGGER.info("[PetSistemi] Migration V4 (State Reconciliation & Upgrade Hardening) başarıyla uygulandı.");
+
+        } catch (SQLException e) {
+            connection.rollback();
+            LOGGER.severe("Migration V4 başarısız oldu: " + e.getMessage());
             throw e;
         } finally {
             connection.setAutoCommit(autoCommit);
