@@ -20,7 +20,7 @@ class SchemaMigratorTest {
     void setUp() throws Exception {
         connection = DriverManager.getConnection("jdbc:sqlite::memory:");
         
-        // Create old pre-v1 schema without UNIQUE constraint on pet_id
+        // Create old pre-v1 schema without UNIQUE constraint or composite FK
         try (Statement stmt = connection.createStatement()) {
             stmt.execute("PRAGMA foreign_keys = ON;");
             stmt.execute("CREATE TABLE pets (" +
@@ -52,51 +52,94 @@ class SchemaMigratorTest {
     }
 
     @Test
-    void testMigrationV1WithDuplicatePetIdsConvertsSupersededToAvailable() throws Exception {
-        UUID sharedPetId = UUID.randomUUID();
-        UUID ownerA = UUID.randomUUID();
-        UUID ownerB = UUID.randomUUID();
+    void testMigrationV2ProtectsActualOwnerAndDeletesImposterSelections() throws Exception {
+        UUID petId = UUID.randomUUID();
+        UUID actualOwnerA = UUID.randomUUID();
+        UUID imposterOwnerB = UUID.randomUUID();
 
         try (Statement stmt = connection.createStatement()) {
-            stmt.execute("INSERT INTO pets VALUES ('" + sharedPetId + "', '" + ownerA + "', 'wolf', 'Dog', 1, 0, 'ACTIVE', 100, 100);");
-            stmt.execute("INSERT INTO player_active_pets VALUES ('" + ownerA + "', '" + sharedPetId + "', 100);");
-            stmt.execute("INSERT INTO player_active_pets VALUES ('" + ownerB + "', '" + sharedPetId + "', 500);"); // Newer selection by Owner B
+            stmt.execute("INSERT INTO pets VALUES ('" + petId + "', '" + actualOwnerA + "', 'wolf', 'Dog', 1, 0, 'AVAILABLE', 100, 100);");
+            stmt.execute("INSERT INTO player_active_pets VALUES ('" + actualOwnerA + "', '" + petId + "', 100);");
+            stmt.execute("INSERT INTO player_active_pets VALUES ('" + imposterOwnerB + "', '" + petId + "', 500);"); // Imposter with higher timestamp
         }
 
         // Run Migration
         SchemaMigrator.migrate(connection);
 
-        // Verify version 1 recorded
-        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery("SELECT version FROM schema_migrations;")) {
+        // Verify version 1, 2, and 3 recorded
+        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM schema_migrations;")) {
             assertTrue(rs.next());
-            assertEquals(1, rs.getInt("version"));
+            assertEquals(3, rs.getInt(1));
         }
 
-        // Verify UNIQUE constraint enforced by attempting duplicate insertion
-        UUID ownerC = UUID.randomUUID();
+        // Verify Actual Owner A retained selection despite lower timestamp
+        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery("SELECT owner_id FROM player_active_pets WHERE pet_id = '" + petId + "';")) {
+            assertTrue(rs.next());
+            assertEquals(actualOwnerA.toString(), rs.getString("owner_id"));
+            assertFalse(rs.next()); // Only 1 unique valid row exists
+        }
+
+        // Verify pet state is set to ACTIVE for actual owner
+        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery("SELECT state FROM pets WHERE pet_id = '" + petId + "';")) {
+            assertTrue(rs.next());
+            assertEquals("ACTIVE", rs.getString("state"));
+        }
+
+        // Verify Composite Foreign Key (pet_id, owner_id) prevents imposter assignment
         try (Statement stmt = connection.createStatement()) {
             assertThrows(Exception.class, () -> 
-                stmt.execute("INSERT INTO player_active_pets VALUES ('" + ownerC + "', '" + sharedPetId + "', 600);")
+                stmt.execute("INSERT INTO player_active_pets VALUES ('" + imposterOwnerB + "', '" + petId + "', 600);")
             );
         }
+    }
 
-        // Verify Owner B (most recent updated_at) retained selection
-        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery("SELECT owner_id FROM player_active_pets WHERE pet_id = '" + sharedPetId + "';")) {
-            assertTrue(rs.next());
-            assertEquals(ownerB.toString(), rs.getString("owner_id"));
-            assertFalse(rs.next()); // Only 1 unique row exists
+    @Test
+    void testMigrationV2DeletesAllSelectionsIfNoActualOwnerSelectionExists() throws Exception {
+        UUID petId = UUID.randomUUID();
+        UUID actualOwnerA = UUID.randomUUID();
+        UUID imposterOwnerB = UUID.randomUUID();
+
+        try (Statement stmt = connection.createStatement()) {
+            stmt.execute("INSERT INTO pets VALUES ('" + petId + "', '" + actualOwnerA + "', 'wolf', 'Dog', 1, 0, 'ACTIVE', 100, 100);");
+            stmt.execute("INSERT INTO player_active_pets VALUES ('" + imposterOwnerB + "', '" + petId + "', 500);"); // Only imposter selection exists
         }
 
-        // Verify superseded pet state is set to AVAILABLE
-        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery("SELECT state FROM pets WHERE pet_id = '" + sharedPetId + "';")) {
+        SchemaMigrator.migrate(connection);
+
+        // Verify imposter selection deleted
+        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM player_active_pets WHERE pet_id = '" + petId + "';")) {
+            assertTrue(rs.next());
+            assertEquals(0, rs.getInt(1));
+        }
+
+        // Verify pet state converted to AVAILABLE
+        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery("SELECT state FROM pets WHERE pet_id = '" + petId + "';")) {
             assertTrue(rs.next());
             assertEquals("AVAILABLE", rs.getString("state"));
         }
     }
 
     @Test
-    void testMigrationIdempotency() throws Exception {
+    void testMigrationIdempotencyAndDataIntegrity() throws Exception {
+        UUID petId = UUID.randomUUID();
+        UUID actualOwnerA = UUID.randomUUID();
+
+        try (Statement stmt = connection.createStatement()) {
+            stmt.execute("INSERT INTO pets VALUES ('" + petId + "', '" + actualOwnerA + "', 'wolf', 'Dog', 1, 0, 'AVAILABLE', 100, 100);");
+            stmt.execute("INSERT INTO player_active_pets VALUES ('" + actualOwnerA + "', '" + petId + "', 100);");
+        }
+
         SchemaMigrator.migrate(connection);
         assertDoesNotThrow(() -> SchemaMigrator.migrate(connection));
+
+        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM player_active_pets;")) {
+            assertTrue(rs.next());
+            assertEquals(1, rs.getInt(1));
+        }
+
+        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM schema_migrations;")) {
+            assertTrue(rs.next());
+            assertEquals(3, rs.getInt(1));
+        }
     }
 }

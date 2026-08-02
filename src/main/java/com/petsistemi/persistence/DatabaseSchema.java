@@ -31,16 +31,19 @@ public final class DatabaseSchema {
                     "updated_at INTEGER NOT NULL" +
                     ");");
 
+            // Composite Unique Index for Ownership Integrity
+            stmt.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_pets_pet_owner ON pets(pet_id, owner_id);");
+
             // Indexes
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_pets_owner ON pets(owner_id);");
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_pets_owner_definition ON pets(owner_id, definition_id);");
 
-            // Active Pets Table (pet_id is UNIQUE to guarantee 1 active pet per pet_id system-wide)
+            // Active Pets Table with Composite Foreign Key (pet_id, owner_id)
             stmt.execute("CREATE TABLE IF NOT EXISTS player_active_pets (" +
                     "owner_id TEXT PRIMARY KEY, " +
                     "pet_id TEXT NOT NULL UNIQUE, " +
                     "updated_at INTEGER NOT NULL, " +
-                    "FOREIGN KEY (pet_id) REFERENCES pets(pet_id) ON DELETE CASCADE" +
+                    "FOREIGN KEY (pet_id, owner_id) REFERENCES pets(pet_id, owner_id) ON DELETE CASCADE" +
                     ");");
         }
     }

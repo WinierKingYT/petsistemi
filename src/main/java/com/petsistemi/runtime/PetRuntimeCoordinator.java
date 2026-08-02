@@ -13,6 +13,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.logging.Level;
@@ -70,8 +71,11 @@ public class PetRuntimeCoordinator {
         Entity spawnedEntity = null;
         boolean databaseSwitched = false;
         try {
-            // 1. Spawn entity via controller
-            spawnedEntity = entityController.spawn(pet, definition, owner);
+            // 1. Spawn entity via controller (Must be non-null)
+            spawnedEntity = Objects.requireNonNull(
+                    entityController.spawn(pet, definition, owner),
+                    "PetEntityController.spawn null entity döndü"
+            );
 
             // 2. Initialize behavior controller
             ActivePet activePet = new ActivePet(pet.petId(), ownerId, spawnedEntity.getUniqueId(), spawnedEntity, PetRuntimeState.ACTIVE);
@@ -131,9 +135,12 @@ public class PetRuntimeCoordinator {
 
         PetDefinition previousDef = previousDefOpt.get();
         try {
-            Entity restoredEntity = entityController.spawn(previousPet, previousDef, owner);
-            UUID entityId = restoredEntity != null ? restoredEntity.getUniqueId() : null;
-            ActivePet restoredActive = new ActivePet(previousPet.petId(), owner.getUniqueId(), entityId, restoredEntity, PetRuntimeState.ACTIVE);
+            Entity restoredEntity = Objects.requireNonNull(
+                    entityController.spawn(previousPet, previousDef, owner),
+                    "Eski pet geri yüklenirken entityController.spawn null döndü"
+            );
+
+            ActivePet restoredActive = new ActivePet(previousPet.petId(), owner.getUniqueId(), restoredEntity.getUniqueId(), restoredEntity, PetRuntimeState.ACTIVE);
             if (restoredEntity instanceof LivingEntity living) {
                 behaviorController.initialize(restoredActive, living, owner);
             }

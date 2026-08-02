@@ -28,7 +28,15 @@ public final class SchemaMigrator {
             DatabaseSchema.initializeSchema(connection);
 
             if (!isMigrationApplied(connection, 1)) {
-                applyMigrationV1(connection);
+                recordMigrationApplied(connection, 1);
+            }
+
+            if (!isMigrationApplied(connection, 2)) {
+                applyMigrationV2(connection);
+            }
+
+            if (!isMigrationApplied(connection, 3)) {
+                applyMigrationV3(connection);
             }
         } finally {
             connection.setAutoCommit(autoCommit);
@@ -42,12 +50,20 @@ public final class SchemaMigrator {
         }
     }
 
-    private static void applyMigrationV1(Connection connection) throws SQLException {
+    private static void recordMigrationApplied(Connection connection, int version) throws SQLException {
+        String sql = "INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?);";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setInt(1, version);
+            ps.setLong(2, System.currentTimeMillis());
+            ps.executeUpdate();
+        }
+    }
+
+    private static void applyMigrationV2(Connection connection) throws SQLException {
         boolean autoCommit = connection.getAutoCommit();
         try {
             connection.setAutoCommit(false);
             
-            // 1. Count total selection records
             int totalInspected = 0;
             try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM player_active_pets;")) {
                 if (rs.next()) {
@@ -55,64 +71,93 @@ public final class SchemaMigrator {
                 }
             }
 
-            // 2. Detect duplicate pet_id selections across multiple owners
-            List<String> duplicatePetIds = new ArrayList<>();
-            String checkDuplicatesSql = "SELECT pet_id FROM player_active_pets GROUP BY pet_id HAVING COUNT(*) > 1;";
-            try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery(checkDuplicatesSql)) {
+            List<String> allSelectedPetIds = new ArrayList<>();
+            String checkSelectedSql = "SELECT DISTINCT pet_id FROM player_active_pets;";
+            try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery(checkSelectedSql)) {
                 while (rs.next()) {
-                    duplicatePetIds.add(rs.getString("pet_id"));
+                    allSelectedPetIds.add(rs.getString("pet_id"));
                 }
             }
 
             int supersededCount = 0;
-            if (!duplicatePetIds.isEmpty()) {
-                for (String petId : duplicatePetIds) {
-                    supersededCount += resolveDuplicatePetId(connection, petId);
+            if (!allSelectedPetIds.isEmpty()) {
+                for (String petId : allSelectedPetIds) {
+                    supersededCount += resolveOwnershipAndDuplicates(connection, petId);
                 }
             }
 
-            // 3. Create player_active_pets_new table with UNIQUE constraint
-            try (Statement stmt = connection.createStatement()) {
-                stmt.execute("CREATE TABLE IF NOT EXISTS player_active_pets_new (" +
-                        "owner_id TEXT PRIMARY KEY, " +
-                        "pet_id TEXT NOT NULL UNIQUE, " +
-                        "updated_at INTEGER NOT NULL, " +
-                        "FOREIGN KEY (pet_id) REFERENCES pets(pet_id) ON DELETE CASCADE" +
-                        ");");
-
-                stmt.execute("INSERT INTO player_active_pets_new (owner_id, pet_id, updated_at) " +
-                        "SELECT owner_id, pet_id, updated_at FROM player_active_pets;");
-
-                stmt.execute("DROP TABLE IF EXISTS player_active_pets;");
-                stmt.execute("ALTER TABLE player_active_pets_new RENAME TO player_active_pets;");
-
-                stmt.execute("INSERT INTO schema_migrations (version, applied_at) VALUES (1, " + System.currentTimeMillis() + ");");
-            }
-
+            recordMigrationApplied(connection, 2);
             connection.commit();
 
             int retainedCount = totalInspected - supersededCount;
-            LOGGER.info("[PetSistemi] Migration V1 Raporu:");
+            LOGGER.info("[PetSistemi] Migration V2 (Ownership Clean) Raporu:");
             LOGGER.info("  - " + totalInspected + " seçim kaydı incelendi");
-            LOGGER.info("  - " + duplicatePetIds.size() + " mükerrer pet seçimi bulundu");
-            LOGGER.info("  - " + retainedCount + " güncel seçim kaydı korundu");
-            LOGGER.info("  - " + supersededCount + " eski seçim elendi ve AVAILABLE statüsüne çekildi");
+            LOGGER.info("  - " + allSelectedPetIds.size() + " aktif pet seçimi incelendi");
+            LOGGER.info("  - " + retainedCount + " gerçek sahibi doğrulanan seçim korundu");
+            LOGGER.info("  - " + supersededCount + " geçersiz/yabancı seçim silindi");
 
         } catch (SQLException e) {
             connection.rollback();
-            LOGGER.severe("Migration V1 başarısız oldu, veritabanı geri alındı: " + e.getMessage());
+            LOGGER.severe("Migration V2 başarısız oldu, veritabanı geri alındı: " + e.getMessage());
             throw e;
         } finally {
             connection.setAutoCommit(autoCommit);
         }
     }
 
-    private static int resolveDuplicatePetId(Connection connection, String petId) throws SQLException {
-        String query = "SELECT owner_id, updated_at FROM player_active_pets WHERE pet_id = ? ORDER BY updated_at DESC, owner_id ASC;";
+    private static void applyMigrationV3(Connection connection) throws SQLException {
+        boolean autoCommit = connection.getAutoCommit();
+        try {
+            connection.setAutoCommit(false);
+
+            try (Statement stmt = connection.createStatement()) {
+                stmt.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_pets_pet_owner ON pets(pet_id, owner_id);");
+
+                stmt.execute("CREATE TABLE IF NOT EXISTS player_active_pets_v3 (" +
+                        "owner_id TEXT PRIMARY KEY, " +
+                        "pet_id TEXT NOT NULL UNIQUE, " +
+                        "updated_at INTEGER NOT NULL, " +
+                        "FOREIGN KEY (pet_id, owner_id) REFERENCES pets(pet_id, owner_id) ON DELETE CASCADE" +
+                        ");");
+
+                stmt.execute("INSERT INTO player_active_pets_v3 (owner_id, pet_id, updated_at) " +
+                        "SELECT a.owner_id, a.pet_id, a.updated_at FROM player_active_pets a " +
+                        "JOIN pets p ON a.pet_id = p.pet_id AND a.owner_id = p.owner_id;");
+
+                stmt.execute("DROP TABLE IF EXISTS player_active_pets;");
+                stmt.execute("ALTER TABLE player_active_pets_v3 RENAME TO player_active_pets;");
+            }
+
+            recordMigrationApplied(connection, 3);
+            connection.commit();
+            LOGGER.info("[PetSistemi] Migration V3 (Composite Foreign Key Constraint) başarıyla uygulandı.");
+
+        } catch (SQLException e) {
+            connection.rollback();
+            LOGGER.severe("Migration V3 başarısız oldu: " + e.getMessage());
+            throw e;
+        } finally {
+            connection.setAutoCommit(autoCommit);
+        }
+    }
+
+    private static int resolveOwnershipAndDuplicates(Connection connection, String petId) throws SQLException {
+        String findOwnerSql = "SELECT owner_id FROM pets WHERE pet_id = ?;";
+        String actualOwnerId = null;
+        try (PreparedStatement ps = connection.prepareStatement(findOwnerSql)) {
+            ps.setString(1, petId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    actualOwnerId = rs.getString("owner_id");
+                }
+            }
+        }
+
+        String querySelections = "SELECT owner_id, updated_at FROM player_active_pets WHERE pet_id = ?;";
         record SelectionRecord(String ownerId, long updatedAt) {}
         List<SelectionRecord> records = new ArrayList<>();
 
-        try (PreparedStatement ps = connection.prepareStatement(query)) {
+        try (PreparedStatement ps = connection.prepareStatement(querySelections)) {
             ps.setString(1, petId);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
@@ -121,32 +166,50 @@ public final class SchemaMigrator {
             }
         }
 
-        int removed = 0;
-        if (records.size() > 1) {
-            SelectionRecord kept = records.get(0);
-            LOGGER.warning("Çakışan Pet ID '" + petId + "' için Owner '" + kept.ownerId + "' seçimi korundu (Timestamp: " + kept.updatedAt + ").");
+        final String finalActualOwnerId = actualOwnerId;
+        SelectionRecord validRecord = records.stream()
+                .filter(r -> r.ownerId().equals(finalActualOwnerId))
+                .findFirst()
+                .orElse(null);
 
-            for (int i = 1; i < records.size(); i++) {
-                SelectionRecord dropped = records.get(i);
-                LOGGER.warning("Çakışan Pet ID '" + petId + "' için Owner '" + dropped.ownerId + "' eski seçimi siliniyor ve AVAILABLE yapılıyor (Timestamp: " + dropped.updatedAt + ").");
-                
-                // Delete superseded selection row
+        int removedCount = 0;
+        if (validRecord != null) {
+            LOGGER.warning("Pet ID '" + petId + "' için gerçek sahibi olan Owner '" + validRecord.ownerId() + "' seçimi korundu.");
+
+            for (SelectionRecord record : records) {
+                if (!record.ownerId().equals(validRecord.ownerId())) {
+                    LOGGER.warning("Pet ID '" + petId + "' için yabancı oyuncu Owner '" + record.ownerId() + "' sahte seçimi siliniyor.");
+                    try (PreparedStatement ps = connection.prepareStatement("DELETE FROM player_active_pets WHERE owner_id = ? AND pet_id = ?;")) {
+                        ps.setString(1, record.ownerId());
+                        ps.setString(2, petId);
+                        ps.executeUpdate();
+                    }
+                    removedCount++;
+                }
+            }
+
+            try (PreparedStatement ps = connection.prepareStatement("UPDATE pets SET state = 'ACTIVE' WHERE pet_id = ?;")) {
+                ps.setString(1, petId);
+                ps.executeUpdate();
+            }
+
+        } else {
+            LOGGER.warning("Pet ID '" + petId + "' için gerçek sahibine ait aktif seçim bulunamadı. Tüm sahte seçimler siliniyor.");
+            for (SelectionRecord record : records) {
                 try (PreparedStatement ps = connection.prepareStatement("DELETE FROM player_active_pets WHERE owner_id = ? AND pet_id = ?;")) {
-                    ps.setString(1, dropped.ownerId);
+                    ps.setString(1, record.ownerId());
                     ps.setString(2, petId);
                     ps.executeUpdate();
                 }
+                removedCount++;
+            }
 
-                // Update pet state to AVAILABLE if state was ACTIVE
-                try (PreparedStatement ps = connection.prepareStatement("UPDATE pets SET state = 'AVAILABLE' WHERE pet_id = ? AND owner_id = ?;")) {
-                    ps.setString(1, petId);
-                    ps.setString(2, dropped.ownerId);
-                    ps.executeUpdate();
-                }
-
-                removed++;
+            try (PreparedStatement ps = connection.prepareStatement("UPDATE pets SET state = 'AVAILABLE' WHERE pet_id = ?;")) {
+                ps.setString(1, petId);
+                ps.executeUpdate();
             }
         }
-        return removed;
+
+        return removedCount;
     }
 }
