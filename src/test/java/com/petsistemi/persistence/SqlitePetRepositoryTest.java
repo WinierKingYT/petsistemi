@@ -22,7 +22,7 @@ class SqlitePetRepositoryTest {
     @BeforeEach
     void setUp() throws Exception {
         connection = DriverManager.getConnection("jdbc:sqlite::memory:");
-        DatabaseSchema.initializeSchema(connection);
+        SchemaMigrator.migrate(connection);
 
         ConnectionProvider testProvider = new ConnectionProvider() {
             @Override
@@ -94,7 +94,6 @@ class SqlitePetRepositoryTest {
         repository.switchActivePet(ownerId, null, petA);
         repository.switchActivePet(ownerId, petA, petB);
 
-        // Call restore to simulate failed spawn rollback
         repository.restoreActivePet(ownerId, petA, petB);
 
         Optional<PetInstance> activeOpt = repository.findActiveByOwner(ownerId);
@@ -109,12 +108,30 @@ class SqlitePetRepositoryTest {
         UUID ownerId = UUID.randomUUID();
         UUID nonExistentPetId = UUID.randomUUID();
 
-        // Foreign key constraint failure should rollback transaction
         assertThrows(PetPersistenceException.class, () -> 
             repository.switchActivePet(ownerId, null, nonExistentPetId)
         );
 
         assertTrue(repository.findActiveByOwner(ownerId).isEmpty());
+    }
+
+    @Test
+    void testUniquePetIdConstraintAcrossDifferentOwners() {
+        UUID owner1 = UUID.randomUUID();
+        UUID owner2 = UUID.randomUUID();
+        UUID sharedPet = UUID.randomUUID();
+
+        repository.insert(new PetInstance(sharedPet, owner1, "wolf", "Pet1", 1, 0, PetStorageState.AVAILABLE, 1000L, 1000L));
+        repository.switchActivePet(owner1, null, sharedPet);
+
+        // Attempting to assign same active pet_id to owner2 must fail due to UNIQUE constraint
+        assertThrows(PetPersistenceException.class, () -> 
+            repository.switchActivePet(owner2, null, sharedPet)
+        );
+
+        // Verify owner1 still owns active pet and owner2 has no active pet
+        assertEquals(sharedPet, repository.findActiveByOwner(owner1).get().petId());
+        assertTrue(repository.findActiveByOwner(owner2).isEmpty());
     }
 
     @Test

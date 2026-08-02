@@ -34,7 +34,7 @@ public class DatabaseManager implements ConnectionProvider {
             stmt.execute("PRAGMA foreign_keys = ON;");
         }
 
-        DatabaseSchema.initializeSchema(connection);
+        SchemaMigrator.migrate(connection);
         plugin.getLogger().info("SQLite Veritabanı başarıyla bağlandı ve şemalar doğrulandı.");
     }
 

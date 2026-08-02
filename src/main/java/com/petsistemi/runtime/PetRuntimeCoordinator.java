@@ -54,10 +54,16 @@ public class PetRuntimeCoordinator {
      * Performs complete rollback (restoring previous selection and physical entity) if any step fails.
      */
     public synchronized Entity spawnAndRegister(Player owner, PetInstance pet, PetDefinition definition) throws Exception {
+        if (owner == null) {
+            throw new IllegalArgumentException("Oyuncu (owner) null olamaz.");
+        }
         UUID ownerId = owner.getUniqueId();
         
         Optional<PetInstance> currentActiveDb = repository.findActiveByOwner(ownerId);
         UUID previousPetId = currentActiveDb.map(PetInstance::petId).orElse(null);
+
+        Optional<ActivePet> previousRuntime = activeRegistry.getByOwner(ownerId);
+        boolean hadPreviousRuntime = previousRuntime.isPresent();
 
         despawnActiveEntity(ownerId);
 
@@ -92,14 +98,15 @@ public class PetRuntimeCoordinator {
             if (databaseSwitched) {
                 try {
                     repository.restoreActivePet(ownerId, previousPetId, pet.petId());
-                    // Restore previous physical runtime entity if owner is online and had a previous pet
-                    if (previousPetId != null && owner.isOnline()) {
-                        restorePreviousRuntimePet(owner, previousPetId);
-                    }
                 } catch (Exception ex) {
-                    plugin.getLogger().log(Level.SEVERE, "Rollback restore hatası!", ex);
+                    plugin.getLogger().log(Level.SEVERE, "Rollback DB restore hatası!", ex);
                 }
             }
+
+            if (hadPreviousRuntime && previousPetId != null && owner != null && owner.isOnline()) {
+                restorePreviousRuntimePet(owner, previousPetId);
+            }
+
             throw e;
         }
     }
@@ -172,14 +179,20 @@ public class PetRuntimeCoordinator {
                 Optional<PetInstance> selected = repository.findActiveByOwner(owner.getUniqueId());
                 if (selected.isPresent() && selected.get().petId().equals(petId)) {
                     PetInstance p = selected.get();
-                    definitionRegistry.find(p.definitionId()).ifPresent(def -> {
-                        try {
-                            spawnAndRegister(owner, p, def);
-                        } catch (Exception e) {
-                            plugin.getLogger().warning("Pet restore denemesi (" + attempt + "/3) başarısız: " + e.getMessage());
-                            schedulePendingRestoreWithRetry(owner, petId, attempt + 1);
-                        }
-                    });
+                    Optional<PetDefinition> defOpt = definitionRegistry.find(p.definitionId());
+                    if (defOpt.isEmpty()) {
+                        plugin.getLogger().warning("Pet tanımı (" + p.definitionId() + ") bulunamadı, restore denemesi (" + attempt + "/3) erteleniyor.");
+                        schedulePendingRestoreWithRetry(owner, petId, attempt + 1);
+                        return;
+                    }
+
+                    PetDefinition def = defOpt.get();
+                    try {
+                        spawnAndRegister(owner, p, def);
+                    } catch (Exception e) {
+                        plugin.getLogger().warning("Pet restore denemesi (" + attempt + "/3) başarısız: " + e.getMessage());
+                        schedulePendingRestoreWithRetry(owner, petId, attempt + 1);
+                    }
                 }
             }
         }, delayTicks);

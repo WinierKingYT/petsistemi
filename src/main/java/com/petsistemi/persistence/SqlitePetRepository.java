@@ -129,7 +129,8 @@ public class SqlitePetRepository implements PetRepository {
 
     @Override
     public synchronized void setActivePet(UUID ownerId, UUID petId) {
-        String sql = "INSERT OR REPLACE INTO player_active_pets (owner_id, pet_id, updated_at) VALUES (?, ?, ?);";
+        String sql = "INSERT INTO player_active_pets (owner_id, pet_id, updated_at) VALUES (?, ?, ?) " +
+                "ON CONFLICT(owner_id) DO UPDATE SET pet_id = excluded.pet_id, updated_at = excluded.updated_at;";
         try (PreparedStatement ps = connectionProvider.getConnection().prepareStatement(sql)) {
             ps.setString(1, ownerId.toString());
             ps.setString(2, petId.toString());
@@ -167,7 +168,8 @@ public class SqlitePetRepository implements PetRepository {
                 }
             }
 
-            try (PreparedStatement ps = conn.prepareStatement("INSERT OR REPLACE INTO player_active_pets (owner_id, pet_id, updated_at) VALUES (?, ?, ?);")) {
+            try (PreparedStatement ps = conn.prepareStatement("INSERT INTO player_active_pets (owner_id, pet_id, updated_at) VALUES (?, ?, ?) " +
+                    "ON CONFLICT(owner_id) DO UPDATE SET pet_id = excluded.pet_id, updated_at = excluded.updated_at;")) {
                 ps.setString(1, ownerId.toString());
                 ps.setString(2, newPetId.toString());
                 ps.setLong(3, System.currentTimeMillis());
@@ -242,7 +244,8 @@ public class SqlitePetRepository implements PetRepository {
             }
 
             if (previousPetId != null) {
-                try (PreparedStatement ps = conn.prepareStatement("INSERT OR REPLACE INTO player_active_pets (owner_id, pet_id, updated_at) VALUES (?, ?, ?);")) {
+                try (PreparedStatement ps = conn.prepareStatement("INSERT INTO player_active_pets (owner_id, pet_id, updated_at) VALUES (?, ?, ?) " +
+                        "ON CONFLICT(owner_id) DO UPDATE SET pet_id = excluded.pet_id, updated_at = excluded.updated_at;")) {
                     ps.setString(1, ownerId.toString());
                     ps.setString(2, previousPetId.toString());
                     ps.setLong(3, System.currentTimeMillis());
