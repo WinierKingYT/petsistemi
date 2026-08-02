@@ -1,0 +1,24 @@
+id: allay
+
+display:
+  name: "<aqua>Allay"
+  description:
+    - "<dark_gray>Gökyüzünde süzülen neşeli bir pet."
+
+entity:
+  type: ALLAY
+  baby: false
+  glowing: true
+  invulnerable: true
+  silent: false
+  gravity: false
+
+progression:
+  enabled: true
+  maximum-level: 100
+
+nameplate:
+  enabled: true
+  format:
+    - "<white>{pet_name}"
+    - "<gray>Seviye {level}"

@@ -1,0 +1,15 @@
+# Minecraft Pet Sistemi Configuration
+
+limits:
+  maximum-owned-pets: 20
+  maximum-active-pets: 1
+
+naming:
+  minimum-length: 2
+  maximum-length: 16
+  allow-colors: false
+  allow-formatting: false
+
+progression:
+  enabled: true
+  maximum-level: 100
