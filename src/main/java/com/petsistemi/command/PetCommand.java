@@ -33,6 +33,11 @@ public class PetCommand implements CommandExecutor, TabCompleter {
             return true;
         }
 
+        if (!player.hasPermission("companionpets.use")) {
+            player.sendMessage(Component.text("Bu komutu kullanmak için yetkiniz yok.", NamedTextColor.RED));
+            return true;
+        }
+
         if (args.length == 0) {
             sendHelp(player);
             return true;
@@ -63,7 +68,7 @@ public class PetCommand implements CommandExecutor, TabCompleter {
     private void handleList(Player player) {
         Collection<PetSnapshot> pets = petService.getOwnedPets(player.getUniqueId());
         if (pets.isEmpty()) {
-            player.sendMessage(Component.text("Herhangi bir pete sahip değilsiniz. Admin'den pet isteyebilirsiniz.", NamedTextColor.GRAY));
+            player.sendMessage(Component.text("Herhangi bir pete sahip değilsiniz. Yetkili kişilerden pet talep edebilirsiniz.", NamedTextColor.GRAY));
             return;
         }
 
@@ -84,13 +89,16 @@ public class PetCommand implements CommandExecutor, TabCompleter {
         }
 
         String shortId = args[1];
-        Optional<PetSnapshot> petOpt = findOwnedPetByShortId(player, shortId);
-        if (petOpt.isEmpty()) {
+        SearchResult match = resolveOwnedPetByShortId(player, shortId);
+        if (match.status == SearchStatus.NOT_FOUND) {
             player.sendMessage(Component.text("Belirtilen ID ile eşleşen bir pet bulunamadı.", NamedTextColor.RED));
+            return;
+        } else if (match.status == SearchStatus.AMBIGUOUS) {
+            player.sendMessage(Component.text("Birden fazla pet bu kimlik ön ekiyle eşleşiyor (belirsiz ID). Lütfen daha fazla karakter girin.", NamedTextColor.RED));
             return;
         }
 
-        PetSummonResult result = petService.summon(player, petOpt.get().petId());
+        PetSummonResult result = petService.summon(player, match.pet.petId());
         if (result.success()) {
             player.sendMessage(Component.text("Pet başarıyla çağırıldı!", NamedTextColor.GREEN));
         } else {
@@ -108,20 +116,27 @@ public class PetCommand implements CommandExecutor, TabCompleter {
     }
 
     private void handleInfo(Player player, String[] args) {
-        Optional<PetSnapshot> petOpt;
+        PetSnapshot pet;
         if (args.length >= 2) {
             String shortId = args[1];
-            petOpt = findOwnedPetByShortId(player, shortId);
+            SearchResult match = resolveOwnedPetByShortId(player, shortId);
+            if (match.status == SearchStatus.NOT_FOUND) {
+                player.sendMessage(Component.text("Pet bulunamadı.", NamedTextColor.RED));
+                return;
+            } else if (match.status == SearchStatus.AMBIGUOUS) {
+                player.sendMessage(Component.text("Birden fazla pet bu kimlik ön ekiyle eşleşiyor.", NamedTextColor.RED));
+                return;
+            }
+            pet = match.pet;
         } else {
-            petOpt = petService.getActivePet(player.getUniqueId());
+            Optional<PetSnapshot> activeOpt = petService.getActivePet(player.getUniqueId());
+            if (activeOpt.isEmpty()) {
+                player.sendMessage(Component.text("Detaylarını görecek aktif veya belirtilmiş bir pet bulunamadı.", NamedTextColor.RED));
+                return;
+            }
+            pet = activeOpt.get();
         }
 
-        if (petOpt.isEmpty()) {
-            player.sendMessage(Component.text("Detaylarını görecek aktif veya belirtilmiş bir pet bulunamadı.", NamedTextColor.RED));
-            return;
-        }
-
-        PetSnapshot pet = petOpt.get();
         String shortId = pet.petId().toString().substring(0, 6);
         String customName = pet.customName() != null ? pet.customName() : "Yok";
         
@@ -141,20 +156,22 @@ public class PetCommand implements CommandExecutor, TabCompleter {
         }
 
         String shortId = args[1];
-        // Join remaining arguments for full name
         StringJoiner sj = new StringJoiner(" ");
         for (int i = 2; i < args.length; i++) {
             sj.add(args[i]);
         }
         String newName = sj.toString();
 
-        Optional<PetSnapshot> petOpt = findOwnedPetByShortId(player, shortId);
-        if (petOpt.isEmpty()) {
+        SearchResult match = resolveOwnedPetByShortId(player, shortId);
+        if (match.status == SearchStatus.NOT_FOUND) {
             player.sendMessage(Component.text("Pet bulunamadı.", NamedTextColor.RED));
+            return;
+        } else if (match.status == SearchStatus.AMBIGUOUS) {
+            player.sendMessage(Component.text("Birden fazla pet bu kimlik ön ekiyle eşleşiyor.", NamedTextColor.RED));
             return;
         }
 
-        PetRenameResult result = petService.rename(player, petOpt.get().petId(), newName);
+        PetRenameResult result = petService.rename(player, match.pet.petId(), newName);
         if (result.success()) {
             player.sendMessage(Component.text("Petinizin ismi '" + newName + "' olarak güncellendi!", NamedTextColor.GREEN));
         } else {
@@ -162,15 +179,25 @@ public class PetCommand implements CommandExecutor, TabCompleter {
         }
     }
 
-    private Optional<PetSnapshot> findOwnedPetByShortId(Player player, String shortId) {
-        return petService.getOwnedPets(player.getUniqueId()).stream()
+    private enum SearchStatus { FOUND, NOT_FOUND, AMBIGUOUS }
+    private record SearchResult(SearchStatus status, PetSnapshot pet) {}
+
+    private SearchResult resolveOwnedPetByShortId(Player player, String shortId) {
+        List<PetSnapshot> matches = petService.getOwnedPets(player.getUniqueId()).stream()
                 .filter(p -> p.petId().toString().toLowerCase().startsWith(shortId.toLowerCase()))
-                .findFirst();
+                .toList();
+
+        if (matches.isEmpty()) {
+            return new SearchResult(SearchStatus.NOT_FOUND, null);
+        } else if (matches.size() > 1) {
+            return new SearchResult(SearchStatus.AMBIGUOUS, null);
+        }
+        return new SearchResult(SearchStatus.FOUND, matches.get(0));
     }
 
     @Override
     public @Nullable List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String alias, @NotNull String[] args) {
-        if (!(sender instanceof Player player)) {
+        if (!(sender instanceof Player player) || !player.hasPermission("companionpets.use")) {
             return Collections.emptyList();
         }
 

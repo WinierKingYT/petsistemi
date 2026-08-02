@@ -2,6 +2,7 @@ package com.petsistemi.listener;
 
 import com.petsistemi.api.PetService;
 import com.petsistemi.api.PetSnapshot;
+import com.petsistemi.runtime.PetRuntimeCoordinator;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -16,17 +17,19 @@ public class PlayerConnectionListener implements Listener {
 
     private final JavaPlugin plugin;
     private final PetService petService;
+    private final PetRuntimeCoordinator coordinator;
 
-    public PlayerConnectionListener(JavaPlugin plugin, PetService petService) {
+    public PlayerConnectionListener(JavaPlugin plugin, PetService petService, PetRuntimeCoordinator coordinator) {
         this.plugin = plugin;
         this.petService = petService;
+        this.coordinator = coordinator;
     }
 
     @EventHandler
     public void onJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
         
-        // Wait 20 ticks (1s) to allow player to fully load into the chunk safely
+        // Wait 20 ticks (1s) to allow player chunk loading before summoning pet
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
             if (player.isOnline()) {
                 Optional<PetSnapshot> activeOpt = petService.getActivePet(player.getUniqueId());
@@ -37,6 +40,7 @@ public class PlayerConnectionListener implements Listener {
 
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
-        petService.dismiss(event.getPlayer());
+        // Despawn physical entity & active runtime registry, preserving selected pet in DB
+        coordinator.despawnOnQuit(event.getPlayer());
     }
 }

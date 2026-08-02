@@ -1,26 +1,29 @@
 package com.petsistemi.api.event;
 
+import com.petsistemi.api.PetSnapshot;
 import com.petsistemi.domain.ExperienceSource;
-import com.petsistemi.domain.PetInstance;
 import org.bukkit.event.Cancellable;
 import org.bukkit.event.Event;
 import org.bukkit.event.HandlerList;
+import org.jetbrains.annotations.NotNull;
 
 public class PetGainExperienceEvent extends Event implements Cancellable {
-    private static final HandlerList handlers = new HandlerList();
-    private final PetInstance petInstance;
+
+    private static final HandlerList HANDLERS = new HandlerList();
+
+    private final PetSnapshot pet;
     private long amount;
     private final ExperienceSource source;
     private boolean cancelled = false;
 
-    public PetGainExperienceEvent(PetInstance petInstance, long amount, ExperienceSource source) {
-        this.petInstance = petInstance;
+    public PetGainExperienceEvent(PetSnapshot pet, long amount, ExperienceSource source) {
+        this.pet = pet;
         this.amount = amount;
         this.source = source;
     }
 
-    public PetInstance getPetInstance() {
-        return petInstance;
+    public PetSnapshot getPet() {
+        return pet;
     }
 
     public long getAmount() {
@@ -46,11 +49,11 @@ public class PetGainExperienceEvent extends Event implements Cancellable {
     }
 
     @Override
-    public HandlerList getHandlers() {
-        return handlers;
+    public @NotNull HandlerList getHandlers() {
+        return HANDLERS;
     }
 
     public static HandlerList getHandlerList() {
-        return handlers;
+        return HANDLERS;
     }
 }

@@ -7,12 +7,12 @@ import com.petsistemi.api.result.*;
 import com.petsistemi.definition.PetDefinitionRegistry;
 import com.petsistemi.domain.PetDefinition;
 import com.petsistemi.domain.PetInstance;
-import com.petsistemi.domain.PetRuntimeState;
 import com.petsistemi.domain.PetStorageState;
 import com.petsistemi.persistence.PetRepository;
 import com.petsistemi.runtime.ActivePet;
 import com.petsistemi.runtime.ActivePetRegistry;
 import com.petsistemi.runtime.PetEntityController;
+import com.petsistemi.runtime.PetRuntimeCoordinator;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
@@ -29,16 +29,19 @@ public class DefaultPetService implements PetService {
     private final PetDefinitionRegistry definitionRegistry;
     private final ActivePetRegistry activePetRegistry;
     private final PetEntityController entityController;
+    private final PetRuntimeCoordinator coordinator;
 
     public DefaultPetService(JavaPlugin plugin, PetRepository repository,
                              PetDefinitionRegistry definitionRegistry,
                              ActivePetRegistry activePetRegistry,
-                             PetEntityController entityController) {
+                             PetEntityController entityController,
+                             PetRuntimeCoordinator coordinator) {
         this.plugin = plugin;
         this.repository = repository;
         this.definitionRegistry = definitionRegistry;
         this.activePetRegistry = activePetRegistry;
         this.entityController = entityController;
+        this.coordinator = coordinator;
     }
 
     @Override
@@ -83,13 +86,19 @@ public class DefaultPetService implements PetService {
                 System.currentTimeMillis()
         );
 
-        repository.insert(pet);
+        try {
+            repository.insert(pet);
+        } catch (Exception e) {
+            return new PetGiveResult(false, "Pet veritabanına kaydedilirken hata oluştu: " + e.getMessage(), null);
+        }
+
+        PetSnapshot snapshot = mapToSnapshot(pet);
 
         // Call event
-        PetGiveEvent event = new PetGiveEvent(ownerId, pet);
+        PetGiveEvent event = new PetGiveEvent(ownerId, snapshot);
         Bukkit.getPluginManager().callEvent(event);
 
-        return new PetGiveResult(true, "Pet başarıyla verildi.", pet);
+        return new PetGiveResult(true, "Pet başarıyla verildi.", snapshot);
     }
 
     @Override
@@ -112,61 +121,45 @@ public class DefaultPetService implements PetService {
             return new PetSummonResult(false, "Bu pet geçici olarak devre dışı bırakılmış.");
         }
 
+        PetSnapshot snapshot = mapToSnapshot(pet);
+
         // PreSummon Event
-        PetPreSummonEvent preEvent = new PetPreSummonEvent(owner, pet);
+        PetPreSummonEvent preEvent = new PetPreSummonEvent(owner, snapshot);
         Bukkit.getPluginManager().callEvent(preEvent);
         if (preEvent.isCancelled()) {
             return new PetSummonResult(false, "Çağırma işlemi başka bir eklenti tarafından engellendi.");
         }
 
-        // Check and dismiss existing active pet
-        Optional<ActivePet> activeOpt = activePetRegistry.getByOwner(owner.getUniqueId());
-        if (activeOpt.isPresent()) {
-            dismiss(owner);
-        }
-
         Optional<PetDefinition> defOpt = definitionRegistry.find(pet.definitionId());
         if (defOpt.isEmpty()) {
-            // Disable if definition deleted
             repository.update(pet.withStorageState(PetStorageState.DISABLED));
             return new PetSummonResult(false, "Pet tanımı bulunamadı, pet devre dışı bırakıldı.");
         }
 
         PetDefinition definition = defOpt.get();
 
-        // Spawn
+        // Atomic spawn & register via coordinator
         try {
-            Entity spawned = entityController.spawn(pet, definition, owner);
-            ActivePet activePet = new ActivePet(petId, owner.getUniqueId(), spawned.getUniqueId(), spawned, PetRuntimeState.ACTIVE);
-            
-            activePetRegistry.register(activePet);
-            repository.setActivePet(owner.getUniqueId(), petId);
-            repository.update(pet.withStorageState(PetStorageState.ACTIVE));
+            Entity spawned = coordinator.spawnAndRegister(owner, pet, definition);
 
-            PetSummonEvent summonEvent = new PetSummonEvent(owner, pet, spawned);
+            PetSummonEvent summonEvent = new PetSummonEvent(owner, snapshot, spawned);
             Bukkit.getPluginManager().callEvent(summonEvent);
 
             return new PetSummonResult(true, "Pet başarıyla çağırıldı.");
         } catch (Exception e) {
-            plugin.getLogger().log(Level.SEVERE, "Pet çağırılırken entity oluşturulamadı!", e);
-            return new PetSummonResult(false, "Pet çağırılırken bir sunucu hatası oluştu.");
+            plugin.getLogger().log(Level.SEVERE, "Pet çağırılırken hata oluştu!", e);
+            return new PetSummonResult(false, "Pet çağırılırken hata oluştu: " + e.getMessage());
         }
     }
 
     @Override
     public PetDismissResult dismiss(Player owner) {
-        Optional<ActivePet> activeOpt = activePetRegistry.getByOwner(owner.getUniqueId());
+        Optional<PetSnapshot> activeOpt = getActivePet(owner.getUniqueId());
         if (activeOpt.isEmpty()) {
             return new PetDismissResult(false, "Çağırılmış aktif bir petiniz bulunmuyor.");
         }
 
-        ActivePet activePet = activeOpt.get();
-        Optional<PetInstance> petOpt = repository.findById(activePet.getPetId());
-        if (petOpt.isEmpty()) {
-            return new PetDismissResult(false, "Pet kaydı bulunamadı.");
-        }
-
-        PetInstance pet = petOpt.get();
+        PetSnapshot pet = activeOpt.get();
 
         // PreDismiss Event
         PetPreDismissEvent preEvent = new PetPreDismissEvent(owner, pet);
@@ -175,11 +168,8 @@ public class DefaultPetService implements PetService {
             return new PetDismissResult(false, "Kaldırma işlemi başka bir eklenti tarafından engellendi.");
         }
 
-        // Remove Entity
-        entityController.remove(activePet.getSpawnedEntity());
-        activePetRegistry.unregister(owner.getUniqueId());
-        repository.clearActivePet(owner.getUniqueId());
-        repository.update(pet.withStorageState(PetStorageState.AVAILABLE));
+        // Complete dismiss and clear selection from DB
+        coordinator.dismissAndClear(owner);
 
         PetDismissEvent dismissEvent = new PetDismissEvent(owner, pet);
         Bukkit.getPluginManager().callEvent(dismissEvent);
@@ -202,11 +192,13 @@ public class DefaultPetService implements PetService {
         // Validate name
         String validatedName = validateName(newName);
         if (validatedName == null) {
-            return new PetRenameResult(false, "Geçersiz isim! (İsim 2-16 karakter olmalı ve renk kodu içermemeli).");
+            return new PetRenameResult(false, "Geçersiz isim! (İsim 2-16 karakter olmalı ve izin verilmeyen renk/biçimlendirme içermemeli).");
         }
 
+        PetSnapshot snapshot = mapToSnapshot(pet);
+
         // Event
-        PetRenameEvent event = new PetRenameEvent(owner, pet, pet.customName(), validatedName);
+        PetRenameEvent event = new PetRenameEvent(owner, snapshot, pet.customName(), validatedName);
         Bukkit.getPluginManager().callEvent(event);
         if (event.isCancelled()) {
             return new PetRenameResult(false, "İsim değiştirme işlemi başka bir eklenti tarafından engellendi.");
@@ -214,7 +206,11 @@ public class DefaultPetService implements PetService {
 
         String finalName = event.getNewName();
         PetInstance updated = pet.withCustomName(finalName);
-        repository.update(updated);
+        try {
+            repository.update(updated);
+        } catch (Exception e) {
+            return new PetRenameResult(false, "İsim veritabanına kaydedilemedi: " + e.getMessage());
+        }
 
         // If currently active, update nameplate
         Optional<ActivePet> activeOpt = activePetRegistry.getByOwner(owner.getUniqueId());
@@ -237,13 +233,17 @@ public class DefaultPetService implements PetService {
         int min = plugin.getConfig().getInt("naming.minimum-length", 2);
         int max = plugin.getConfig().getInt("naming.maximum-length", 16);
         boolean allowColors = plugin.getConfig().getBoolean("naming.allow-colors", false);
+        boolean allowFormatting = plugin.getConfig().getBoolean("naming.allow-formatting", false);
 
         if (clean.length() < min || clean.length() > max) {
             return null;
         }
 
-        // Check for formatting codes if not allowed
-        if (!allowColors && (clean.contains("&") || clean.contains("§") || clean.contains("<"))) {
+        if (!allowColors && (clean.contains("&") || clean.contains("§"))) {
+            return null;
+        }
+
+        if (!allowFormatting && (clean.contains("<") || clean.contains(">"))) {
             return null;
         }
 

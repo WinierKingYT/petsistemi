@@ -4,6 +4,7 @@ import com.petsistemi.domain.PetDefinition;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.EntityType;
+import org.bukkit.entity.LivingEntity;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
@@ -44,7 +45,6 @@ public class YamlPetDefinitionRegistry implements PetDefinitionRegistry {
     private void ensureDirectoryExists() {
         if (!petsDir.exists()) {
             petsDir.mkdirs();
-            // Copy default pet definitions from resources
             copyDefaultResource("pets/wolf.yml", new File(petsDir, "wolf.yml"));
             copyDefaultResource("pets/cat.yml", new File(petsDir, "cat.yml"));
             copyDefaultResource("pets/allay.yml", new File(petsDir, "allay.yml"));
@@ -83,13 +83,23 @@ public class YamlPetDefinitionRegistry implements PetDefinitionRegistry {
                 String displayName = config.getString("display.name", id);
                 List<String> description = config.getStringList("display.description");
                 
-                String entityTypeStr = config.getString("entity.type", "WOLF");
+                String entityTypeStr = config.getString("entity.type");
+                if (entityTypeStr == null) {
+                    plugin.getLogger().severe("Pet tanım dosyasında 'entity.type' eksik: " + file.getName());
+                    continue;
+                }
+
                 EntityType entityType;
                 try {
                     entityType = EntityType.valueOf(entityTypeStr.toUpperCase());
                 } catch (IllegalArgumentException e) {
-                    plugin.getLogger().severe("Geçersiz entity tipi '" + entityTypeStr + "' dosya: " + file.getName() + ". Default olarak WOLF atandı.");
-                    entityType = EntityType.WOLF;
+                    plugin.getLogger().severe("Geçersiz entity tipi '" + entityTypeStr + "' dosya: " + file.getName() + ". Tanım atlandı!");
+                    continue;
+                }
+
+                if (!entityType.isSpawnable() || entityType.getEntityClass() == null || !LivingEntity.class.isAssignableFrom(entityType.getEntityClass())) {
+                    plugin.getLogger().severe("Entity tipi '" + entityTypeStr + "' çağrılamaz canlı varlık (LivingEntity) sınıfına ait değil! Dosya: " + file.getName() + ". Tanım atlandı!");
+                    continue;
                 }
 
                 boolean baby = config.getBoolean("entity.baby", false);

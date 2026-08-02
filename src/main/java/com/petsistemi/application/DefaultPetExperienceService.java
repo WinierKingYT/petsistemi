@@ -1,6 +1,7 @@
 package com.petsistemi.application;
 
 import com.petsistemi.api.PetExperienceService;
+import com.petsistemi.api.PetSnapshot;
 import com.petsistemi.api.event.PetGainExperienceEvent;
 import com.petsistemi.api.event.PetLevelUpEvent;
 import com.petsistemi.api.result.ExperienceResult;
@@ -40,8 +41,12 @@ public class DefaultPetExperienceService implements PetExperienceService {
 
     @Override
     public ExperienceResult addExperience(UUID petId, long amount, ExperienceSource source) {
-        if (amount < 0) {
-            return new ExperienceResult(false, "Deneyim miktarı negatif olamaz.", 0, false);
+        if (!plugin.getConfig().getBoolean("progression.enabled", true)) {
+            return new ExperienceResult(false, "Sistem genelinde tecrübe sistemi devre dışı.", 0, false);
+        }
+
+        if (amount <= 0) {
+            return new ExperienceResult(false, "Deneyim miktarı pozitif olmalıdır.", 0, false);
         }
 
         Optional<PetInstance> petOpt = repository.findById(petId);
@@ -51,17 +56,33 @@ public class DefaultPetExperienceService implements PetExperienceService {
 
         PetInstance pet = petOpt.get();
         PetDefinition definition = definitionRegistry.find(pet.definitionId()).orElse(null);
-        int maxLevel = definition != null ? definition.maxLevel() : 100;
+        if (definition != null && !definition.progressionEnabled()) {
+            return new ExperienceResult(false, "Bu pet türü için gelişim sistemi kapalı.", pet.experience(), false);
+        }
+
+        int maxLevel = definition != null ? definition.maxLevel() : plugin.getConfig().getInt("progression.maximum-level", 100);
+
+        PetSnapshot snapshot = mapToSnapshot(pet);
 
         // Trigger Event
-        PetGainExperienceEvent event = new PetGainExperienceEvent(pet, amount, source);
+        PetGainExperienceEvent event = new PetGainExperienceEvent(snapshot, amount, source);
         Bukkit.getPluginManager().callEvent(event);
         if (event.isCancelled()) {
             return new ExperienceResult(false, "Deneyim kazanma işlemi iptal edildi.", pet.experience(), false);
         }
 
         long actualAmount = event.getAmount();
-        long newXp = pet.experience() + actualAmount;
+        if (actualAmount <= 0) {
+            return new ExperienceResult(false, "Etkinlik sonrası geçerli tecrübe miktarı sıfır veya negatif kaldı.", pet.experience(), false);
+        }
+
+        long newXp;
+        try {
+            newXp = Math.addExact(pet.experience(), actualAmount);
+        } catch (ArithmeticException e) {
+            newXp = Long.MAX_VALUE;
+        }
+
         int newLevel = calculateLevelFromXp(newXp);
 
         if (newLevel > maxLevel) {
@@ -73,7 +94,11 @@ public class DefaultPetExperienceService implements PetExperienceService {
         int oldLevel = pet.level();
 
         PetInstance updatedPet = pet.withLevelAndExperience(newLevel, newXp);
-        repository.update(updatedPet);
+        try {
+            repository.update(updatedPet);
+        } catch (Exception e) {
+            return new ExperienceResult(false, "Deneyim veritabanına kaydedilemedi: " + e.getMessage(), pet.experience(), false);
+        }
 
         // If active, update nameplate
         Optional<ActivePet> activeOpt = activePetRegistry.getByOwner(pet.ownerId());
@@ -85,7 +110,7 @@ public class DefaultPetExperienceService implements PetExperienceService {
         }
 
         if (leveledUp) {
-            PetLevelUpEvent levelUpEvent = new PetLevelUpEvent(updatedPet, oldLevel, newLevel);
+            PetLevelUpEvent levelUpEvent = new PetLevelUpEvent(mapToSnapshot(updatedPet), oldLevel, newLevel);
             Bukkit.getPluginManager().callEvent(levelUpEvent);
         }
 
@@ -108,7 +133,11 @@ public class DefaultPetExperienceService implements PetExperienceService {
         int newLevel = calculateLevelFromXp(newXp);
 
         PetInstance updatedPet = pet.withLevelAndExperience(newLevel, newXp);
-        repository.update(updatedPet);
+        try {
+            repository.update(updatedPet);
+        } catch (Exception e) {
+            return new ExperienceResult(false, "Deneyim güncellenemedi: " + e.getMessage(), pet.experience(), false);
+        }
 
         // If active, update nameplate
         Optional<ActivePet> activeOpt = activePetRegistry.getByOwner(pet.ownerId());
@@ -133,7 +162,7 @@ public class DefaultPetExperienceService implements PetExperienceService {
 
         PetInstance pet = petOpt.get();
         PetDefinition definition = definitionRegistry.find(pet.definitionId()).orElse(null);
-        int maxLevel = definition != null ? definition.maxLevel() : 100;
+        int maxLevel = definition != null ? definition.maxLevel() : plugin.getConfig().getInt("progression.maximum-level", 100);
 
         if (level < 1 || level > maxLevel) {
             return new LevelResult(false, "Geçersiz seviye değeri (1 ile " + maxLevel + " arasında olmalı).", pet.level());
@@ -141,7 +170,11 @@ public class DefaultPetExperienceService implements PetExperienceService {
 
         long newXp = requiredExperienceForLevel(level);
         PetInstance updatedPet = pet.withLevelAndExperience(level, newXp);
-        repository.update(updatedPet);
+        try {
+            repository.update(updatedPet);
+        } catch (Exception e) {
+            return new LevelResult(false, "Seviye veritabanına kaydedilemedi: " + e.getMessage(), pet.level());
+        }
 
         // If active, update nameplate
         Optional<ActivePet> activeOpt = activePetRegistry.getByOwner(pet.ownerId());
@@ -164,5 +197,19 @@ public class DefaultPetExperienceService implements PetExperienceService {
     public int calculateLevelFromXp(long totalXp) {
         if (totalXp <= 0) return 1;
         return (int) (Math.sqrt(totalXp / 100.0) + 1);
+    }
+
+    private PetSnapshot mapToSnapshot(PetInstance p) {
+        return new PetSnapshot(
+                p.petId(),
+                p.ownerId(),
+                p.definitionId(),
+                p.customName(),
+                p.level(),
+                p.experience(),
+                p.storageState(),
+                p.createdAt(),
+                p.updatedAt()
+        );
     }
 }

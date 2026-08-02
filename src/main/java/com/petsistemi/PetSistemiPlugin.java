@@ -8,9 +8,9 @@ import com.petsistemi.command.PetAdminCommand;
 import com.petsistemi.command.PetCommand;
 import com.petsistemi.definition.PetDefinitionRegistry;
 import com.petsistemi.definition.YamlPetDefinitionRegistry;
-import com.petsistemi.listener.PlayerConnectionListener;
 import com.petsistemi.listener.PetEntityListener;
 import com.petsistemi.listener.PetProtectionListener;
+import com.petsistemi.listener.PlayerConnectionListener;
 import com.petsistemi.listener.WorldChangeListener;
 import com.petsistemi.persistence.DatabaseManager;
 import com.petsistemi.persistence.PetRepository;
@@ -24,9 +24,8 @@ import org.bukkit.plugin.ServicePriority;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Objects;
+import java.util.logging.Level;
 
 public class PetSistemiPlugin extends JavaPlugin {
 
@@ -35,46 +34,58 @@ public class PetSistemiPlugin extends JavaPlugin {
     private ActivePetRegistry activeRegistry;
     private PetEntityController entityController;
     private PetBehaviorController behaviorController;
+    private PetRuntimeCoordinator coordinator;
     
     private PetService petService;
     private PetExperienceService experienceService;
 
     private BukkitTask tickTask;
+    private BukkitTask watchdogTask;
 
     @Override
     public void onEnable() {
         // Save default config
         saveDefaultConfig();
 
-        // 1. Database Manager & Repository Setup
+        // 1. Database Manager & Fail-Fast Initialization
         databaseManager = new DatabaseManager(this);
-        databaseManager.initialize();
+        try {
+            databaseManager.initialize();
+        } catch (Exception e) {
+            getLogger().log(Level.SEVERE, "PET VERİTABANI BAŞLATILAMADI! Eklenti devre dışı bırakılıyor.", e);
+            getServer().getPluginManager().disablePlugin(this);
+            return;
+        }
+
         PetRepository repository = new SqlitePetRepository(databaseManager, getLogger());
 
         // 2. Definition Registry Setup
         definitionRegistry = new YamlPetDefinitionRegistry(this);
         definitionRegistry.reload();
 
-        // 3. Runtime Registries
+        // 3. Runtime Registries & Controllers
         activeRegistry = new ActivePetRegistry();
         entityController = new PaperPetEntityController(this);
         behaviorController = new BasicPetBehaviorController();
 
-        // 4. Core Services
-        petService = new DefaultPetService(this, repository, definitionRegistry, activeRegistry, entityController);
+        // 4. Pet Runtime Coordinator
+        coordinator = new PetRuntimeCoordinator(this, repository, definitionRegistry, activeRegistry, entityController, behaviorController);
+
+        // 5. Core Application Services
+        petService = new DefaultPetService(this, repository, definitionRegistry, activeRegistry, entityController, coordinator);
         experienceService = new DefaultPetExperienceService(this, repository, definitionRegistry, activeRegistry, entityController);
 
-        // 5. Register API Services globally
+        // 6. Register API Services globally in Bukkit
         getServer().getServicesManager().register(PetService.class, petService, this, ServicePriority.Normal);
         getServer().getServicesManager().register(PetExperienceService.class, experienceService, this, ServicePriority.Normal);
 
-        // 6. Listeners Registration
-        getServer().getPluginManager().registerEvents(new PlayerConnectionListener(this, petService), this);
+        // 7. Listeners Registration
+        getServer().getPluginManager().registerEvents(new PlayerConnectionListener(this, petService, coordinator), this);
         getServer().getPluginManager().registerEvents(new PetEntityListener(activeRegistry, repository), this);
         getServer().getPluginManager().registerEvents(new PetProtectionListener(activeRegistry), this);
-        getServer().getPluginManager().registerEvents(new WorldChangeListener(activeRegistry), this);
+        getServer().getPluginManager().registerEvents(new WorldChangeListener(this, activeRegistry), this);
 
-        // 7. Commands Registration
+        // 8. Commands Registration
         Objects.requireNonNull(getCommand("pet")).setExecutor(new PetCommand(petService));
         Objects.requireNonNull(getCommand("pet")).setTabCompleter(new PetCommand(petService));
 
@@ -82,7 +93,7 @@ public class PetSistemiPlugin extends JavaPlugin {
         Objects.requireNonNull(getCommand("petadmin")).setExecutor(adminCmd);
         Objects.requireNonNull(getCommand("petadmin")).setTabCompleter(adminCmd);
 
-        // 8. Start Behavior Ticking Task (runs every 2 ticks / 100ms)
+        // 9. Start Behavior Ticking Task (runs every 5 ticks / 250ms)
         tickTask = Bukkit.getScheduler().runTaskTimer(this, () -> {
             for (ActivePet activePet : activeRegistry.getAllActive()) {
                 Player owner = Bukkit.getPlayer(activePet.getOwnerId());
@@ -93,29 +104,31 @@ public class PetSistemiPlugin extends JavaPlugin {
                     }
                 }
             }
-        }, 20L, 2L);
+        }, 20L, 5L);
 
-        getLogger().info("PetSistemiPlugin başarıyla aktif edildi!");
+        // 10. Start Periodic Entity Loss Watchdog (runs every 100 ticks / 5 seconds)
+        watchdogTask = Bukkit.getScheduler().runTaskTimer(this, () -> {
+            if (coordinator != null) {
+                coordinator.runWatchdogCheck();
+            }
+        }, 100L, 100L);
+
+        getLogger().info("PetSistemiPlugin (Paper 1.20.4, Java 17) başarıyla aktif edildi!");
     }
 
     @Override
     public void onDisable() {
-        // Cancel behavior tick task
+        // Cancel tasks
         if (tickTask != null) {
             tickTask.cancel();
         }
+        if (watchdogTask != null) {
+            watchdogTask.cancel();
+        }
 
-        // Clean up spawned pet entities safely (avoids orphaned entities on shutdown/reload)
-        if (activeRegistry != null) {
-            List<ActivePet> activePetsCopy = new ArrayList<>(activeRegistry.getAllActive());
-            for (ActivePet active : activePetsCopy) {
-                Player owner = Bukkit.getPlayer(active.getOwnerId());
-                if (owner != null) {
-                    petService.dismiss(owner);
-                } else {
-                    entityController.remove(active.getSpawnedEntity());
-                }
-            }
+        // Guaranteed non-cancellable force cleanup for shutdown
+        if (coordinator != null) {
+            coordinator.forceCleanupAll();
         }
 
         // Close database connection

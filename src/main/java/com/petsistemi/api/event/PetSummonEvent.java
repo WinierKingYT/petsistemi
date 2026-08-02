@@ -1,41 +1,44 @@
 package com.petsistemi.api.event;
 
-import com.petsistemi.domain.PetInstance;
+import com.petsistemi.api.PetSnapshot;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Event;
 import org.bukkit.event.HandlerList;
+import org.jetbrains.annotations.NotNull;
 
 public class PetSummonEvent extends Event {
-    private static final HandlerList handlers = new HandlerList();
-    private final Player player;
-    private final PetInstance petInstance;
-    private final Entity spawnedEntity;
 
-    public PetSummonEvent(Player player, PetInstance petInstance, Entity spawnedEntity) {
+    private static final HandlerList HANDLERS = new HandlerList();
+
+    private final Player player;
+    private final PetSnapshot pet;
+    private final Entity entity;
+
+    public PetSummonEvent(Player player, PetSnapshot pet, Entity entity) {
         this.player = player;
-        this.petInstance = petInstance;
-        this.spawnedEntity = spawnedEntity;
+        this.pet = pet;
+        this.entity = entity;
     }
 
     public Player getPlayer() {
         return player;
     }
 
-    public PetInstance getPetInstance() {
-        return petInstance;
+    public PetSnapshot getPet() {
+        return pet;
     }
 
-    public Entity getSpawnedEntity() {
-        return spawnedEntity;
+    public Entity getEntity() {
+        return entity;
     }
 
     @Override
-    public HandlerList getHandlers() {
-        return handlers;
+    public @NotNull HandlerList getHandlers() {
+        return HANDLERS;
     }
 
     public static HandlerList getHandlerList() {
-        return handlers;
+        return HANDLERS;
     }
 }

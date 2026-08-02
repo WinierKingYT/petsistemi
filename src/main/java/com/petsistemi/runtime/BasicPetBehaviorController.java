@@ -8,13 +8,16 @@ import org.bukkit.entity.Player;
 public class BasicPetBehaviorController implements PetBehaviorController {
 
     private static final double TELEPORT_DISTANCE_SQUARED = 20.0 * 20.0;
-    private static final double STOP_DISTANCE_SQUARED = 3.0 * 3.0;
-    private static final double START_FOLLOW_DISTANCE_SQUARED = 4.5 * 4.5;
+    private static final double STOP_DISTANCE_SQUARED = 2.0 * 2.0;
+    private static final double START_FOLLOW_DISTANCE_SQUARED = 3.5 * 3.5;
+
+    private Location lastTargetLocation;
 
     @Override
     public void initialize(ActivePet activePet, LivingEntity entity, Player owner) {
         if (entity instanceof Mob mob) {
             mob.setTarget(null);
+            mob.setAware(true);
         }
     }
 
@@ -29,30 +32,36 @@ public class BasicPetBehaviorController implements PetBehaviorController {
 
         // 1. World Change Check
         if (!petLoc.getWorld().equals(ownerLoc.getWorld())) {
-            entity.teleport(ownerLoc);
+            entity.teleport(SafePetLocationFinder.findSafeLocation(ownerLoc));
             return;
         }
 
         double distanceSquared = petLoc.distanceSquared(ownerLoc);
 
-        // 2. Far away -> Teleport
+        // 2. Far away -> Teleport safely
         if (distanceSquared > TELEPORT_DISTANCE_SQUARED) {
-            entity.teleport(ownerLoc);
+            entity.teleport(SafePetLocationFinder.findSafeLocation(ownerLoc));
+            lastTargetLocation = null;
             return;
         }
 
         // 3. Follow / Stop using Pathfinder
         if (entity instanceof Mob mob) {
-            // Prevent pet from targeting other players or entities
             if (mob.getTarget() != null) {
                 mob.setTarget(null);
             }
 
             if (distanceSquared < STOP_DISTANCE_SQUARED) {
-                mob.getPathfinder().stopPathfinding();
+                if (mob.getPathfinder().hasPath()) {
+                    mob.getPathfinder().stopPathfinding();
+                }
+                lastTargetLocation = null;
             } else if (distanceSquared > START_FOLLOW_DISTANCE_SQUARED) {
-                // Move towards owner with speed multiplier
-                mob.getPathfinder().moveTo(ownerLoc, 1.3);
+                // Re-calculate path only if owner moved more than 1.5 blocks from last target location
+                if (lastTargetLocation == null || lastTargetLocation.distanceSquared(ownerLoc) > 2.25) {
+                    mob.getPathfinder().moveTo(ownerLoc, 1.3);
+                    lastTargetLocation = ownerLoc.clone();
+                }
             }
         }
     }
@@ -61,6 +70,8 @@ public class BasicPetBehaviorController implements PetBehaviorController {
     public void remove(ActivePet activePet, LivingEntity entity) {
         if (entity instanceof Mob mob) {
             mob.getPathfinder().stopPathfinding();
+            mob.setTarget(null);
         }
+        lastTargetLocation = null;
     }
 }

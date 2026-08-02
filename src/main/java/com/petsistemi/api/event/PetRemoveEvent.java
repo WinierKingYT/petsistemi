@@ -1,33 +1,38 @@
 package com.petsistemi.api.event;
 
+import com.petsistemi.api.PetSnapshot;
 import org.bukkit.event.Event;
 import org.bukkit.event.HandlerList;
+import org.jetbrains.annotations.NotNull;
+
 import java.util.UUID;
 
 public class PetRemoveEvent extends Event {
-    private static final HandlerList handlers = new HandlerList();
-    private final UUID ownerId;
-    private final UUID petId;
 
-    public PetRemoveEvent(UUID ownerId, UUID petId) {
+    private static final HandlerList HANDLERS = new HandlerList();
+
+    private final UUID ownerId;
+    private final PetSnapshot pet;
+
+    public PetRemoveEvent(UUID ownerId, PetSnapshot pet) {
         this.ownerId = ownerId;
-        this.petId = petId;
+        this.pet = pet;
     }
 
     public UUID getOwnerId() {
         return ownerId;
     }
 
-    public UUID getPetId() {
-        return petId;
+    public PetSnapshot getPet() {
+        return pet;
     }
 
     @Override
-    public HandlerList getHandlers() {
-        return handlers;
+    public @NotNull HandlerList getHandlers() {
+        return HANDLERS;
     }
 
     public static HandlerList getHandlerList() {
-        return handlers;
+        return HANDLERS;
     }
 }

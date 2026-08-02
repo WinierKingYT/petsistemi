@@ -5,11 +5,11 @@ import com.petsistemi.domain.PetStorageState;
 
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
-import java.util.logging.Level;
 import java.util.logging.Logger;
 
 public class SqlitePetRepository implements PetRepository {
@@ -32,8 +32,9 @@ public class SqlitePetRepository implements PetRepository {
                     return Optional.of(mapResultSetToPetInstance(rs));
                 }
             }
-        } catch (Exception e) {
-            logger.log(Level.SEVERE, "findById sorgusunda hata oluştu!", e);
+        } catch (SQLException e) {
+            logger.severe("findById sorgusunda veritabanı hatası: " + e.getMessage());
+            throw new PetPersistenceException("Pet verisi sorgulanamadı.", e);
         }
         return Optional.empty();
     }
@@ -49,8 +50,9 @@ public class SqlitePetRepository implements PetRepository {
                     list.add(mapResultSetToPetInstance(rs));
                 }
             }
-        } catch (Exception e) {
-            logger.log(Level.SEVERE, "findByOwner sorgusunda hata oluştu!", e);
+        } catch (SQLException e) {
+            logger.severe("findByOwner sorgusunda veritabanı hatası: " + e.getMessage());
+            throw new PetPersistenceException("Oyuncu petleri sorgulanamadı.", e);
         }
         return list;
     }
@@ -65,8 +67,9 @@ public class SqlitePetRepository implements PetRepository {
                     return Optional.of(mapResultSetToPetInstance(rs));
                 }
             }
-        } catch (Exception e) {
-            logger.log(Level.SEVERE, "findActiveByOwner sorgusunda hata oluştu!", e);
+        } catch (SQLException e) {
+            logger.severe("findActiveByOwner sorgusunda veritabanı hatası: " + e.getMessage());
+            throw new PetPersistenceException("Aktif pet verisi sorgulanamadı.", e);
         }
         return Optional.empty();
     }
@@ -85,8 +88,9 @@ public class SqlitePetRepository implements PetRepository {
             ps.setLong(8, pet.createdAt());
             ps.setLong(9, pet.updatedAt());
             ps.executeUpdate();
-        } catch (Exception e) {
-            logger.log(Level.SEVERE, "insert sorgusunda hata oluştu!", e);
+        } catch (SQLException e) {
+            logger.severe("insert sorgusunda veritabanı hatası: " + e.getMessage());
+            throw new PetPersistenceException("Pet veritabanına eklenemedi.", e);
         }
     }
 
@@ -100,9 +104,13 @@ public class SqlitePetRepository implements PetRepository {
             ps.setString(4, pet.storageState().name());
             ps.setLong(5, pet.updatedAt());
             ps.setString(6, pet.petId().toString());
-            ps.executeUpdate();
-        } catch (Exception e) {
-            logger.log(Level.SEVERE, "update sorgusunda hata oluştu!", e);
+            int affected = ps.executeUpdate();
+            if (affected == 0) {
+                throw new PetPersistenceException("Güncellenecek pet kaydı veritabanında bulunamadı.");
+            }
+        } catch (SQLException e) {
+            logger.severe("update sorgusunda veritabanı hatası: " + e.getMessage());
+            throw new PetPersistenceException("Pet verisi güncellenemedi.", e);
         }
     }
 
@@ -112,8 +120,9 @@ public class SqlitePetRepository implements PetRepository {
         try (PreparedStatement ps = dbManager.getConnection().prepareStatement(sql)) {
             ps.setString(1, petId.toString());
             ps.executeUpdate();
-        } catch (Exception e) {
-            logger.log(Level.SEVERE, "delete sorgusunda hata oluştu!", e);
+        } catch (SQLException e) {
+            logger.severe("delete sorgusunda veritabanı hatası: " + e.getMessage());
+            throw new PetPersistenceException("Pet veritabanından silinemedi.", e);
         }
     }
 
@@ -125,8 +134,9 @@ public class SqlitePetRepository implements PetRepository {
             ps.setString(2, petId.toString());
             ps.setLong(3, System.currentTimeMillis());
             ps.executeUpdate();
-        } catch (Exception e) {
-            logger.log(Level.SEVERE, "setActivePet sorgusunda hata oluştu!", e);
+        } catch (SQLException e) {
+            logger.severe("setActivePet sorgusunda veritabanı hatası: " + e.getMessage());
+            throw new PetPersistenceException("Aktif pet veritabanına işlenemedi.", e);
         }
     }
 
@@ -136,12 +146,13 @@ public class SqlitePetRepository implements PetRepository {
         try (PreparedStatement ps = dbManager.getConnection().prepareStatement(sql)) {
             ps.setString(1, ownerId.toString());
             ps.executeUpdate();
-        } catch (Exception e) {
-            logger.log(Level.SEVERE, "clearActivePet sorgusunda hata oluştu!", e);
+        } catch (SQLException e) {
+            logger.severe("clearActivePet sorgusunda veritabanı hatası: " + e.getMessage());
+            throw new PetPersistenceException("Aktif pet kaydı temizlenemedi.", e);
         }
     }
 
-    private PetInstance mapResultSetToPetInstance(ResultSet rs) throws Exception {
+    private PetInstance mapResultSetToPetInstance(ResultSet rs) throws SQLException {
         return new PetInstance(
                 UUID.fromString(rs.getString("pet_id")),
                 UUID.fromString(rs.getString("owner_id")),

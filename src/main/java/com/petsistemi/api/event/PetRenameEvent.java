@@ -1,22 +1,25 @@
 package com.petsistemi.api.event;
 
-import com.petsistemi.domain.PetInstance;
+import com.petsistemi.api.PetSnapshot;
 import org.bukkit.entity.Player;
 import org.bukkit.event.Cancellable;
 import org.bukkit.event.Event;
 import org.bukkit.event.HandlerList;
+import org.jetbrains.annotations.NotNull;
 
 public class PetRenameEvent extends Event implements Cancellable {
-    private static final HandlerList handlers = new HandlerList();
+
+    private static final HandlerList HANDLERS = new HandlerList();
+
     private final Player player;
-    private final PetInstance petInstance;
+    private final PetSnapshot pet;
     private final String oldName;
     private String newName;
     private boolean cancelled = false;
 
-    public PetRenameEvent(Player player, PetInstance petInstance, String oldName, String newName) {
+    public PetRenameEvent(Player player, PetSnapshot pet, String oldName, String newName) {
         this.player = player;
-        this.petInstance = petInstance;
+        this.pet = pet;
         this.oldName = oldName;
         this.newName = newName;
     }
@@ -25,8 +28,8 @@ public class PetRenameEvent extends Event implements Cancellable {
         return player;
     }
 
-    public PetInstance getPetInstance() {
-        return petInstance;
+    public PetSnapshot getPet() {
+        return pet;
     }
 
     public String getOldName() {
@@ -52,11 +55,11 @@ public class PetRenameEvent extends Event implements Cancellable {
     }
 
     @Override
-    public HandlerList getHandlers() {
-        return handlers;
+    public @NotNull HandlerList getHandlers() {
+        return HANDLERS;
     }
 
     public static HandlerList getHandlerList() {
-        return handlers;
+        return HANDLERS;
     }
 }

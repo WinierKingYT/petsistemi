@@ -5,8 +5,8 @@ import org.bukkit.plugin.java.JavaPlugin;
 import java.io.File;
 import java.sql.Connection;
 import java.sql.DriverManager;
+import java.sql.SQLException;
 import java.sql.Statement;
-import java.util.logging.Level;
 
 public class DatabaseManager {
 
@@ -19,28 +19,32 @@ public class DatabaseManager {
         this.dbFile = new File(plugin.getDataFolder(), "database.db");
     }
 
-    public synchronized void initialize() {
+    public synchronized void initialize() throws Exception {
         if (!plugin.getDataFolder().exists()) {
             plugin.getDataFolder().mkdirs();
         }
 
-        try {
-            Class.forName("org.sqlite.JDBC");
-            connection = DriverManager.getConnection("jdbc:sqlite:" + dbFile.getAbsolutePath());
-            createTables();
-            plugin.getLogger().info("SQLite Veritabanı başarıyla bağlandı ve şemalar doğrulandı.");
-        } catch (Exception e) {
-            plugin.getLogger().log(Level.SEVERE, "SQLite veritabanı bağlantı hatası!", e);
+        Class.forName("org.sqlite.JDBC");
+        connection = DriverManager.getConnection("jdbc:sqlite:" + dbFile.getAbsolutePath());
+        
+        try (Statement stmt = connection.createStatement()) {
+            stmt.execute("PRAGMA foreign_keys = ON;");
         }
+
+        createTables();
+        plugin.getLogger().info("SQLite Veritabanı başarıyla bağlandı ve şemalar doğrulandı.");
     }
 
     public synchronized Connection getConnection() {
         try {
             if (connection == null || connection.isClosed()) {
                 connection = DriverManager.getConnection("jdbc:sqlite:" + dbFile.getAbsolutePath());
+                try (Statement stmt = connection.createStatement()) {
+                    stmt.execute("PRAGMA foreign_keys = ON;");
+                }
             }
-        } catch (Exception e) {
-            plugin.getLogger().log(Level.SEVERE, "SQLite bağlantısı yeniden açılırken hata oluştu!", e);
+        } catch (SQLException e) {
+            throw new RuntimeException("SQLite veritabanı bağlantısı kapalı ve yeniden açılamadı!", e);
         }
         return connection;
     }
@@ -50,12 +54,12 @@ public class DatabaseManager {
             if (connection != null && !connection.isClosed()) {
                 connection.close();
             }
-        } catch (Exception e) {
-            plugin.getLogger().log(Level.SEVERE, "SQLite bağlantısı kapatılırken hata oluştu!", e);
+        } catch (SQLException e) {
+            plugin.getLogger().warning("SQLite bağlantısı kapatılırken uyarı: " + e.getMessage());
         }
     }
 
-    private void createTables() {
+    private void createTables() throws SQLException {
         try (Statement stmt = connection.createStatement()) {
             // Migrations Table
             stmt.execute("CREATE TABLE IF NOT EXISTS schema_migrations (" +
@@ -85,11 +89,8 @@ public class DatabaseManager {
                     "owner_id TEXT PRIMARY KEY, " +
                     "pet_id TEXT NOT NULL, " +
                     "updated_at INTEGER NOT NULL, " +
-                    "FOREIGN KEY (pet_id) REFERENCES pets(pet_id)" +
+                    "FOREIGN KEY (pet_id) REFERENCES pets(pet_id) ON DELETE CASCADE" +
                     ");");
-            
-        } catch (Exception e) {
-            plugin.getLogger().log(Level.SEVERE, "Şema tablosu oluşturulurken hata oluştu!", e);
         }
     }
 }

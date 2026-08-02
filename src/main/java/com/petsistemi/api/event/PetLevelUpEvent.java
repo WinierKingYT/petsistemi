@@ -1,23 +1,26 @@
 package com.petsistemi.api.event;
 
-import com.petsistemi.domain.PetInstance;
+import com.petsistemi.api.PetSnapshot;
 import org.bukkit.event.Event;
 import org.bukkit.event.HandlerList;
+import org.jetbrains.annotations.NotNull;
 
 public class PetLevelUpEvent extends Event {
-    private static final HandlerList handlers = new HandlerList();
-    private final PetInstance petInstance;
+
+    private static final HandlerList HANDLERS = new HandlerList();
+
+    private final PetSnapshot pet;
     private final int oldLevel;
     private final int newLevel;
 
-    public PetLevelUpEvent(PetInstance petInstance, int oldLevel, int newLevel) {
-        this.petInstance = petInstance;
+    public PetLevelUpEvent(PetSnapshot pet, int oldLevel, int newLevel) {
+        this.pet = pet;
         this.oldLevel = oldLevel;
         this.newLevel = newLevel;
     }
 
-    public PetInstance getPetInstance() {
-        return petInstance;
+    public PetSnapshot getPet() {
+        return pet;
     }
 
     public int getOldLevel() {
@@ -29,11 +32,11 @@ public class PetLevelUpEvent extends Event {
     }
 
     @Override
-    public HandlerList getHandlers() {
-        return handlers;
+    public @NotNull HandlerList getHandlers() {
+        return HANDLERS;
     }
 
     public static HandlerList getHandlerList() {
-        return handlers;
+        return HANDLERS;
     }
 }

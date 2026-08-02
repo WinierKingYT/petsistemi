@@ -18,6 +18,7 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
 import org.bukkit.NamespacedKey;
+import org.bukkit.OfflinePlayer;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -111,15 +112,24 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage(Component.text("/petadmin inspect - Baktığınız pet entity'sini inceler.", NamedTextColor.YELLOW));
     }
 
+    @SuppressWarnings("deprecation")
+    private OfflinePlayer resolvePlayer(String nameOrUuid) {
+        try {
+            return Bukkit.getOfflinePlayer(UUID.fromString(nameOrUuid));
+        } catch (IllegalArgumentException e) {
+            return Bukkit.getOfflinePlayer(nameOrUuid);
+        }
+    }
+
     private void handleGive(CommandSender sender, String[] args) {
         if (args.length < 3) {
             sender.sendMessage(Component.text("Kullanım: /petadmin give <oyuncu> <tür>", NamedTextColor.RED));
             return;
         }
 
-        Player target = Bukkit.getPlayer(args[1]);
-        if (target == null) {
-            sender.sendMessage(Component.text("Belirtilen oyuncu çevrimiçi değil.", NamedTextColor.RED));
+        OfflinePlayer target = resolvePlayer(args[1]);
+        if (target == null || (target.getName() == null && !target.hasPlayedBefore())) {
+            sender.sendMessage(Component.text("Oyuncu bulunamadı.", NamedTextColor.RED));
             return;
         }
 
@@ -138,28 +148,34 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
             return;
         }
 
-        Player target = Bukkit.getPlayer(args[1]);
+        OfflinePlayer target = resolvePlayer(args[1]);
         if (target == null) {
             sender.sendMessage(Component.text("Oyuncu bulunamadı.", NamedTextColor.RED));
             return;
         }
 
         String shortId = args[2];
-        Optional<PetSnapshot> petOpt = findOwnedPetByShortId(target.getUniqueId(), shortId);
-        if (petOpt.isEmpty()) {
+        SearchResult match = resolveOwnedPetByShortId(target.getUniqueId(), shortId);
+        if (match.status == SearchStatus.NOT_FOUND) {
             sender.sendMessage(Component.text("Belirtilen pet bulunamadı.", NamedTextColor.RED));
+            return;
+        } else if (match.status == SearchStatus.AMBIGUOUS) {
+            sender.sendMessage(Component.text("Birden fazla pet bu kimlik ön ekiyle eşleşiyor.", NamedTextColor.RED));
             return;
         }
 
-        UUID petId = petOpt.get().petId();
-        // If active, dismiss first
+        UUID petId = match.pet.petId();
         Optional<ActivePet> active = activeRegistry.getByOwner(target.getUniqueId());
-        if (active.isPresent() && active.get().getPetId().equals(petId)) {
-            petService.dismiss(target);
+        if (active.isPresent() && active.get().getPetId().equals(petId) && target.isOnline()) {
+            petService.dismiss(target.getPlayer());
         }
 
-        repository.delete(petId);
-        sender.sendMessage(Component.text("Pet başarıyla veritabanından silindi.", NamedTextColor.GREEN));
+        try {
+            repository.delete(petId);
+            sender.sendMessage(Component.text("Pet başarıyla veritabanından silindi.", NamedTextColor.GREEN));
+        } catch (Exception e) {
+            sender.sendMessage(Component.text("Pet veritabanından silinirken hata oluştu: " + e.getMessage(), NamedTextColor.RED));
+        }
     }
 
     private void handleList(CommandSender sender, String[] args) {
@@ -168,7 +184,7 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
             return;
         }
 
-        Player target = Bukkit.getPlayer(args[1]);
+        OfflinePlayer target = resolvePlayer(args[1]);
         if (target == null) {
             sender.sendMessage(Component.text("Oyuncu bulunamadı.", NamedTextColor.RED));
             return;
@@ -191,11 +207,10 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
         String idStr = args[1];
         Optional<PetInstance> petOpt = Optional.empty();
         if (idStr.length() == 6) {
-            // Find by shortId globally (slower but helpful)
             for (Player p : Bukkit.getOnlinePlayers()) {
-                Optional<PetSnapshot> opt = findOwnedPetByShortId(p.getUniqueId(), idStr);
-                if (opt.isPresent()) {
-                    petOpt = repository.findById(opt.get().petId());
+                SearchResult match = resolveOwnedPetByShortId(p.getUniqueId(), idStr);
+                if (match.status == SearchStatus.FOUND) {
+                    petOpt = repository.findById(match.pet.petId());
                     break;
                 }
             }
@@ -227,7 +242,7 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
             return;
         }
 
-        Player target = Bukkit.getPlayer(args[1]);
+        OfflinePlayer target = resolvePlayer(args[1]);
         if (target == null) {
             sender.sendMessage(Component.text("Oyuncu bulunamadı.", NamedTextColor.RED));
             return;
@@ -242,13 +257,16 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
             return;
         }
 
-        Optional<PetSnapshot> petOpt = findOwnedPetByShortId(target.getUniqueId(), shortId);
-        if (petOpt.isEmpty()) {
+        SearchResult match = resolveOwnedPetByShortId(target.getUniqueId(), shortId);
+        if (match.status == SearchStatus.NOT_FOUND) {
             sender.sendMessage(Component.text("Pet bulunamadı.", NamedTextColor.RED));
+            return;
+        } else if (match.status == SearchStatus.AMBIGUOUS) {
+            sender.sendMessage(Component.text("Birden fazla pet bu kimlik ön ekiyle eşleşiyor.", NamedTextColor.RED));
             return;
         }
 
-        ExperienceResult res = experienceService.addExperience(petOpt.get().petId(), amount, ExperienceSource.ADMIN);
+        ExperienceResult res = experienceService.addExperience(match.pet.petId(), amount, ExperienceSource.ADMIN);
         if (res.success()) {
             sender.sendMessage(Component.text("Deneyim eklendi. Yeni XP: " + res.newExperience(), NamedTextColor.GREEN));
         } else {
@@ -262,7 +280,7 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
             return;
         }
 
-        Player target = Bukkit.getPlayer(args[1]);
+        OfflinePlayer target = resolvePlayer(args[1]);
         if (target == null) {
             sender.sendMessage(Component.text("Oyuncu bulunamadı.", NamedTextColor.RED));
             return;
@@ -277,20 +295,24 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
             return;
         }
 
-        Optional<PetSnapshot> petOpt = findOwnedPetByShortId(target.getUniqueId(), shortId);
-        if (petOpt.isEmpty()) {
+        SearchResult match = resolveOwnedPetByShortId(target.getUniqueId(), shortId);
+        if (match.status == SearchStatus.NOT_FOUND) {
             sender.sendMessage(Component.text("Pet bulunamadı.", NamedTextColor.RED));
+            return;
+        } else if (match.status == SearchStatus.AMBIGUOUS) {
+            sender.sendMessage(Component.text("Birden fazla pet bu kimlik ön ekiyle eşleşiyor.", NamedTextColor.RED));
             return;
         }
 
-        // Set XP by first removing all and adding target amount
-        UUID petId = petOpt.get().petId();
-        repository.findById(petId).ifPresent(p -> {
-            experienceService.removeExperience(petId, p.experience());
-            experienceService.addExperience(petId, amount, ExperienceSource.ADMIN);
-        });
+        UUID petId = match.pet.petId();
+        experienceService.removeExperience(petId, match.pet.experience());
+        ExperienceResult res = experienceService.addExperience(petId, amount, ExperienceSource.ADMIN);
 
-        sender.sendMessage(Component.text("Deneyim başarıyla ayarlandı.", NamedTextColor.GREEN));
+        if (res.success()) {
+            sender.sendMessage(Component.text("Deneyim başarıyla ayarlandı.", NamedTextColor.GREEN));
+        } else {
+            sender.sendMessage(Component.text(res.message(), NamedTextColor.RED));
+        }
     }
 
     private void handleSetLevel(CommandSender sender, String[] args) {
@@ -299,7 +321,7 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
             return;
         }
 
-        Player target = Bukkit.getPlayer(args[1]);
+        OfflinePlayer target = resolvePlayer(args[1]);
         if (target == null) {
             sender.sendMessage(Component.text("Oyuncu bulunamadı.", NamedTextColor.RED));
             return;
@@ -314,13 +336,16 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
             return;
         }
 
-        Optional<PetSnapshot> petOpt = findOwnedPetByShortId(target.getUniqueId(), shortId);
-        if (petOpt.isEmpty()) {
+        SearchResult match = resolveOwnedPetByShortId(target.getUniqueId(), shortId);
+        if (match.status == SearchStatus.NOT_FOUND) {
             sender.sendMessage(Component.text("Pet bulunamadı.", NamedTextColor.RED));
+            return;
+        } else if (match.status == SearchStatus.AMBIGUOUS) {
+            sender.sendMessage(Component.text("Birden fazla pet bu kimlik ön ekiyle eşleşiyor.", NamedTextColor.RED));
             return;
         }
 
-        LevelResult result = experienceService.setLevel(petOpt.get().petId(), level);
+        LevelResult result = experienceService.setLevel(match.pet.petId(), level);
         if (result.success()) {
             sender.sendMessage(Component.text("Seviye ayarlandı: " + result.newLevel(), NamedTextColor.GREEN));
         } else {
@@ -335,19 +360,22 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
         }
 
         Player target = Bukkit.getPlayer(args[1]);
-        if (target == null) {
-            sender.sendMessage(Component.text("Oyuncu bulunamadı.", NamedTextColor.RED));
+        if (target == null || !target.isOnline()) {
+            sender.sendMessage(Component.text("Çevrimiçi oyuncu bulunamadı.", NamedTextColor.RED));
             return;
         }
 
         String shortId = args[2];
-        Optional<PetSnapshot> petOpt = findOwnedPetByShortId(target.getUniqueId(), shortId);
-        if (petOpt.isEmpty()) {
+        SearchResult match = resolveOwnedPetByShortId(target.getUniqueId(), shortId);
+        if (match.status == SearchStatus.NOT_FOUND) {
             sender.sendMessage(Component.text("Pet bulunamadı.", NamedTextColor.RED));
+            return;
+        } else if (match.status == SearchStatus.AMBIGUOUS) {
+            sender.sendMessage(Component.text("Birden fazla pet bu kimlik ön ekiyle eşleşiyor.", NamedTextColor.RED));
             return;
         }
 
-        PetSummonResult result = petService.summon(target, petOpt.get().petId());
+        PetSummonResult result = petService.summon(target, match.pet.petId());
         if (result.success()) {
             sender.sendMessage(Component.text("Pet çağırıldı.", NamedTextColor.GREEN));
         } else {
@@ -362,8 +390,8 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
         }
 
         Player target = Bukkit.getPlayer(args[1]);
-        if (target == null) {
-            sender.sendMessage(Component.text("Oyuncu bulunamadı.", NamedTextColor.RED));
+        if (target == null || !target.isOnline()) {
+            sender.sendMessage(Component.text("Çevrimiçi oyuncu bulunamadı.", NamedTextColor.RED));
             return;
         }
 
@@ -426,10 +454,20 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
         player.sendMessage(Component.text("Entity Dead: " + target.isDead(), NamedTextColor.YELLOW));
     }
 
-    private Optional<PetSnapshot> findOwnedPetByShortId(UUID ownerId, String shortId) {
-        return petService.getOwnedPets(ownerId).stream()
+    private enum SearchStatus { FOUND, NOT_FOUND, AMBIGUOUS }
+    private record SearchResult(SearchStatus status, PetSnapshot pet) {}
+
+    private SearchResult resolveOwnedPetByShortId(UUID ownerId, String shortId) {
+        List<PetSnapshot> matches = petService.getOwnedPets(ownerId).stream()
                 .filter(p -> p.petId().toString().toLowerCase().startsWith(shortId.toLowerCase()))
-                .findFirst();
+                .toList();
+
+        if (matches.isEmpty()) {
+            return new SearchResult(SearchStatus.NOT_FOUND, null);
+        } else if (matches.size() > 1) {
+            return new SearchResult(SearchStatus.AMBIGUOUS, null);
+        }
+        return new SearchResult(SearchStatus.FOUND, matches.get(0));
     }
 
     @Override

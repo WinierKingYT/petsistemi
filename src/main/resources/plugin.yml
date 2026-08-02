@@ -1,12 +1,13 @@
 name: PetSistemi
-version: '1.0.0'
+version: '0.1.0-SNAPSHOT'
 main: com.petsistemi.PetSistemiPlugin
-api-version: '26.2'
-description: Advanced modular Minecraft pet system
+api-version: '1.20'
+description: Advanced modular Paper 1.20.4 Minecraft pet system
 commands:
   pet:
     description: Pet system command
     usage: /pet
+    permission: companionpets.use
   petadmin:
     description: Pet admin command
     usage: /petadmin
