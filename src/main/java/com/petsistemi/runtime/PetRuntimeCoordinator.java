@@ -89,7 +89,9 @@ public class PetRuntimeCoordinator {
             return spawnedEntity;
 
         } catch (Exception e) {
-            plugin.getLogger().log(Level.SEVERE, "Pet spawn işlemi sırasında hata oluştu, rollback yapılıyor: " + pet.petId(), e);
+            if (plugin != null) {
+                plugin.getLogger().log(Level.SEVERE, "Pet spawn işlemi sırasında hata oluştu, rollback yapılıyor: " + pet.petId(), e);
+            }
             if (spawnedEntity != null && spawnedEntity.isValid()) {
                 entityController.remove(spawnedEntity);
             }
@@ -99,11 +101,13 @@ public class PetRuntimeCoordinator {
                 try {
                     repository.restoreActivePet(ownerId, previousPetId, pet.petId());
                 } catch (Exception ex) {
-                    plugin.getLogger().log(Level.SEVERE, "Rollback DB restore hatası!", ex);
+                    if (plugin != null) {
+                        plugin.getLogger().log(Level.SEVERE, "Rollback DB restore hatası!", ex);
+                    }
                 }
             }
 
-            if (hadPreviousRuntime && previousPetId != null && owner != null && owner.isOnline()) {
+            if (hadPreviousRuntime && previousPetId != null && owner.isOnline()) {
                 restorePreviousRuntimePet(owner, previousPetId);
             }
 
@@ -112,20 +116,32 @@ public class PetRuntimeCoordinator {
     }
 
     private void restorePreviousRuntimePet(Player owner, UUID previousPetId) {
-        repository.findById(previousPetId).ifPresent(previousPet -> {
-            definitionRegistry.find(previousPet.definitionId()).ifPresent(previousDef -> {
-                try {
-                    Entity restoredEntity = entityController.spawn(previousPet, previousDef, owner);
-                    ActivePet restoredActive = new ActivePet(previousPet.petId(), owner.getUniqueId(), restoredEntity.getUniqueId(), restoredEntity, PetRuntimeState.ACTIVE);
-                    if (restoredEntity instanceof LivingEntity living) {
-                        behaviorController.initialize(restoredActive, living, owner);
-                    }
-                    activeRegistry.register(restoredActive);
-                } catch (Exception e) {
-                    plugin.getLogger().warning("Eski pet fiziki varlığı geri yüklenirken hata: " + e.getMessage());
-                }
-            });
-        });
+        Optional<PetInstance> previousPetOpt = repository.findById(previousPetId);
+        if (previousPetOpt.isEmpty()) {
+            if (plugin != null) plugin.getLogger().severe("Rollback sırasında eski pet kaydı veritabanında bulunamadı! Pet ID: " + previousPetId);
+            return;
+        }
+
+        PetInstance previousPet = previousPetOpt.get();
+        Optional<PetDefinition> previousDefOpt = definitionRegistry.find(previousPet.definitionId());
+        if (previousDefOpt.isEmpty()) {
+            if (plugin != null) plugin.getLogger().severe("Rollback sırasında eski pet tür tanımı bulunamadı! Tür ID: " + previousPet.definitionId());
+            return;
+        }
+
+        PetDefinition previousDef = previousDefOpt.get();
+        try {
+            Entity restoredEntity = entityController.spawn(previousPet, previousDef, owner);
+            UUID entityId = restoredEntity != null ? restoredEntity.getUniqueId() : null;
+            ActivePet restoredActive = new ActivePet(previousPet.petId(), owner.getUniqueId(), entityId, restoredEntity, PetRuntimeState.ACTIVE);
+            if (restoredEntity instanceof LivingEntity living) {
+                behaviorController.initialize(restoredActive, living, owner);
+            }
+            activeRegistry.register(restoredActive);
+            if (plugin != null) plugin.getLogger().info("Eski pet (" + previousPet.definitionId() + ") fiziki varlığı başarıyla geri yüklendi.");
+        } catch (Exception e) {
+            if (plugin != null) plugin.getLogger().log(Level.SEVERE, "Eski pet fiziki varlığı geri yüklenirken kritik hata: " + e.getMessage(), e);
+        }
     }
 
     /**
@@ -144,11 +160,9 @@ public class PetRuntimeCoordinator {
         switch (cause) {
             case PLAYER_QUIT:
             case WORLD_CHANGE:
-                // Preserve selection in player_active_pets table across sessions/worlds
                 break;
 
             case CHUNK_UNLOAD:
-                // Preserve selection, and if owner is online, schedule next-tick re-summoning near owner
                 Player onlineOwner = Bukkit.getPlayer(ownerId);
                 if (onlineOwner != null && onlineOwner.isOnline() && petId != null) {
                     final UUID finalPetId = petId;
@@ -160,11 +174,10 @@ public class PetRuntimeCoordinator {
             case ENTITY_DEATH:
             case EXTERNAL_REMOVAL:
             case PLUGIN_DISABLE:
-                // Clear selection and set pet state to AVAILABLE
                 try {
                     repository.clearActivePetAndSetAvailable(ownerId, petId);
                 } catch (Exception e) {
-                    plugin.getLogger().warning("DB temizleme hatası (" + cause + "): " + e.getMessage());
+                    if (plugin != null) plugin.getLogger().warning("DB temizleme hatası (" + cause + "): " + e.getMessage());
                 }
                 break;
         }
@@ -173,7 +186,7 @@ public class PetRuntimeCoordinator {
     private void schedulePendingRestoreWithRetry(Player owner, UUID petId, int attempt) {
         if (attempt > 3 || owner == null || !owner.isOnline()) return;
 
-        long delayTicks = attempt == 1 ? 20L : (attempt == 2 ? 60L : 200L); // Backoff: 1s, 3s, 10s
+        long delayTicks = attempt == 1 ? 20L : (attempt == 2 ? 60L : 200L);
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
             if (owner.isOnline() && activeRegistry.getByOwner(owner.getUniqueId()).isEmpty()) {
                 Optional<PetInstance> selected = repository.findActiveByOwner(owner.getUniqueId());
@@ -181,7 +194,7 @@ public class PetRuntimeCoordinator {
                     PetInstance p = selected.get();
                     Optional<PetDefinition> defOpt = definitionRegistry.find(p.definitionId());
                     if (defOpt.isEmpty()) {
-                        plugin.getLogger().warning("Pet tanımı (" + p.definitionId() + ") bulunamadı, restore denemesi (" + attempt + "/3) erteleniyor.");
+                        if (plugin != null) plugin.getLogger().warning("Pet tanımı (" + p.definitionId() + ") bulunamadı, restore denemesi (" + attempt + "/3) erteleniyor.");
                         schedulePendingRestoreWithRetry(owner, petId, attempt + 1);
                         return;
                     }
@@ -190,7 +203,7 @@ public class PetRuntimeCoordinator {
                     try {
                         spawnAndRegister(owner, p, def);
                     } catch (Exception e) {
-                        plugin.getLogger().warning("Pet restore denemesi (" + attempt + "/3) başarısız: " + e.getMessage());
+                        if (plugin != null) plugin.getLogger().warning("Pet restore denemesi (" + attempt + "/3) başarısız: " + e.getMessage());
                         schedulePendingRestoreWithRetry(owner, petId, attempt + 1);
                     }
                 }
@@ -229,7 +242,7 @@ public class PetRuntimeCoordinator {
                 }
                 entityController.remove(entity);
             } catch (Exception e) {
-                plugin.getLogger().warning("Shutdown sırasında entity temizleme uyarısı: " + e.getMessage());
+                if (plugin != null) plugin.getLogger().warning("Shutdown sırasında entity temizleme uyarısı: " + e.getMessage());
             } finally {
                 activeRegistry.unregister(active.getOwnerId());
             }
@@ -250,7 +263,7 @@ public class PetRuntimeCoordinator {
             }
 
             if (entity == null || !entity.isValid() || entity.isDead()) {
-                plugin.getLogger().warning("Watchdog: Pet entitysi kaybolmuş tespit edildi (" + active.getPetId() + "). Runtime temizleniyor...");
+                if (plugin != null) plugin.getLogger().warning("Watchdog: Pet entitysi kaybolmuş tespit edildi (" + active.getPetId() + "). Runtime temizleniyor...");
                 handleRemoval(ownerId, PetRemovalCause.EXTERNAL_REMOVAL);
             }
         }
