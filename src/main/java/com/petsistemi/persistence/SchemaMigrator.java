@@ -86,15 +86,27 @@ public final class SchemaMigrator {
                 }
             }
 
+            // Reconciliation Step: Convert unselected ACTIVE pets to AVAILABLE (Does not affect DISABLED pets)
+            String reconcileSql = "UPDATE pets SET state = 'AVAILABLE' WHERE state = 'ACTIVE' AND NOT EXISTS (" +
+                    "SELECT 1 FROM player_active_pets active WHERE active.pet_id = pets.pet_id AND active.owner_id = pets.owner_id" +
+                    ");";
+            int reconciledCount = 0;
+            try (Statement stmt = connection.createStatement()) {
+                reconciledCount = stmt.executeUpdate(reconcileSql);
+            }
+
             recordMigrationApplied(connection, 2);
             connection.commit();
 
             int retainedCount = totalInspected - supersededCount;
-            LOGGER.info("[PetSistemi] Migration V2 (Ownership Clean) Raporu:");
+            LOGGER.info("[PetSistemi] Migration V2 (Ownership Clean & Reconciliation) Raporu:");
             LOGGER.info("  - " + totalInspected + " seçim kaydı incelendi");
             LOGGER.info("  - " + allSelectedPetIds.size() + " aktif pet seçimi incelendi");
             LOGGER.info("  - " + retainedCount + " gerçek sahibi doğrulanan seçim korundu");
             LOGGER.info("  - " + supersededCount + " geçersiz/yabancı seçim silindi");
+            if (reconciledCount > 0) {
+                LOGGER.info("  - " + reconciledCount + " seçimi bulunmayan ACTIVE pet AVAILABLE yapıldı");
+            }
 
         } catch (SQLException e) {
             connection.rollback();
@@ -113,16 +125,37 @@ public final class SchemaMigrator {
             try (Statement stmt = connection.createStatement()) {
                 stmt.execute("CREATE UNIQUE INDEX IF NOT EXISTS uq_pets_pet_owner ON pets(pet_id, owner_id);");
 
-                stmt.execute("CREATE TABLE IF NOT EXISTS player_active_pets_v3 (" +
+                // Clean temporary table if exists from aborted attempts
+                stmt.execute("DROP TABLE IF EXISTS player_active_pets_v3;");
+
+                stmt.execute("CREATE TABLE player_active_pets_v3 (" +
                         "owner_id TEXT PRIMARY KEY, " +
                         "pet_id TEXT NOT NULL UNIQUE, " +
                         "updated_at INTEGER NOT NULL, " +
                         "FOREIGN KEY (pet_id, owner_id) REFERENCES pets(pet_id, owner_id) ON DELETE CASCADE" +
                         ");");
 
+                int sourceCount = 0;
+                try (ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM player_active_pets;")) {
+                    if (rs.next()) {
+                        sourceCount = rs.getInt(1);
+                    }
+                }
+
                 stmt.execute("INSERT INTO player_active_pets_v3 (owner_id, pet_id, updated_at) " +
                         "SELECT a.owner_id, a.pet_id, a.updated_at FROM player_active_pets a " +
                         "JOIN pets p ON a.pet_id = p.pet_id AND a.owner_id = p.owner_id;");
+
+                int destCount = 0;
+                try (ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM player_active_pets_v3;")) {
+                    if (rs.next()) {
+                        destCount = rs.getInt(1);
+                    }
+                }
+
+                if (sourceCount != destCount) {
+                    throw new SQLException("Migration V3 satır sayısı uyuşmazlığı! Beklenen kaynak: " + sourceCount + ", aktarılan hedef: " + destCount);
+                }
 
                 stmt.execute("DROP TABLE IF EXISTS player_active_pets;");
                 stmt.execute("ALTER TABLE player_active_pets_v3 RENAME TO player_active_pets;");
@@ -142,13 +175,16 @@ public final class SchemaMigrator {
     }
 
     private static int resolveOwnershipAndDuplicates(Connection connection, String petId) throws SQLException {
-        String findOwnerSql = "SELECT owner_id FROM pets WHERE pet_id = ?;";
+        String findPetSql = "SELECT owner_id, state FROM pets WHERE pet_id = ?;";
         String actualOwnerId = null;
-        try (PreparedStatement ps = connection.prepareStatement(findOwnerSql)) {
+        String currentState = null;
+
+        try (PreparedStatement ps = connection.prepareStatement(findPetSql)) {
             ps.setString(1, petId);
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
                     actualOwnerId = rs.getString("owner_id");
+                    currentState = rs.getString("state");
                 }
             }
         }
@@ -166,13 +202,29 @@ public final class SchemaMigrator {
             }
         }
 
+        int removedCount = 0;
+
+        // 1. If Pet state is DISABLED, delete all selection records and keep DISABLED
+        if ("DISABLED".equalsIgnoreCase(currentState)) {
+            LOGGER.warning("Pet ID '" + petId + "' DISABLED durumunda. Tüm seçim kayıtları siliniyor ve state DISABLED kalıyor.");
+            for (SelectionRecord record : records) {
+                try (PreparedStatement ps = connection.prepareStatement("DELETE FROM player_active_pets WHERE owner_id = ? AND pet_id = ?;")) {
+                    ps.setString(1, record.ownerId());
+                    ps.setString(2, petId);
+                    ps.executeUpdate();
+                }
+                removedCount++;
+            }
+            return removedCount;
+        }
+
+        // 2. Pet is AVAILABLE or ACTIVE: verify actual owner
         final String finalActualOwnerId = actualOwnerId;
         SelectionRecord validRecord = records.stream()
                 .filter(r -> r.ownerId().equals(finalActualOwnerId))
                 .findFirst()
                 .orElse(null);
 
-        int removedCount = 0;
         if (validRecord != null) {
             LOGGER.warning("Pet ID '" + petId + "' için gerçek sahibi olan Owner '" + validRecord.ownerId() + "' seçimi korundu.");
 
