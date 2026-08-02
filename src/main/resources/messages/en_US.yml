@@ -1,0 +1,16 @@
+# PetSistemi en_US English Message File
+command:
+  only-players: "<red>This command can only be used by players.</red>"
+  no-permission: "<red>You do not have permission to use this command.</red>"
+  unknown-subcommand: "<red>Unknown subcommand: <command></red>"
+  usage-header: "<gold>=== PetSistemi Commands ===</gold>"
+  pet-given: "<green>Gave <definition> pet to player <player>.</green>"
+  pet-not-found: "<red>Pet not found!</red>"
+  pet-summoned: "<green><name> summoned successfully!</green>"
+  pet-dismissed: "<yellow>Your pet has been dismissed.</yellow>"
+  pet-renamed: "<green>Pet renamed to '<name>'.</green>"
+  invalid-name: "<red>Invalid pet name!</red>"
+  disabled-pet: "<red>This pet is currently disabled.</red>"
+  limit-reached: "<red>You have reached the maximum pet ownership limit!</red>"
+  reload-success: "<green>PetSistemi configuration and pet definitions reloaded successfully!</green>"
+  reload-failure: "<red>Configuration reload failed! Active configuration preserved.</red>"

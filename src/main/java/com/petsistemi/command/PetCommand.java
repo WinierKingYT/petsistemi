@@ -39,7 +39,7 @@ public class PetCommand implements CommandExecutor, TabCompleter {
         }
 
         if (args.length == 0) {
-            sendHelp(player);
+            com.petsistemi.gui.PetListMenu.open(player, petService, 0);
             return true;
         }
 
@@ -145,7 +145,7 @@ public class PetCommand implements CommandExecutor, TabCompleter {
         player.sendMessage(Component.text("Özel İsim: " + customName, NamedTextColor.YELLOW));
         player.sendMessage(Component.text("Seviye: " + pet.level(), NamedTextColor.YELLOW));
         player.sendMessage(Component.text("Deneyim: " + pet.experience(), NamedTextColor.YELLOW));
-        player.sendMessage(Component.text("Durum: " + pet.storageState().name(), NamedTextColor.YELLOW));
+        player.sendMessage(Component.text("Durum: " + pet.availabilityState().name(), NamedTextColor.YELLOW));
         player.sendMessage(Component.text("Pet UUID: " + pet.petId(), NamedTextColor.YELLOW));
     }
 

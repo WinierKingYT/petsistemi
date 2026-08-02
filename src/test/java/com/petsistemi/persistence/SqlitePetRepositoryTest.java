@@ -1,7 +1,7 @@
 package com.petsistemi.persistence;
 
+import com.petsistemi.domain.PetAvailabilityState;
 import com.petsistemi.domain.PetInstance;
-import com.petsistemi.domain.PetStorageState;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -49,12 +49,13 @@ class SqlitePetRepositoryTest {
         UUID petId = UUID.randomUUID();
         UUID ownerId = UUID.randomUUID();
 
-        PetInstance pet = new PetInstance(petId, ownerId, "wolf", "Bobi", 1, 0, PetStorageState.AVAILABLE, 1000L, 1000L);
+        PetInstance pet = new PetInstance(petId, ownerId, "wolf", "Bobi", 1, 0, PetAvailabilityState.AVAILABLE, 1000L, 1000L);
         repository.insert(pet);
 
         Optional<PetInstance> found = repository.findById(petId);
         assertTrue(found.isPresent());
         assertEquals("Bobi", found.get().customName());
+        assertEquals(PetAvailabilityState.AVAILABLE, found.get().availabilityState());
     }
 
     @Test
@@ -63,23 +64,20 @@ class SqlitePetRepositoryTest {
         UUID petA = UUID.randomUUID();
         UUID petB = UUID.randomUUID();
 
-        repository.insert(new PetInstance(petA, ownerId, "wolf", "PetA", 1, 0, PetStorageState.AVAILABLE, 1000L, 1000L));
-        repository.insert(new PetInstance(petB, ownerId, "cat", "PetB", 1, 0, PetStorageState.AVAILABLE, 1000L, 1000L));
+        repository.insert(new PetInstance(petA, ownerId, "wolf", "PetA", 1, 0, PetAvailabilityState.AVAILABLE, 1000L, 1000L));
+        repository.insert(new PetInstance(petB, ownerId, "cat", "PetB", 1, 0, PetAvailabilityState.AVAILABLE, 1000L, 1000L));
 
         repository.switchActivePet(ownerId, null, petA);
 
         Optional<PetInstance> activeOpt = repository.findActiveByOwner(ownerId);
         assertTrue(activeOpt.isPresent());
         assertEquals(petA, activeOpt.get().petId());
-        assertEquals(PetStorageState.ACTIVE, repository.findById(petA).get().storageState());
 
         repository.switchActivePet(ownerId, petA, petB);
 
         activeOpt = repository.findActiveByOwner(ownerId);
         assertTrue(activeOpt.isPresent());
         assertEquals(petB, activeOpt.get().petId());
-        assertEquals(PetStorageState.AVAILABLE, repository.findById(petA).get().storageState());
-        assertEquals(PetStorageState.ACTIVE, repository.findById(petB).get().storageState());
     }
 
     @Test
@@ -88,8 +86,8 @@ class SqlitePetRepositoryTest {
         UUID petA = UUID.randomUUID();
         UUID petB = UUID.randomUUID();
 
-        repository.insert(new PetInstance(petA, ownerId, "wolf", "PetA", 1, 0, PetStorageState.AVAILABLE, 1000L, 1000L));
-        repository.insert(new PetInstance(petB, ownerId, "cat", "PetB", 1, 0, PetStorageState.AVAILABLE, 1000L, 1000L));
+        repository.insert(new PetInstance(petA, ownerId, "wolf", "PetA", 1, 0, PetAvailabilityState.AVAILABLE, 1000L, 1000L));
+        repository.insert(new PetInstance(petB, ownerId, "cat", "PetB", 1, 0, PetAvailabilityState.AVAILABLE, 1000L, 1000L));
 
         repository.switchActivePet(ownerId, null, petA);
         repository.switchActivePet(ownerId, petA, petB);
@@ -99,8 +97,6 @@ class SqlitePetRepositoryTest {
         Optional<PetInstance> activeOpt = repository.findActiveByOwner(ownerId);
         assertTrue(activeOpt.isPresent());
         assertEquals(petA, activeOpt.get().petId());
-        assertEquals(PetStorageState.ACTIVE, repository.findById(petA).get().storageState());
-        assertEquals(PetStorageState.AVAILABLE, repository.findById(petB).get().storageState());
     }
 
     @Test
@@ -121,7 +117,7 @@ class SqlitePetRepositoryTest {
         UUID owner2 = UUID.randomUUID();
         UUID sharedPet = UUID.randomUUID();
 
-        repository.insert(new PetInstance(sharedPet, owner1, "wolf", "Pet1", 1, 0, PetStorageState.AVAILABLE, 1000L, 1000L));
+        repository.insert(new PetInstance(sharedPet, owner1, "wolf", "Pet1", 1, 0, PetAvailabilityState.AVAILABLE, 1000L, 1000L));
         repository.switchActivePet(owner1, null, sharedPet);
 
         // Attempting to assign same active pet_id to owner2 must fail due to UNIQUE constraint
@@ -139,12 +135,11 @@ class SqlitePetRepositoryTest {
         UUID ownerId = UUID.randomUUID();
         UUID petA = UUID.randomUUID();
 
-        repository.insert(new PetInstance(petA, ownerId, "wolf", "PetA", 1, 0, PetStorageState.AVAILABLE, 1000L, 1000L));
+        repository.insert(new PetInstance(petA, ownerId, "wolf", "PetA", 1, 0, PetAvailabilityState.AVAILABLE, 1000L, 1000L));
         repository.switchActivePet(ownerId, null, petA);
 
         repository.clearActivePetAndSetAvailable(ownerId, petA);
 
         assertTrue(repository.findActiveByOwner(ownerId).isEmpty());
-        assertEquals(PetStorageState.AVAILABLE, repository.findById(petA).get().storageState());
     }
 }

@@ -1,6 +1,6 @@
 package com.petsistemi.api;
 
-import com.petsistemi.domain.PetStorageState;
+import com.petsistemi.domain.PetAvailabilityState;
 import java.util.UUID;
 
 public record PetSnapshot(
@@ -10,7 +10,7 @@ public record PetSnapshot(
         String customName,
         int level,
         long experience,
-        PetStorageState storageState,
+        PetAvailabilityState availabilityState,
         long createdAt,
         long updatedAt
 ) {

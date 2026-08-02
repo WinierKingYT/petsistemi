@@ -1,48 +1,39 @@
 package com.petsistemi.persistence;
 
+import com.petsistemi.persistence.migration.DatabaseMigration;
+import com.petsistemi.persistence.migration.MigrationBackupManager;
+import com.petsistemi.persistence.migration.MigrationRunner;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
+import java.io.File;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.List;
 import java.util.UUID;
+import java.util.logging.Logger;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class SchemaMigratorTest {
 
     private Connection connection;
+    private Logger logger;
+
+    @TempDir
+    File tempDir;
 
     @BeforeEach
     void setUp() throws Exception {
         connection = DriverManager.getConnection("jdbc:sqlite::memory:");
-        
-        // Create old pre-v1 schema without UNIQUE constraint or composite FK
-        try (Statement stmt = connection.createStatement()) {
-            stmt.execute("PRAGMA foreign_keys = ON;");
-            stmt.execute("CREATE TABLE pets (" +
-                    "pet_id TEXT PRIMARY KEY, " +
-                    "owner_id TEXT NOT NULL, " +
-                    "definition_id TEXT NOT NULL, " +
-                    "custom_name TEXT, " +
-                    "level INTEGER NOT NULL DEFAULT 1, " +
-                    "experience INTEGER NOT NULL DEFAULT 0, " +
-                    "state TEXT NOT NULL DEFAULT 'AVAILABLE', " +
-                    "created_at INTEGER NOT NULL, " +
-                    "updated_at INTEGER NOT NULL" +
-                    ");");
-
-            stmt.execute("CREATE TABLE player_active_pets (" +
-                    "owner_id TEXT PRIMARY KEY, " +
-                    "pet_id TEXT NOT NULL, " +
-                    "updated_at INTEGER NOT NULL, " +
-                    "FOREIGN KEY (pet_id) REFERENCES pets(pet_id) ON DELETE CASCADE" +
-                    ");");
-        }
+        logger = Logger.getLogger("TestLogger");
     }
 
     @AfterEach
@@ -52,210 +43,172 @@ class SchemaMigratorTest {
         }
     }
 
-    @Test
-    void testMigrationV2ProtectsActualOwnerAndDeletesImposterSelections() throws Exception {
-        UUID petId = UUID.randomUUID();
-        UUID actualOwnerA = UUID.randomUUID();
-        UUID imposterOwnerB = UUID.randomUUID();
-
-        try (Statement stmt = connection.createStatement()) {
-            stmt.execute("INSERT INTO pets VALUES ('" + petId + "', '" + actualOwnerA + "', 'wolf', 'Dog', 1, 0, 'AVAILABLE', 100, 100);");
-            stmt.execute("INSERT INTO player_active_pets VALUES ('" + actualOwnerA + "', '" + petId + "', 100);");
-            stmt.execute("INSERT INTO player_active_pets VALUES ('" + imposterOwnerB + "', '" + petId + "', 500);"); // Imposter with higher timestamp
-        }
-
-        // Run Migration
-        SchemaMigrator.migrate(connection);
-
-        // Verify version 1, 2, 3, and 4 recorded
-        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM schema_migrations;")) {
-            assertTrue(rs.next());
-            assertEquals(4, rs.getInt(1));
-        }
-
-        // Verify Actual Owner A retained selection despite lower timestamp
-        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery("SELECT owner_id FROM player_active_pets WHERE pet_id = '" + petId + "';")) {
-            assertTrue(rs.next());
-            assertEquals(actualOwnerA.toString(), rs.getString("owner_id"));
-            assertFalse(rs.next()); // Only 1 unique valid row exists
-        }
-
-        // Verify pet state is set to ACTIVE for actual owner
-        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery("SELECT state FROM pets WHERE pet_id = '" + petId + "';")) {
-            assertTrue(rs.next());
-            assertEquals("ACTIVE", rs.getString("state"));
-        }
-
-        // Verify Composite Foreign Key (pet_id, owner_id) prevents imposter assignment
-        try (Statement stmt = connection.createStatement()) {
-            assertThrows(SQLException.class, () -> 
-                stmt.execute("INSERT INTO player_active_pets VALUES ('" + imposterOwnerB + "', '" + petId + "', 600);")
-            );
+    private void executeSqlResource(String path) throws Exception {
+        try (InputStream is = getClass().getResourceAsStream(path)) {
+            assertNotNull(is, "SQL fixture resource not found: " + path);
+            String sql = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+            try (Statement stmt = connection.createStatement()) {
+                for (String cmd : sql.split(";")) {
+                    if (!cmd.trim().isEmpty()) {
+                        stmt.execute(cmd.trim());
+                    }
+                }
+            }
         }
     }
 
     @Test
-    void testMigrationV2DeletesAllSelectionsIfNoActualOwnerSelectionExists() throws Exception {
-        UUID petId = UUID.randomUUID();
-        UUID actualOwnerA = UUID.randomUUID();
-        UUID imposterOwnerB = UUID.randomUUID();
+    void migratesFreshDatabaseToLatest() throws Exception {
+        SchemaMigrator.migrate(connection);
 
-        try (Statement stmt = connection.createStatement()) {
-            stmt.execute("INSERT INTO pets VALUES ('" + petId + "', '" + actualOwnerA + "', 'wolf', 'Dog', 1, 0, 'ACTIVE', 100, 100);");
-            stmt.execute("INSERT INTO player_active_pets VALUES ('" + imposterOwnerB + "', '" + petId + "', 500);"); // Only imposter selection exists
+        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM schema_migrations;")) {
+            assertTrue(rs.next());
+            assertEquals(7, rs.getInt(1));
         }
+    }
+
+    @Test
+    void upgradesPreviouslyAppliedV3ToV4V5V6() throws Exception {
+        executeSqlResource("/migrations/v3-schema.sql");
+        executeSqlResource("/migrations/v3-disabled-selection.sql");
+        executeSqlResource("/migrations/v3-orphan-active.sql");
 
         SchemaMigrator.migrate(connection);
 
-        // Verify imposter selection deleted
-        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM player_active_pets WHERE pet_id = '" + petId + "';")) {
+        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM schema_migrations;")) {
+            assertTrue(rs.next());
+            assertEquals(7, rs.getInt(1));
+        }
+    }
+
+    @Test
+    void keepsDisabledPetDisabled() throws Exception {
+        executeSqlResource("/migrations/v3-schema.sql");
+        executeSqlResource("/migrations/v3-disabled-selection.sql");
+
+        SchemaMigrator.migrate(connection);
+
+        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery("SELECT availability_state FROM pets WHERE pet_id = 'pet-disabled-1';")) {
+            assertTrue(rs.next());
+            assertEquals("DISABLED", rs.getString("availability_state"));
+        }
+    }
+
+    @Test
+    void removesDisabledPetSelection() throws Exception {
+        executeSqlResource("/migrations/v3-schema.sql");
+        executeSqlResource("/migrations/v3-disabled-selection.sql");
+
+        SchemaMigrator.migrate(connection);
+
+        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM player_selected_pets WHERE pet_id = 'pet-disabled-1';")) {
             assertTrue(rs.next());
             assertEquals(0, rs.getInt(1));
         }
+    }
 
-        // Verify pet state converted to AVAILABLE
-        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery("SELECT state FROM pets WHERE pet_id = '" + petId + "';")) {
+    @Test
+    void reconcilesOrphanActivePet() throws Exception {
+        executeSqlResource("/migrations/v3-schema.sql");
+        executeSqlResource("/migrations/v3-orphan-active.sql");
+
+        SchemaMigrator.migrate(connection);
+
+        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery("SELECT availability_state FROM pets WHERE pet_id = 'pet-orphan-1';")) {
             assertTrue(rs.next());
-            assertEquals("AVAILABLE", rs.getString("state"));
+            assertEquals("AVAILABLE", rs.getString("availability_state"));
         }
     }
 
     @Test
-    void testDisabledPetSelectionDeletedAndStateStaysDisabled() throws Exception {
+    void removesImposterSelection() throws Exception {
+        executeSqlResource("/migrations/v1-schema.sql");
+        executeSqlResource("/migrations/v3-imposter-selection.sql");
+
+        SchemaMigrator.migrate(connection);
+
+        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM player_selected_pets WHERE owner_id = 'owner-imposter';")) {
+            assertTrue(rs.next());
+            assertEquals(0, rs.getInt(1));
+        }
+    }
+
+    @Test
+    void keepsValidOwnerSelection() throws Exception {
+        executeSqlResource("/migrations/v1-schema.sql");
+        executeSqlResource("/migrations/v3-imposter-selection.sql");
+
+        SchemaMigrator.migrate(connection);
+
+        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery("SELECT owner_id FROM player_selected_pets WHERE pet_id = 'pet-imposter-1';")) {
+            assertTrue(rs.next());
+            assertEquals("owner-actual", rs.getString("owner_id"));
+            assertFalse(rs.next());
+        }
+    }
+
+    @Test
+    void cleansAbortedTemporaryTable() throws Exception {
+        executeSqlResource("/migrations/v2-schema.sql");
+        executeSqlResource("/migrations/v3-aborted-temp-table.sql");
+
+        assertDoesNotThrow(() -> SchemaMigrator.migrate(connection));
+    }
+
+    @Test
+    void doesNotDuplicateMigrationRows() throws Exception {
+        SchemaMigrator.migrate(connection);
+        SchemaMigrator.migrate(connection);
+
+        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM schema_migrations;")) {
+            assertTrue(rs.next());
+            assertEquals(7, rs.getInt(1));
+        }
+    }
+
+    @Test
+    void migrationIsIdempotent() throws Exception {
         UUID petId = UUID.randomUUID();
         UUID ownerId = UUID.randomUUID();
 
         try (Statement stmt = connection.createStatement()) {
-            stmt.execute("INSERT INTO pets VALUES ('" + petId + "', '" + ownerId + "', 'wolf', 'DisabledDog', 1, 0, 'DISABLED', 100, 100);");
+            stmt.execute("CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL);");
+            stmt.execute("CREATE TABLE pets (pet_id TEXT PRIMARY KEY, owner_id TEXT, definition_id TEXT, custom_name TEXT, level INTEGER, experience INTEGER, state TEXT, created_at INTEGER, updated_at INTEGER);");
+            stmt.execute("CREATE TABLE player_active_pets (owner_id TEXT PRIMARY KEY, pet_id TEXT, updated_at INTEGER);");
+            stmt.execute("INSERT INTO pets VALUES ('" + petId + "', '" + ownerId + "', 'wolf', 'Bobi', 1, 0, 'AVAILABLE', 100, 100);");
             stmt.execute("INSERT INTO player_active_pets VALUES ('" + ownerId + "', '" + petId + "', 100);");
         }
 
         SchemaMigrator.migrate(connection);
-
-        // Verify selection deleted
-        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM player_active_pets WHERE pet_id = '" + petId + "';")) {
-            assertTrue(rs.next());
-            assertEquals(0, rs.getInt(1));
-        }
-
-        // Verify pet state stays DISABLED
-        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery("SELECT state FROM pets WHERE pet_id = '" + petId + "';")) {
-            assertTrue(rs.next());
-            assertEquals("DISABLED", rs.getString("state"));
-        }
-    }
-
-    @Test
-    void testUnselectedActivePetReconciledToAvailable() throws Exception {
-        UUID petId = UUID.randomUUID();
-        UUID ownerId = UUID.randomUUID();
-
-        try (Statement stmt = connection.createStatement()) {
-            // Unselected pet marked ACTIVE by legacy bug or manual DB edit
-            stmt.execute("INSERT INTO pets VALUES ('" + petId + "', '" + ownerId + "', 'wolf', 'OrphanDog', 1, 0, 'ACTIVE', 100, 100);");
-        }
-
-        SchemaMigrator.migrate(connection);
-
-        // Verify pet state reconciled to AVAILABLE
-        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery("SELECT state FROM pets WHERE pet_id = '" + petId + "';")) {
-            assertTrue(rs.next());
-            assertEquals("AVAILABLE", rs.getString("state"));
-        }
-    }
-
-    @Test
-    void testUpgradeFromPreviouslyAppliedV3RunsV4Reconciliation() throws Exception {
-        // Simulate a database where versions 1, 2, and 3 were already applied in past releases
-        try (Statement stmt = connection.createStatement()) {
-            stmt.execute("CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL);");
-            stmt.execute("INSERT INTO schema_migrations VALUES (1, 1000);");
-            stmt.execute("INSERT INTO schema_migrations VALUES (2, 2000);");
-            stmt.execute("INSERT INTO schema_migrations VALUES (3, 3000);");
-
-            stmt.execute("CREATE UNIQUE INDEX uq_pets_pet_owner ON pets(pet_id, owner_id);");
-
-            // Disabled pet with leftover selection row from past version
-            UUID disabledPetId = UUID.randomUUID();
-            UUID disabledOwnerId = UUID.randomUUID();
-            stmt.execute("INSERT INTO pets VALUES ('" + disabledPetId + "', '" + disabledOwnerId + "', 'wolf', 'DisabledDog', 1, 0, 'DISABLED', 100, 100);");
-            stmt.execute("INSERT INTO player_active_pets VALUES ('" + disabledOwnerId + "', '" + disabledPetId + "', 100);");
-
-            // Orphan ACTIVE pet without selection row from past version
-            UUID orphanPetId = UUID.randomUUID();
-            UUID orphanOwnerId = UUID.randomUUID();
-            stmt.execute("INSERT INTO pets VALUES ('" + orphanPetId + "', '" + orphanOwnerId + "', 'cat', 'OrphanCat', 1, 0, 'ACTIVE', 100, 100);");
-        }
-
-        // Run Migrator
-        SchemaMigrator.migrate(connection);
-
-        // Verify version 4 was applied
-        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM schema_migrations;")) {
-            assertTrue(rs.next());
-            assertEquals(4, rs.getInt(1));
-        }
-
-        // Verify disabled pet selection was deleted and state remains DISABLED
-        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM player_active_pets WHERE owner_id IN (SELECT owner_id FROM pets WHERE state = 'DISABLED');")) {
-            assertTrue(rs.next());
-            assertEquals(0, rs.getInt(1));
-        }
-
-        // Verify orphan ACTIVE pet was converted to AVAILABLE by V4
-        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery("SELECT state FROM pets WHERE custom_name = 'OrphanCat';")) {
-            assertTrue(rs.next());
-            assertEquals("AVAILABLE", rs.getString("state"));
-        }
-    }
-
-    @Test
-    void testMigrationIdempotencyAndDataIntegrity() throws Exception {
-        UUID petId = UUID.randomUUID();
-        UUID actualOwnerA = UUID.randomUUID();
-        long timestamp = 123456789L;
-
-        try (Statement stmt = connection.createStatement()) {
-            stmt.execute("INSERT INTO pets VALUES ('" + petId + "', '" + actualOwnerA + "', 'wolf', 'Dog', 1, 0, 'AVAILABLE', " + timestamp + ", " + timestamp + ");");
-            stmt.execute("INSERT INTO player_active_pets VALUES ('" + actualOwnerA + "', '" + petId + "', " + timestamp + ");");
-        }
-
-        SchemaMigrator.migrate(connection);
-        
-        // Record data snapshot after 1st run
-        String activeOwnerAfter1st = null;
-        long timestampAfter1st = 0;
-        String petStateAfter1st = null;
-
-        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery("SELECT owner_id, updated_at FROM player_active_pets WHERE pet_id = '" + petId + "';")) {
-            assertTrue(rs.next());
-            activeOwnerAfter1st = rs.getString("owner_id");
-            timestampAfter1st = rs.getLong("updated_at");
-        }
-
-        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery("SELECT state FROM pets WHERE pet_id = '" + petId + "';")) {
-            assertTrue(rs.next());
-            petStateAfter1st = rs.getString("state");
-        }
-
-        // Run Migration 2nd time
         assertDoesNotThrow(() -> SchemaMigrator.migrate(connection));
 
-        // Verify 2nd run produced identical data
-        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery("SELECT owner_id, updated_at FROM player_active_pets WHERE pet_id = '" + petId + "';")) {
+        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery("SELECT owner_id FROM player_selected_pets WHERE pet_id = '" + petId + "';")) {
             assertTrue(rs.next());
-            assertEquals(activeOwnerAfter1st, rs.getString("owner_id"));
-            assertEquals(timestampAfter1st, rs.getLong("updated_at"));
+            assertEquals(ownerId.toString(), rs.getString("owner_id"));
         }
+    }
 
-        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery("SELECT state FROM pets WHERE pet_id = '" + petId + "';")) {
-            assertTrue(rs.next());
-            assertEquals(petStateAfter1st, rs.getString("state"));
-        }
+    @Test
+    void rollsBackFailedMigration() throws Exception {
+        DatabaseMigration failingMigration = new DatabaseMigration() {
+            @Override public int version() { return 99; }
+            @Override public String name() { return "Failing Migration Test"; }
+            @Override public void apply(Connection conn) throws SQLException {
+                try (Statement stmt = conn.createStatement()) {
+                    stmt.execute("CREATE TABLE test_rollback (id INT);");
+                    throw new SQLException("Simulated Migration Failure");
+                }
+            }
+        };
 
-        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM schema_migrations;")) {
-            assertTrue(rs.next());
-            assertEquals(4, rs.getInt(1));
+        List<DatabaseMigration> migrations = List.of(new com.petsistemi.persistence.migration.V1InitialSchemaMigration(), failingMigration);
+        MigrationRunner runner = new MigrationRunner(logger, migrations, new MigrationBackupManager(logger));
+
+        assertThrows(SQLException.class, () -> runner.run(connection, null, null, false, false, 5));
+
+        // Verify test_rollback table was rolled back
+        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery("SELECT 1 FROM sqlite_master WHERE type='table' AND name='test_rollback';")) {
+            assertFalse(rs.next(), "Table created in failing migration must be rolled back");
         }
     }
 }

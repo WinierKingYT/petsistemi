@@ -9,19 +9,19 @@ public record PetInstance(
         String customName,
         int level,
         long experience,
-        PetStorageState storageState,
+        PetAvailabilityState availabilityState,
         long createdAt,
         long updatedAt
 ) {
     public PetInstance withLevelAndExperience(int newLevel, long newExperience) {
-        return new PetInstance(petId, ownerId, definitionId, customName, newLevel, newExperience, storageState, createdAt, System.currentTimeMillis());
+        return new PetInstance(petId, ownerId, definitionId, customName, newLevel, newExperience, availabilityState, createdAt, System.currentTimeMillis());
     }
 
     public PetInstance withCustomName(String newCustomName) {
-        return new PetInstance(petId, ownerId, definitionId, newCustomName, level, experience, storageState, createdAt, System.currentTimeMillis());
+        return new PetInstance(petId, ownerId, definitionId, newCustomName, level, experience, availabilityState, createdAt, System.currentTimeMillis());
     }
 
-    public PetInstance withStorageState(PetStorageState newStorageState) {
-        return new PetInstance(petId, ownerId, definitionId, customName, level, experience, newStorageState, createdAt, System.currentTimeMillis());
+    public PetInstance withAvailabilityState(PetAvailabilityState newAvailabilityState) {
+        return new PetInstance(petId, ownerId, definitionId, customName, level, experience, newAvailabilityState, createdAt, System.currentTimeMillis());
     }
 }

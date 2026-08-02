@@ -265,7 +265,7 @@ public class DefaultPetExperienceService implements PetExperienceService {
                 p.customName(),
                 p.level(),
                 p.experience(),
-                p.storageState(),
+                p.availabilityState(),
                 p.createdAt(),
                 p.updatedAt()
         );

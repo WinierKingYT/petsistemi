@@ -1,10 +1,10 @@
 package com.petsistemi.runtime;
 
 import com.petsistemi.definition.PetDefinitionRegistry;
+import com.petsistemi.domain.PetAvailabilityState;
 import com.petsistemi.domain.PetDefinition;
 import com.petsistemi.domain.PetInstance;
 import com.petsistemi.domain.PetRuntimeState;
-import com.petsistemi.domain.PetStorageState;
 import com.petsistemi.persistence.PetRepository;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
@@ -51,7 +51,7 @@ class PetRuntimeCoordinatorTest {
         PetBehaviorController mockBehaviorController = createMockBehaviorController(false);
 
         coordinator = new PetRuntimeCoordinator(null, mockRepository, mockDefRegistry, activeRegistry, mockEntityController, mockBehaviorController);
-        PetInstance instanceB = new PetInstance(UUID.randomUUID(), UUID.randomUUID(), "cat", "PetB", 1, 0, PetStorageState.AVAILABLE, 0, 0);
+        PetInstance instanceB = new PetInstance(UUID.randomUUID(), UUID.randomUUID(), "cat", "PetB", 1, 0, PetAvailabilityState.AVAILABLE, 0, 0);
         PetDefinition defB = mockDefRegistry.find("wolf").get();
 
         assertThrows(IllegalArgumentException.class, () -> coordinator.spawnAndRegister(null, instanceB, defB));
@@ -74,7 +74,7 @@ class PetRuntimeCoordinatorTest {
         Player mockPlayer = createMockPlayer(ownerId);
         coordinator = new PetRuntimeCoordinator(null, mockRepository, mockDefRegistry, activeRegistry, mockEntityController, mockBehaviorController);
 
-        PetInstance instanceB = new PetInstance(petB, ownerId, "cat", "PetB", 1, 0, PetStorageState.AVAILABLE, 0, 0);
+        PetInstance instanceB = new PetInstance(petB, ownerId, "cat", "PetB", 1, 0, PetAvailabilityState.AVAILABLE, 0, 0);
         PetDefinition defB = mockDefRegistry.find("wolf").get();
 
         assertThrows(RuntimeException.class, () -> coordinator.spawnAndRegister(mockPlayer, instanceB, defB));
@@ -106,7 +106,7 @@ class PetRuntimeCoordinatorTest {
         Player mockPlayer = createMockPlayer(ownerId);
         coordinator = new PetRuntimeCoordinator(null, mockRepository, mockDefRegistry, activeRegistry, mockEntityController, mockBehaviorController);
 
-        PetInstance instanceB = new PetInstance(petB, ownerId, "cat", "PetB", 1, 0, PetStorageState.AVAILABLE, 0, 0);
+        PetInstance instanceB = new PetInstance(petB, ownerId, "cat", "PetB", 1, 0, PetAvailabilityState.AVAILABLE, 0, 0);
         PetDefinition defB = mockDefRegistry.find("wolf").get();
 
         assertThrows(RuntimeException.class, () -> coordinator.spawnAndRegister(mockPlayer, instanceB, defB));
@@ -131,9 +131,9 @@ class PetRuntimeCoordinatorTest {
         activeRegistry.register(activeA);
 
         PetRepository mockRepository = new PetRepository() {
-            @Override public Optional<PetInstance> findById(UUID id) { return Optional.of(new PetInstance(petA, ownerId, "wolf", "PetA", 1, 0, PetStorageState.ACTIVE, 0, 0)); }
+            @Override public Optional<PetInstance> findById(UUID id) { return Optional.of(new PetInstance(petA, ownerId, "wolf", "PetA", 1, 0, PetAvailabilityState.AVAILABLE, 0, 0)); }
             @Override public java.util.List<PetInstance> findByOwner(UUID ownerId) { return Collections.emptyList(); }
-            @Override public Optional<PetInstance> findActiveByOwner(UUID ownerId) { return Optional.of(new PetInstance(petA, ownerId, "wolf", "PetA", 1, 0, PetStorageState.ACTIVE, 0, 0)); }
+            @Override public Optional<PetInstance> findActiveByOwner(UUID ownerId) { return Optional.of(new PetInstance(petA, ownerId, "wolf", "PetA", 1, 0, PetAvailabilityState.AVAILABLE, 0, 0)); }
             @Override public void insert(PetInstance pet) {}
             @Override public void update(PetInstance pet) {}
             @Override public void delete(UUID petId) {}
@@ -154,7 +154,7 @@ class PetRuntimeCoordinatorTest {
         Player mockPlayer = createMockPlayer(ownerId);
         coordinator = new PetRuntimeCoordinator(null, mockRepository, mockDefRegistry, activeRegistry, mockEntityController, mockBehaviorController);
 
-        PetInstance instanceB = new PetInstance(petB, ownerId, "cat", "PetB", 1, 0, PetStorageState.AVAILABLE, 0, 0);
+        PetInstance instanceB = new PetInstance(petB, ownerId, "cat", "PetB", 1, 0, PetAvailabilityState.AVAILABLE, 0, 0);
         PetDefinition defB = mockDefRegistry.find("wolf").get();
 
         assertThrows(RuntimeException.class, () -> coordinator.spawnAndRegister(mockPlayer, instanceB, defB));
@@ -187,7 +187,7 @@ class PetRuntimeCoordinatorTest {
         Player mockPlayer = createMockPlayer(ownerId);
         coordinator = new PetRuntimeCoordinator(null, mockRepository, mockDefRegistry, activeRegistry, mockEntityController, mockBehaviorController);
 
-        PetInstance instanceB = new PetInstance(petB, ownerId, "cat", "PetB", 1, 0, PetStorageState.AVAILABLE, 0, 0);
+        PetInstance instanceB = new PetInstance(petB, ownerId, "cat", "PetB", 1, 0, PetAvailabilityState.AVAILABLE, 0, 0);
         PetDefinition defB = new PetDefinition("wolf", "Wolf", Collections.emptyList(), EntityType.WOLF, false, false, true, false, true, true, 100, true, Collections.emptyList());
 
         assertThrows(RuntimeException.class, () -> coordinator.spawnAndRegister(mockPlayer, instanceB, defB));
@@ -199,9 +199,9 @@ class PetRuntimeCoordinatorTest {
 
     private PetRepository createMockRepository(UUID petA, UUID ownerId) {
         return new PetRepository() {
-            @Override public Optional<PetInstance> findById(UUID id) { return Optional.of(new PetInstance(petA, ownerId, "wolf", "PetA", 1, 0, PetStorageState.ACTIVE, 0, 0)); }
+            @Override public Optional<PetInstance> findById(UUID id) { return Optional.of(new PetInstance(petA, ownerId, "wolf", "PetA", 1, 0, PetAvailabilityState.AVAILABLE, 0, 0)); }
             @Override public java.util.List<PetInstance> findByOwner(UUID ownerId) { return Collections.emptyList(); }
-            @Override public Optional<PetInstance> findActiveByOwner(UUID ownerId) { return Optional.of(new PetInstance(petA, ownerId, "wolf", "PetA", 1, 0, PetStorageState.ACTIVE, 0, 0)); }
+            @Override public Optional<PetInstance> findActiveByOwner(UUID ownerId) { return Optional.of(new PetInstance(petA, ownerId, "wolf", "PetA", 1, 0, PetAvailabilityState.AVAILABLE, 0, 0)); }
             @Override public void insert(PetInstance pet) {}
             @Override public void update(PetInstance pet) {}
             @Override public void delete(UUID petId) {}

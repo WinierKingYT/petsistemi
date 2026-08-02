@@ -1,7 +1,7 @@
 package com.petsistemi.persistence;
 
+import com.petsistemi.domain.PetAvailabilityState;
 import com.petsistemi.domain.PetInstance;
-import com.petsistemi.domain.PetStorageState;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -60,7 +60,7 @@ public class SqlitePetRepository implements PetRepository {
 
     @Override
     public synchronized Optional<PetInstance> findActiveByOwner(UUID ownerId) {
-        String sql = "SELECT p.* FROM pets p JOIN player_active_pets a ON p.pet_id = a.pet_id WHERE a.owner_id = ?;";
+        String sql = "SELECT p.* FROM pets p JOIN player_selected_pets s ON p.pet_id = s.pet_id AND p.owner_id = s.owner_id WHERE s.owner_id = ?;";
         try (PreparedStatement ps = connectionProvider.getConnection().prepareStatement(sql)) {
             ps.setString(1, ownerId.toString());
             try (ResultSet rs = ps.executeQuery()) {
@@ -77,7 +77,7 @@ public class SqlitePetRepository implements PetRepository {
 
     @Override
     public synchronized void insert(PetInstance pet) {
-        String sql = "INSERT INTO pets (pet_id, owner_id, definition_id, custom_name, level, experience, state, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);";
+        String sql = "INSERT INTO pets (pet_id, owner_id, definition_id, custom_name, level, experience, availability_state, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);";
         try (PreparedStatement ps = connectionProvider.getConnection().prepareStatement(sql)) {
             ps.setString(1, pet.petId().toString());
             ps.setString(2, pet.ownerId().toString());
@@ -85,7 +85,7 @@ public class SqlitePetRepository implements PetRepository {
             ps.setString(4, pet.customName());
             ps.setInt(5, pet.level());
             ps.setLong(6, pet.experience());
-            ps.setString(7, pet.storageState().name());
+            ps.setString(7, pet.availabilityState().name());
             ps.setLong(8, pet.createdAt());
             ps.setLong(9, pet.updatedAt());
             ps.executeUpdate();
@@ -97,12 +97,12 @@ public class SqlitePetRepository implements PetRepository {
 
     @Override
     public synchronized void update(PetInstance pet) {
-        String sql = "UPDATE pets SET custom_name = ?, level = ?, experience = ?, state = ?, updated_at = ? WHERE pet_id = ?;";
+        String sql = "UPDATE pets SET custom_name = ?, level = ?, experience = ?, availability_state = ?, updated_at = ? WHERE pet_id = ?;";
         try (PreparedStatement ps = connectionProvider.getConnection().prepareStatement(sql)) {
             ps.setString(1, pet.customName());
             ps.setInt(2, pet.level());
             ps.setLong(3, pet.experience());
-            ps.setString(4, pet.storageState().name());
+            ps.setString(4, pet.availabilityState().name());
             ps.setLong(5, pet.updatedAt());
             ps.setString(6, pet.petId().toString());
             int affected = ps.executeUpdate();
@@ -129,8 +129,8 @@ public class SqlitePetRepository implements PetRepository {
 
     @Override
     public synchronized void setActivePet(UUID ownerId, UUID petId) {
-        String sql = "INSERT INTO player_active_pets (owner_id, pet_id, updated_at) VALUES (?, ?, ?) " +
-                "ON CONFLICT(owner_id) DO UPDATE SET pet_id = excluded.pet_id, updated_at = excluded.updated_at;";
+        String sql = "INSERT INTO player_selected_pets (owner_id, pet_id, selected_at) VALUES (?, ?, ?) " +
+                "ON CONFLICT(owner_id) DO UPDATE SET pet_id = excluded.pet_id, selected_at = excluded.selected_at;";
         try (PreparedStatement ps = connectionProvider.getConnection().prepareStatement(sql)) {
             ps.setString(1, ownerId.toString());
             ps.setString(2, petId.toString());
@@ -144,7 +144,7 @@ public class SqlitePetRepository implements PetRepository {
 
     @Override
     public synchronized void clearActivePet(UUID ownerId) {
-        String sql = "DELETE FROM player_active_pets WHERE owner_id = ?;";
+        String sql = "DELETE FROM player_selected_pets WHERE owner_id = ?;";
         try (PreparedStatement ps = connectionProvider.getConnection().prepareStatement(sql)) {
             ps.setString(1, ownerId.toString());
             ps.executeUpdate();
@@ -157,29 +157,27 @@ public class SqlitePetRepository implements PetRepository {
     @Override
     public synchronized void switchActivePet(UUID ownerId, UUID previousPetId, UUID newPetId) {
         Connection conn = connectionProvider.getConnection();
+        boolean autoCommit = true;
         try {
+            autoCommit = conn.getAutoCommit();
             conn.setAutoCommit(false);
 
-            if (previousPetId != null) {
-                try (PreparedStatement ps = conn.prepareStatement("UPDATE pets SET state = ? WHERE pet_id = ?;")) {
-                    ps.setString(1, PetStorageState.AVAILABLE.name());
-                    ps.setString(2, previousPetId.toString());
-                    ps.executeUpdate();
-                }
-            }
-
-            try (PreparedStatement ps = conn.prepareStatement("INSERT INTO player_active_pets (owner_id, pet_id, updated_at) VALUES (?, ?, ?) " +
-                    "ON CONFLICT(owner_id) DO UPDATE SET pet_id = excluded.pet_id, updated_at = excluded.updated_at;")) {
+            try (PreparedStatement ps = conn.prepareStatement("INSERT INTO player_selected_pets (owner_id, pet_id, selected_at) VALUES (?, ?, ?) " +
+                    "ON CONFLICT(owner_id) DO UPDATE SET pet_id = excluded.pet_id, selected_at = excluded.selected_at;")) {
                 ps.setString(1, ownerId.toString());
                 ps.setString(2, newPetId.toString());
                 ps.setLong(3, System.currentTimeMillis());
                 ps.executeUpdate();
             }
 
-            try (PreparedStatement ps = conn.prepareStatement("UPDATE pets SET state = ? WHERE pet_id = ?;")) {
-                ps.setString(1, PetStorageState.ACTIVE.name());
-                ps.setString(2, newPetId.toString());
-                ps.executeUpdate();
+            try (PreparedStatement ps = conn.prepareStatement("SELECT 1 FROM pets WHERE pet_id = ? AND owner_id = ?;")) {
+                ps.setString(1, newPetId.toString());
+                ps.setString(2, ownerId.toString());
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (!rs.next()) {
+                        throw new PetPersistenceException("Aktif yapılacak pet veritabanında bulunamadı: " + newPetId);
+                    }
+                }
             }
 
             conn.commit();
@@ -191,74 +189,34 @@ public class SqlitePetRepository implements PetRepository {
             throw new PetPersistenceException("Pet değiştirme transaction işlemi başarısız.", e);
         } finally {
             try {
-                conn.setAutoCommit(true);
+                conn.setAutoCommit(autoCommit);
             } catch (SQLException ignored) {}
         }
     }
 
     @Override
     public synchronized void clearActivePetAndSetAvailable(UUID ownerId, UUID petId) {
-        Connection conn = connectionProvider.getConnection();
-        try {
-            conn.setAutoCommit(false);
-
-            try (PreparedStatement ps = conn.prepareStatement("DELETE FROM player_active_pets WHERE owner_id = ?;")) {
-                ps.setString(1, ownerId.toString());
-                ps.executeUpdate();
-            }
-
-            if (petId != null) {
-                try (PreparedStatement ps = conn.prepareStatement("UPDATE pets SET state = ? WHERE pet_id = ?;")) {
-                    ps.setString(1, PetStorageState.AVAILABLE.name());
-                    ps.setString(2, petId.toString());
-                    ps.executeUpdate();
-                }
-            }
-
-            conn.commit();
-        } catch (Exception e) {
-            try {
-                conn.rollback();
-            } catch (SQLException ignored) {}
-            logger.severe("clearActivePetAndSetAvailable transaction hatası: " + e.getMessage());
-            throw new PetPersistenceException("Aktif pet temizleme transaction işlemi başarısız.", e);
-        } finally {
-            try {
-                conn.setAutoCommit(true);
-            } catch (SQLException ignored) {}
-        }
+        clearActivePet(ownerId);
     }
 
     @Override
     public synchronized void restoreActivePet(UUID ownerId, UUID previousPetId, UUID failedPetId) {
         Connection conn = connectionProvider.getConnection();
+        boolean autoCommit = true;
         try {
+            autoCommit = conn.getAutoCommit();
             conn.setAutoCommit(false);
 
-            if (failedPetId != null) {
-                try (PreparedStatement ps = conn.prepareStatement("UPDATE pets SET state = ? WHERE pet_id = ?;")) {
-                    ps.setString(1, PetStorageState.AVAILABLE.name());
-                    ps.setString(2, failedPetId.toString());
-                    ps.executeUpdate();
-                }
-            }
-
             if (previousPetId != null) {
-                try (PreparedStatement ps = conn.prepareStatement("INSERT INTO player_active_pets (owner_id, pet_id, updated_at) VALUES (?, ?, ?) " +
-                        "ON CONFLICT(owner_id) DO UPDATE SET pet_id = excluded.pet_id, updated_at = excluded.updated_at;")) {
+                try (PreparedStatement ps = conn.prepareStatement("INSERT INTO player_selected_pets (owner_id, pet_id, selected_at) VALUES (?, ?, ?) " +
+                        "ON CONFLICT(owner_id) DO UPDATE SET pet_id = excluded.pet_id, selected_at = excluded.selected_at;")) {
                     ps.setString(1, ownerId.toString());
                     ps.setString(2, previousPetId.toString());
                     ps.setLong(3, System.currentTimeMillis());
                     ps.executeUpdate();
                 }
-
-                try (PreparedStatement ps = conn.prepareStatement("UPDATE pets SET state = ? WHERE pet_id = ?;")) {
-                    ps.setString(1, PetStorageState.ACTIVE.name());
-                    ps.setString(2, previousPetId.toString());
-                    ps.executeUpdate();
-                }
             } else {
-                try (PreparedStatement ps = conn.prepareStatement("DELETE FROM player_active_pets WHERE owner_id = ?;")) {
+                try (PreparedStatement ps = conn.prepareStatement("DELETE FROM player_selected_pets WHERE owner_id = ?;")) {
                     ps.setString(1, ownerId.toString());
                     ps.executeUpdate();
                 }
@@ -273,12 +231,20 @@ public class SqlitePetRepository implements PetRepository {
             throw new PetPersistenceException("Eski peti geri yükleme transaction işlemi başarısız.", e);
         } finally {
             try {
-                conn.setAutoCommit(true);
+                conn.setAutoCommit(autoCommit);
             } catch (SQLException ignored) {}
         }
     }
 
     private PetInstance mapResultSetToPetInstance(ResultSet rs) throws SQLException {
+        String rawState = rs.getString("availability_state");
+        PetAvailabilityState availabilityState;
+        try {
+            availabilityState = PetAvailabilityState.valueOf(rawState);
+        } catch (Exception e) {
+            availabilityState = PetAvailabilityState.AVAILABLE;
+        }
+
         return new PetInstance(
                 UUID.fromString(rs.getString("pet_id")),
                 UUID.fromString(rs.getString("owner_id")),
@@ -286,7 +252,7 @@ public class SqlitePetRepository implements PetRepository {
                 rs.getString("custom_name"),
                 rs.getInt("level"),
                 rs.getLong("experience"),
-                PetStorageState.valueOf(rs.getString("state")),
+                availabilityState,
                 rs.getLong("created_at"),
                 rs.getLong("updated_at")
         );

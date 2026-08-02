@@ -1,0 +1,100 @@
+package com.petsistemi.persistence;
+
+import com.petsistemi.domain.PetSelection;
+
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.logging.Logger;
+
+public class SqlitePetSelectionRepository implements PetSelectionRepository {
+
+    private final ConnectionProvider connectionProvider;
+    private final Logger logger;
+
+    public SqlitePetSelectionRepository(ConnectionProvider connectionProvider, Logger logger) {
+        this.connectionProvider = connectionProvider;
+        this.logger = logger;
+    }
+
+    @Override
+    public synchronized Optional<PetSelection> findByOwner(UUID ownerId) {
+        String sql = "SELECT * FROM player_selected_pets WHERE owner_id = ?;";
+        try (PreparedStatement ps = connectionProvider.getConnection().prepareStatement(sql)) {
+            ps.setString(1, ownerId.toString());
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return Optional.of(new PetSelection(
+                            UUID.fromString(rs.getString("owner_id")),
+                            UUID.fromString(rs.getString("pet_id")),
+                            rs.getLong("selected_at")
+                    ));
+                }
+            }
+        } catch (SQLException e) {
+            logger.severe("findByOwner selection sorgusunda hata: " + e.getMessage());
+            throw new PetPersistenceException("Pet seçimi sorgulanamadı.", e);
+        }
+        return Optional.empty();
+    }
+
+    @Override
+    public synchronized void select(UUID ownerId, UUID petId) {
+        String sql = "INSERT INTO player_selected_pets (owner_id, pet_id, selected_at) VALUES (?, ?, ?) " +
+                "ON CONFLICT(owner_id) DO UPDATE SET pet_id = excluded.pet_id, selected_at = excluded.selected_at;";
+        try (PreparedStatement ps = connectionProvider.getConnection().prepareStatement(sql)) {
+            ps.setString(1, ownerId.toString());
+            ps.setString(2, petId.toString());
+            ps.setLong(3, System.currentTimeMillis());
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            logger.severe("select sorgusunda veritabanı hatası: " + e.getMessage());
+            throw new PetPersistenceException("Pet seçimi veritabanına kaydedilemedi.", e);
+        }
+    }
+
+    @Override
+    public synchronized void clear(UUID ownerId) {
+        String sql = "DELETE FROM player_selected_pets WHERE owner_id = ?;";
+        try (PreparedStatement ps = connectionProvider.getConnection().prepareStatement(sql)) {
+            ps.setString(1, ownerId.toString());
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            logger.severe("clear selection sorgusunda hata: " + e.getMessage());
+            throw new PetPersistenceException("Pet seçimi temizlenemedi.", e);
+        }
+    }
+
+    @Override
+    public synchronized void switchSelection(UUID ownerId, UUID previousPetId, UUID newPetId) {
+        Connection conn = connectionProvider.getConnection();
+        boolean autoCommit = true;
+        try {
+            autoCommit = conn.getAutoCommit();
+            conn.setAutoCommit(false);
+
+            try (PreparedStatement ps = conn.prepareStatement("INSERT INTO player_selected_pets (owner_id, pet_id, selected_at) VALUES (?, ?, ?) " +
+                    "ON CONFLICT(owner_id) DO UPDATE SET pet_id = excluded.pet_id, selected_at = excluded.selected_at;")) {
+                ps.setString(1, ownerId.toString());
+                ps.setString(2, newPetId.toString());
+                ps.setLong(3, System.currentTimeMillis());
+                ps.executeUpdate();
+            }
+
+            conn.commit();
+        } catch (Exception e) {
+            try {
+                conn.rollback();
+            } catch (SQLException ignored) {}
+            logger.severe("switchSelection transaction hatası: " + e.getMessage());
+            throw new PetPersistenceException("Pet seçimi değiştirme transaction hatası.", e);
+        } finally {
+            try {
+                conn.setAutoCommit(autoCommit);
+            } catch (SQLException ignored) {}
+        }
+    }
+}

@@ -5,9 +5,9 @@ import com.petsistemi.api.PetSnapshot;
 import com.petsistemi.api.event.*;
 import com.petsistemi.api.result.*;
 import com.petsistemi.definition.PetDefinitionRegistry;
+import com.petsistemi.domain.PetAvailabilityState;
 import com.petsistemi.domain.PetDefinition;
 import com.petsistemi.domain.PetInstance;
-import com.petsistemi.domain.PetStorageState;
 import com.petsistemi.persistence.PetRepository;
 import com.petsistemi.runtime.ActivePet;
 import com.petsistemi.runtime.ActivePetRegistry;
@@ -96,7 +96,7 @@ public class DefaultPetService implements PetService {
                 null,
                 1,
                 0,
-                PetStorageState.AVAILABLE,
+                PetAvailabilityState.AVAILABLE,
                 System.currentTimeMillis(),
                 System.currentTimeMillis()
         );
@@ -131,7 +131,7 @@ public class DefaultPetService implements PetService {
             return new PetSummonResult(false, "Bu pet size ait değil.");
         }
 
-        if (pet.storageState() == PetStorageState.DISABLED) {
+        if (pet.availabilityState() == PetAvailabilityState.DISABLED) {
             return new PetSummonResult(false, "Bu pet geçici olarak devre dışı bırakılmış.");
         }
 
@@ -146,7 +146,7 @@ public class DefaultPetService implements PetService {
 
         Optional<PetDefinition> defOpt = definitionRegistry.find(pet.definitionId());
         if (defOpt.isEmpty()) {
-            repository.update(pet.withStorageState(PetStorageState.DISABLED));
+            repository.update(pet.withAvailabilityState(PetAvailabilityState.DISABLED));
             return new PetSummonResult(false, "Pet tanımı bulunamadı, pet devre dışı bırakıldı.");
         }
 
@@ -270,7 +270,7 @@ public class DefaultPetService implements PetService {
                 p.customName(),
                 p.level(),
                 p.experience(),
-                p.storageState(),
+                p.availabilityState(),
                 p.createdAt(),
                 p.updatedAt()
         );

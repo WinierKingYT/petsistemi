@@ -1,9 +1,10 @@
 plugins {
     java
+    id("com.gradleup.shadow") version "8.3.5"
 }
 
 group = "com.petsistemi"
-version = "0.1.0-SNAPSHOT"
+version = "0.1.0-alpha.1"
 
 java {
     sourceCompatibility = JavaVersion.VERSION_17
@@ -18,6 +19,7 @@ repositories {
 dependencies {
     compileOnly("io.papermc.paper:paper-api:1.20.4-R0.1-SNAPSHOT")
     implementation("org.xerial:sqlite-jdbc:3.45.1.0")
+
     testImplementation("io.papermc.paper:paper-api:1.20.4-R0.1-SNAPSHOT")
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
@@ -28,14 +30,24 @@ tasks.withType<JavaCompile>().configureEach {
     options.encoding = "UTF-8"
 }
 
-tasks.jar {
-    archiveClassifier.set("")
-    from({
-        configurations.runtimeClasspath.get().filter { it.name.endsWith(".jar") }.map { zipTree(it) }
-    }) {
-        exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA", "META-INF/MANIFEST.MF")
+tasks.processResources {
+    val props = mapOf("version" to version)
+    inputs.properties(props)
+    filteringCharset = "UTF-8"
+    filesMatching("plugin.yml") {
+        expand(props)
     }
-    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+tasks.shadowJar {
+    archiveBaseName.set("PetSistemi")
+    archiveClassifier.set("")
+    archiveVersion.set(version.toString())
+    mergeServiceFiles()
+}
+
+tasks.build {
+    dependsOn(tasks.shadowJar)
 }
 
 tasks.test {

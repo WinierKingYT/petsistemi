@@ -1,0 +1,16 @@
+# PetSistemi tr_TR Türkçe Mesaj Dosyası
+command:
+  only-players: "<red>Bu komut sadece oyuncular tarafından kullanılabilir.</red>"
+  no-permission: "<red>Bu komutu kullanmak için yetkiniz yok.</red>"
+  unknown-subcommand: "<red>Bilinmeyen alt komut: <command></red>"
+  usage-header: "<gold>=== PetSistemi Komutları ===</gold>"
+  pet-given: "<green><player> isimli oyuncuya <definition> türünde pet verildi.</green>"
+  pet-not-found: "<red>Pet bulunamadı!</red>"
+  pet-summoned: "<green><name> başarıyla çağırıldı!</green>"
+  pet-dismissed: "<yellow>Petiniz kaldırıldı.</yellow>"
+  pet-renamed: "<green>Pet ismi '<name>' olarak değiştirildi.</green>"
+  invalid-name: "<red>Geçersiz pet ismi!</red>"
+  disabled-pet: "<red>Bu pet devre dışı bırakılmış.</red>"
+  limit-reached: "<red>Maksimum pet sahiplenme limitine ulaştınız!</red>"
+  reload-success: "<green>PetSistemi yapılandırması ve pet tanımları hatasız yeniden yüklendi!</green>"
+  reload-failure: "<red>Yapılandırma yüklenirken hata oluştu! Eski aktif yapılandırma korundu.</red>"

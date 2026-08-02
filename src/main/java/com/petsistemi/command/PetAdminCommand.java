@@ -233,7 +233,7 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage(Component.text("Özel İsim: " + (pet.customName() != null ? pet.customName() : "Yok"), NamedTextColor.YELLOW));
         sender.sendMessage(Component.text("Seviye: " + pet.level(), NamedTextColor.YELLOW));
         sender.sendMessage(Component.text("XP: " + pet.experience(), NamedTextColor.YELLOW));
-        sender.sendMessage(Component.text("Durum: " + pet.storageState().name(), NamedTextColor.YELLOW));
+        sender.sendMessage(Component.text("Durum: " + pet.availabilityState().name(), NamedTextColor.YELLOW));
     }
 
     private void handleAddXp(CommandSender sender, String[] args) {
@@ -442,7 +442,7 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
             PetInstance db = dbInstance.get();
             player.sendMessage(Component.text("Pet Level: " + db.level(), NamedTextColor.YELLOW));
             player.sendMessage(Component.text("Pet Experience: " + db.experience(), NamedTextColor.YELLOW));
-            player.sendMessage(Component.text("Database State: " + db.storageState().name(), NamedTextColor.YELLOW));
+            player.sendMessage(Component.text("Database State: " + db.availabilityState().name(), NamedTextColor.YELLOW));
         } else {
             player.sendMessage(Component.text("Database State: BULUNAMADI (DB kaydı eksik)", NamedTextColor.RED));
         }

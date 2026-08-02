@@ -1,7 +1,6 @@
 package com.petsistemi.domain;
 
-public enum PetStorageState {
+public enum PetAvailabilityState {
     AVAILABLE,
-    ACTIVE,
     DISABLED
 }
