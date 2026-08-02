@@ -170,6 +170,10 @@ public class DefaultPetExperienceService implements PetExperienceService {
 
         PetInstance pet = petOpt.get();
         PetDefinition definition = definitionRegistry.find(pet.definitionId()).orElse(null);
+        if (definition != null && !definition.progressionEnabled() && source != ExperienceSource.ADMIN) {
+            return new ExperienceResult(false, "Bu pet türü için gelişim sistemi kapalı.", pet.experience(), false);
+        }
+
         int maxLevel = definition != null ? definition.maxLevel() : plugin.getConfig().getInt("progression.maximum-level", 100);
 
         long newXp = amount;

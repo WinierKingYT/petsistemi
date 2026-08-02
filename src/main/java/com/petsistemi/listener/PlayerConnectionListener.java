@@ -32,15 +32,14 @@ public class PlayerConnectionListener implements Listener {
         // Wait 20 ticks (1s) to allow player chunk loading before summoning pet
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
             if (player.isOnline()) {
-                Optional<PetSnapshot> activeOpt = petService.getActivePet(player.getUniqueId());
-                activeOpt.ifPresent(snapshot -> petService.summon(player, snapshot.petId()));
+                Optional<PetSnapshot> selectedOpt = petService.getSelectedPet(player.getUniqueId());
+                selectedOpt.ifPresent(snapshot -> petService.summon(player, snapshot.petId()));
             }
         }, 20L);
     }
 
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
-        // Despawn physical entity & active runtime registry, preserving selected pet in DB
         coordinator.despawnOnQuit(event.getPlayer().getUniqueId());
     }
 }

@@ -8,7 +8,6 @@ import org.junit.jupiter.api.Test;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
-import java.sql.Statement;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.logging.Logger;
@@ -23,37 +22,19 @@ class SqlitePetRepositoryTest {
     @BeforeEach
     void setUp() throws Exception {
         connection = DriverManager.getConnection("jdbc:sqlite::memory:");
-        
-        try (Statement st = connection.createStatement()) {
-            st.execute("PRAGMA foreign_keys = ON;");
-            st.execute("CREATE TABLE IF NOT EXISTS pets (" +
-                    "pet_id TEXT PRIMARY KEY, " +
-                    "owner_id TEXT NOT NULL, " +
-                    "definition_id TEXT NOT NULL, " +
-                    "custom_name TEXT, " +
-                    "level INTEGER NOT NULL DEFAULT 1, " +
-                    "experience INTEGER NOT NULL DEFAULT 0, " +
-                    "state TEXT NOT NULL DEFAULT 'AVAILABLE', " +
-                    "created_at INTEGER NOT NULL, " +
-                    "updated_at INTEGER NOT NULL" +
-                    ");");
+        DatabaseSchema.initializeSchema(connection);
 
-            st.execute("CREATE TABLE IF NOT EXISTS player_active_pets (" +
-                    "owner_id TEXT PRIMARY KEY, " +
-                    "pet_id TEXT NOT NULL UNIQUE, " +
-                    "updated_at INTEGER NOT NULL, " +
-                    "FOREIGN KEY (pet_id) REFERENCES pets(pet_id) ON DELETE CASCADE" +
-                    ");");
-        }
-
-        DatabaseManager mockManager = new DatabaseManager(null) {
+        ConnectionProvider testProvider = new ConnectionProvider() {
             @Override
             public Connection getConnection() {
                 return connection;
             }
+
+            @Override
+            public void close() {}
         };
 
-        repository = new SqlitePetRepository(mockManager, Logger.getLogger("TestLogger"));
+        repository = new SqlitePetRepository(testProvider, Logger.getLogger("TestLogger"));
     }
 
     @AfterEach
@@ -85,7 +66,6 @@ class SqlitePetRepositoryTest {
         repository.insert(new PetInstance(petA, ownerId, "wolf", "PetA", 1, 0, PetStorageState.AVAILABLE, 1000L, 1000L));
         repository.insert(new PetInstance(petB, ownerId, "cat", "PetB", 1, 0, PetStorageState.AVAILABLE, 1000L, 1000L));
 
-        // 1. Switch to Pet A
         repository.switchActivePet(ownerId, null, petA);
 
         Optional<PetInstance> activeOpt = repository.findActiveByOwner(ownerId);
@@ -93,7 +73,6 @@ class SqlitePetRepositoryTest {
         assertEquals(petA, activeOpt.get().petId());
         assertEquals(PetStorageState.ACTIVE, repository.findById(petA).get().storageState());
 
-        // 2. Switch to Pet B
         repository.switchActivePet(ownerId, petA, petB);
 
         activeOpt = repository.findActiveByOwner(ownerId);
@@ -112,10 +91,10 @@ class SqlitePetRepositoryTest {
         repository.insert(new PetInstance(petA, ownerId, "wolf", "PetA", 1, 0, PetStorageState.AVAILABLE, 1000L, 1000L));
         repository.insert(new PetInstance(petB, ownerId, "cat", "PetB", 1, 0, PetStorageState.AVAILABLE, 1000L, 1000L));
 
-        // Activate Pet A
         repository.switchActivePet(ownerId, null, petA);
+        repository.switchActivePet(ownerId, petA, petB);
 
-        // Attempting Pet B spawn fails, calling restoreActivePet
+        // Call restore to simulate failed spawn rollback
         repository.restoreActivePet(ownerId, petA, petB);
 
         Optional<PetInstance> activeOpt = repository.findActiveByOwner(ownerId);
@@ -123,6 +102,19 @@ class SqlitePetRepositoryTest {
         assertEquals(petA, activeOpt.get().petId());
         assertEquals(PetStorageState.ACTIVE, repository.findById(petA).get().storageState());
         assertEquals(PetStorageState.AVAILABLE, repository.findById(petB).get().storageState());
+    }
+
+    @Test
+    void testSwitchActivePetRollbackOnConstraintViolation() {
+        UUID ownerId = UUID.randomUUID();
+        UUID nonExistentPetId = UUID.randomUUID();
+
+        // Foreign key constraint failure should rollback transaction
+        assertThrows(PetPersistenceException.class, () -> 
+            repository.switchActivePet(ownerId, null, nonExistentPetId)
+        );
+
+        assertTrue(repository.findActiveByOwner(ownerId).isEmpty());
     }
 
     @Test

@@ -15,18 +15,18 @@ import java.util.logging.Logger;
 
 public class SqlitePetRepository implements PetRepository {
 
-    private final DatabaseManager dbManager;
+    private final ConnectionProvider connectionProvider;
     private final Logger logger;
 
-    public SqlitePetRepository(DatabaseManager dbManager, Logger logger) {
-        this.dbManager = dbManager;
+    public SqlitePetRepository(ConnectionProvider connectionProvider, Logger logger) {
+        this.connectionProvider = connectionProvider;
         this.logger = logger;
     }
 
     @Override
     public synchronized Optional<PetInstance> findById(UUID petId) {
         String sql = "SELECT * FROM pets WHERE pet_id = ?;";
-        try (PreparedStatement ps = dbManager.getConnection().prepareStatement(sql)) {
+        try (PreparedStatement ps = connectionProvider.getConnection().prepareStatement(sql)) {
             ps.setString(1, petId.toString());
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
@@ -44,7 +44,7 @@ public class SqlitePetRepository implements PetRepository {
     public synchronized List<PetInstance> findByOwner(UUID ownerId) {
         List<PetInstance> list = new ArrayList<>();
         String sql = "SELECT * FROM pets WHERE owner_id = ?;";
-        try (PreparedStatement ps = dbManager.getConnection().prepareStatement(sql)) {
+        try (PreparedStatement ps = connectionProvider.getConnection().prepareStatement(sql)) {
             ps.setString(1, ownerId.toString());
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
@@ -61,7 +61,7 @@ public class SqlitePetRepository implements PetRepository {
     @Override
     public synchronized Optional<PetInstance> findActiveByOwner(UUID ownerId) {
         String sql = "SELECT p.* FROM pets p JOIN player_active_pets a ON p.pet_id = a.pet_id WHERE a.owner_id = ?;";
-        try (PreparedStatement ps = dbManager.getConnection().prepareStatement(sql)) {
+        try (PreparedStatement ps = connectionProvider.getConnection().prepareStatement(sql)) {
             ps.setString(1, ownerId.toString());
             try (ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
@@ -78,7 +78,7 @@ public class SqlitePetRepository implements PetRepository {
     @Override
     public synchronized void insert(PetInstance pet) {
         String sql = "INSERT INTO pets (pet_id, owner_id, definition_id, custom_name, level, experience, state, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);";
-        try (PreparedStatement ps = dbManager.getConnection().prepareStatement(sql)) {
+        try (PreparedStatement ps = connectionProvider.getConnection().prepareStatement(sql)) {
             ps.setString(1, pet.petId().toString());
             ps.setString(2, pet.ownerId().toString());
             ps.setString(3, pet.definitionId());
@@ -98,7 +98,7 @@ public class SqlitePetRepository implements PetRepository {
     @Override
     public synchronized void update(PetInstance pet) {
         String sql = "UPDATE pets SET custom_name = ?, level = ?, experience = ?, state = ?, updated_at = ? WHERE pet_id = ?;";
-        try (PreparedStatement ps = dbManager.getConnection().prepareStatement(sql)) {
+        try (PreparedStatement ps = connectionProvider.getConnection().prepareStatement(sql)) {
             ps.setString(1, pet.customName());
             ps.setInt(2, pet.level());
             ps.setLong(3, pet.experience());
@@ -118,7 +118,7 @@ public class SqlitePetRepository implements PetRepository {
     @Override
     public synchronized void delete(UUID petId) {
         String sql = "DELETE FROM pets WHERE pet_id = ?;";
-        try (PreparedStatement ps = dbManager.getConnection().prepareStatement(sql)) {
+        try (PreparedStatement ps = connectionProvider.getConnection().prepareStatement(sql)) {
             ps.setString(1, petId.toString());
             ps.executeUpdate();
         } catch (SQLException e) {
@@ -130,7 +130,7 @@ public class SqlitePetRepository implements PetRepository {
     @Override
     public synchronized void setActivePet(UUID ownerId, UUID petId) {
         String sql = "INSERT OR REPLACE INTO player_active_pets (owner_id, pet_id, updated_at) VALUES (?, ?, ?);";
-        try (PreparedStatement ps = dbManager.getConnection().prepareStatement(sql)) {
+        try (PreparedStatement ps = connectionProvider.getConnection().prepareStatement(sql)) {
             ps.setString(1, ownerId.toString());
             ps.setString(2, petId.toString());
             ps.setLong(3, System.currentTimeMillis());
@@ -144,7 +144,7 @@ public class SqlitePetRepository implements PetRepository {
     @Override
     public synchronized void clearActivePet(UUID ownerId) {
         String sql = "DELETE FROM player_active_pets WHERE owner_id = ?;";
-        try (PreparedStatement ps = dbManager.getConnection().prepareStatement(sql)) {
+        try (PreparedStatement ps = connectionProvider.getConnection().prepareStatement(sql)) {
             ps.setString(1, ownerId.toString());
             ps.executeUpdate();
         } catch (SQLException e) {
@@ -155,7 +155,7 @@ public class SqlitePetRepository implements PetRepository {
 
     @Override
     public synchronized void switchActivePet(UUID ownerId, UUID previousPetId, UUID newPetId) {
-        Connection conn = dbManager.getConnection();
+        Connection conn = connectionProvider.getConnection();
         try {
             conn.setAutoCommit(false);
 
@@ -196,7 +196,7 @@ public class SqlitePetRepository implements PetRepository {
 
     @Override
     public synchronized void clearActivePetAndSetAvailable(UUID ownerId, UUID petId) {
-        Connection conn = dbManager.getConnection();
+        Connection conn = connectionProvider.getConnection();
         try {
             conn.setAutoCommit(false);
 
@@ -229,7 +229,7 @@ public class SqlitePetRepository implements PetRepository {
 
     @Override
     public synchronized void restoreActivePet(UUID ownerId, UUID previousPetId, UUID failedPetId) {
-        Connection conn = dbManager.getConnection();
+        Connection conn = connectionProvider.getConnection();
         try {
             conn.setAutoCommit(false);
 

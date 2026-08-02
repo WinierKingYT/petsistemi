@@ -51,7 +51,7 @@ public class PetRuntimeCoordinator {
 
     /**
      * Atomically spawns pet entity, initializes behavior, updates DB via single transaction, and registers runtime state.
-     * Performs complete rollback and restores previous selection if any step fails.
+     * Performs complete rollback (restoring previous selection and physical entity) if any step fails.
      */
     public synchronized Entity spawnAndRegister(Player owner, PetInstance pet, PetDefinition definition) throws Exception {
         UUID ownerId = owner.getUniqueId();
@@ -92,12 +92,33 @@ public class PetRuntimeCoordinator {
             if (databaseSwitched) {
                 try {
                     repository.restoreActivePet(ownerId, previousPetId, pet.petId());
+                    // Restore previous physical runtime entity if owner is online and had a previous pet
+                    if (previousPetId != null && owner.isOnline()) {
+                        restorePreviousRuntimePet(owner, previousPetId);
+                    }
                 } catch (Exception ex) {
                     plugin.getLogger().log(Level.SEVERE, "Rollback restore hatası!", ex);
                 }
             }
             throw e;
         }
+    }
+
+    private void restorePreviousRuntimePet(Player owner, UUID previousPetId) {
+        repository.findById(previousPetId).ifPresent(previousPet -> {
+            definitionRegistry.find(previousPet.definitionId()).ifPresent(previousDef -> {
+                try {
+                    Entity restoredEntity = entityController.spawn(previousPet, previousDef, owner);
+                    ActivePet restoredActive = new ActivePet(previousPet.petId(), owner.getUniqueId(), restoredEntity.getUniqueId(), restoredEntity, PetRuntimeState.ACTIVE);
+                    if (restoredEntity instanceof LivingEntity living) {
+                        behaviorController.initialize(restoredActive, living, owner);
+                    }
+                    activeRegistry.register(restoredActive);
+                } catch (Exception e) {
+                    plugin.getLogger().warning("Eski pet fiziki varlığı geri yüklenirken hata: " + e.getMessage());
+                }
+            });
+        });
     }
 
     /**
@@ -111,7 +132,6 @@ public class PetRuntimeCoordinator {
             petId = repository.findActiveByOwner(ownerId).map(PetInstance::petId).orElse(null);
         }
 
-        // Despawn physical entity and behavior
         despawnActiveEntity(ownerId);
 
         switch (cause) {
@@ -125,19 +145,7 @@ public class PetRuntimeCoordinator {
                 Player onlineOwner = Bukkit.getPlayer(ownerId);
                 if (onlineOwner != null && onlineOwner.isOnline() && petId != null) {
                     final UUID finalPetId = petId;
-                    Bukkit.getScheduler().runTask(plugin, () -> {
-                        if (onlineOwner.isOnline() && activeRegistry.getByOwner(ownerId).isEmpty()) {
-                            repository.findById(finalPetId).ifPresent(p -> {
-                                definitionRegistry.find(p.definitionId()).ifPresent(def -> {
-                                    try {
-                                        spawnAndRegister(onlineOwner, p, def);
-                                    } catch (Exception e) {
-                                        plugin.getLogger().warning("Chunk unload sonrası pet yeniden çağırma hatası: " + e.getMessage());
-                                    }
-                                });
-                            });
-                        }
-                    });
+                    schedulePendingRestoreWithRetry(onlineOwner, finalPetId, 1);
                 }
                 break;
 
@@ -155,23 +163,36 @@ public class PetRuntimeCoordinator {
         }
     }
 
-    /**
-     * Despawns entity on player quit without clearing the selected pet ID in DB.
-     */
+    private void schedulePendingRestoreWithRetry(Player owner, UUID petId, int attempt) {
+        if (attempt > 3 || owner == null || !owner.isOnline()) return;
+
+        long delayTicks = attempt == 1 ? 20L : (attempt == 2 ? 60L : 200L); // Backoff: 1s, 3s, 10s
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (owner.isOnline() && activeRegistry.getByOwner(owner.getUniqueId()).isEmpty()) {
+                Optional<PetInstance> selected = repository.findActiveByOwner(owner.getUniqueId());
+                if (selected.isPresent() && selected.get().petId().equals(petId)) {
+                    PetInstance p = selected.get();
+                    definitionRegistry.find(p.definitionId()).ifPresent(def -> {
+                        try {
+                            spawnAndRegister(owner, p, def);
+                        } catch (Exception e) {
+                            plugin.getLogger().warning("Pet restore denemesi (" + attempt + "/3) başarısız: " + e.getMessage());
+                            schedulePendingRestoreWithRetry(owner, petId, attempt + 1);
+                        }
+                    });
+                }
+            }
+        }, delayTicks);
+    }
+
     public synchronized void despawnOnQuit(UUID ownerId) {
         handleRemoval(ownerId, PetRemovalCause.PLAYER_QUIT);
     }
 
-    /**
-     * Complete dismiss: removes entity AND clears active pet selection from DB.
-     */
     public synchronized void dismissAndClear(UUID ownerId) {
         handleRemoval(ownerId, PetRemovalCause.PLAYER_DISMISS);
     }
 
-    /**
-     * Helper to despawn the physical entity and cleanup behavior/registry.
-     */
     public synchronized void despawnActiveEntity(UUID ownerId) {
         Optional<ActivePet> activeOpt = activeRegistry.getByOwner(ownerId);
         if (activeOpt.isPresent()) {
@@ -185,9 +206,6 @@ public class PetRuntimeCoordinator {
         }
     }
 
-    /**
-     * Non-cancellable, guaranteed system cleanup during plugin shutdown.
-     */
     public synchronized void forceCleanupAll() {
         List<ActivePet> activeList = new ArrayList<>(activeRegistry.getAllActive());
         for (ActivePet active : activeList) {
@@ -206,9 +224,6 @@ public class PetRuntimeCoordinator {
         activeRegistry.clear();
     }
 
-    /**
-     * Periodic Watchdog Task: repairs orphaned or destroyed entities.
-     */
     public synchronized void runWatchdogCheck() {
         List<ActivePet> activeList = new ArrayList<>(activeRegistry.getAllActive());
         for (ActivePet active : activeList) {

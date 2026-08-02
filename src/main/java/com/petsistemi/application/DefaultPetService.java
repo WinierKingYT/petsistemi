@@ -73,7 +73,7 @@ public class DefaultPetService implements PetService {
     @Override
     @Deprecated
     public Optional<PetSnapshot> getActivePet(UUID ownerId) {
-        return getSpawnedPet(ownerId);
+        return getSelectedPet(ownerId);
     }
 
     @Override
