@@ -16,28 +16,28 @@ public class DatabaseManager {
 
     public DatabaseManager(JavaPlugin plugin) {
         this.plugin = plugin;
-        this.dbFile = new File(plugin.getDataFolder(), "database.db");
+        this.dbFile = plugin != null ? new File(plugin.getDataFolder(), "database.db") : null;
     }
 
     public synchronized void initialize() throws Exception {
-        if (!plugin.getDataFolder().exists()) {
+        if (plugin != null && !plugin.getDataFolder().exists()) {
             plugin.getDataFolder().mkdirs();
         }
 
         Class.forName("org.sqlite.JDBC");
-        connection = DriverManager.getConnection("jdbc:sqlite:" + dbFile.getAbsolutePath());
-        
-        try (Statement stmt = connection.createStatement()) {
-            stmt.execute("PRAGMA foreign_keys = ON;");
+        if (dbFile != null) {
+            connection = DriverManager.getConnection("jdbc:sqlite:" + dbFile.getAbsolutePath());
+            try (Statement stmt = connection.createStatement()) {
+                stmt.execute("PRAGMA foreign_keys = ON;");
+            }
+            createTables();
+            plugin.getLogger().info("SQLite Veritabanı başarıyla bağlandı ve şemalar doğrulandı.");
         }
-
-        createTables();
-        plugin.getLogger().info("SQLite Veritabanı başarıyla bağlandı ve şemalar doğrulandı.");
     }
 
     public synchronized Connection getConnection() {
         try {
-            if (connection == null || connection.isClosed()) {
+            if ((connection == null || connection.isClosed()) && dbFile != null) {
                 connection = DriverManager.getConnection("jdbc:sqlite:" + dbFile.getAbsolutePath());
                 try (Statement stmt = connection.createStatement()) {
                     stmt.execute("PRAGMA foreign_keys = ON;");
@@ -55,19 +55,19 @@ public class DatabaseManager {
                 connection.close();
             }
         } catch (SQLException e) {
-            plugin.getLogger().warning("SQLite bağlantısı kapatılırken uyarı: " + e.getMessage());
+            if (plugin != null) {
+                plugin.getLogger().warning("SQLite bağlantısı kapatılırken uyarı: " + e.getMessage());
+            }
         }
     }
 
     private void createTables() throws SQLException {
         try (Statement stmt = connection.createStatement()) {
-            // Migrations Table
             stmt.execute("CREATE TABLE IF NOT EXISTS schema_migrations (" +
                     "version INTEGER PRIMARY KEY, " +
                     "applied_at INTEGER NOT NULL" +
                     ");");
 
-            // Pets Table
             stmt.execute("CREATE TABLE IF NOT EXISTS pets (" +
                     "pet_id TEXT PRIMARY KEY, " +
                     "owner_id TEXT NOT NULL, " +
@@ -80,11 +80,9 @@ public class DatabaseManager {
                     "updated_at INTEGER NOT NULL" +
                     ");");
 
-            // Indexes
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_pets_owner ON pets(owner_id);");
             stmt.execute("CREATE INDEX IF NOT EXISTS idx_pets_owner_definition ON pets(owner_id, definition_id);");
 
-            // Active Pets Table
             stmt.execute("CREATE TABLE IF NOT EXISTS player_active_pets (" +
                     "owner_id TEXT PRIMARY KEY, " +
                     "pet_id TEXT NOT NULL, " +

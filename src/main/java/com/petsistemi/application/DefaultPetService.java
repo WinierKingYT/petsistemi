@@ -57,8 +57,23 @@ public class DefaultPetService implements PetService {
     }
 
     @Override
-    public Optional<PetSnapshot> getActivePet(UUID ownerId) {
+    public Optional<PetSnapshot> getSelectedPet(UUID ownerId) {
         return repository.findActiveByOwner(ownerId).map(this::mapToSnapshot);
+    }
+
+    @Override
+    public Optional<PetSnapshot> getSpawnedPet(UUID ownerId) {
+        Optional<ActivePet> activeOpt = activePetRegistry.getByOwner(ownerId);
+        if (activeOpt.isPresent()) {
+            return repository.findById(activeOpt.get().getPetId()).map(this::mapToSnapshot);
+        }
+        return Optional.empty();
+    }
+
+    @Override
+    @Deprecated
+    public Optional<PetSnapshot> getActivePet(UUID ownerId) {
+        return getSpawnedPet(ownerId);
     }
 
     @Override
@@ -94,7 +109,6 @@ public class DefaultPetService implements PetService {
 
         PetSnapshot snapshot = mapToSnapshot(pet);
 
-        // Call event
         PetGiveEvent event = new PetGiveEvent(ownerId, snapshot);
         Bukkit.getPluginManager().callEvent(event);
 
@@ -138,7 +152,7 @@ public class DefaultPetService implements PetService {
 
         PetDefinition definition = defOpt.get();
 
-        // Atomic spawn & register via coordinator
+        // Atomic spawn & register via coordinator with rollback protection
         try {
             Entity spawned = coordinator.spawnAndRegister(owner, pet, definition);
 
@@ -154,12 +168,12 @@ public class DefaultPetService implements PetService {
 
     @Override
     public PetDismissResult dismiss(Player owner) {
-        Optional<PetSnapshot> activeOpt = getActivePet(owner.getUniqueId());
-        if (activeOpt.isEmpty()) {
+        Optional<PetSnapshot> selectedOpt = getSelectedPet(owner.getUniqueId());
+        if (selectedOpt.isEmpty()) {
             return new PetDismissResult(false, "Çağırılmış aktif bir petiniz bulunmuyor.");
         }
 
-        PetSnapshot pet = activeOpt.get();
+        PetSnapshot pet = selectedOpt.get();
 
         // PreDismiss Event
         PetPreDismissEvent preEvent = new PetPreDismissEvent(owner, pet);
@@ -189,7 +203,6 @@ public class DefaultPetService implements PetService {
             return new PetRenameResult(false, "Bu pet size ait değil.");
         }
 
-        // Validate name
         String validatedName = validateName(newName);
         if (validatedName == null) {
             return new PetRenameResult(false, "Geçersiz isim! (İsim 2-16 karakter olmalı ve izin verilmeyen renk/biçimlendirme içermemeli).");
@@ -197,7 +210,6 @@ public class DefaultPetService implements PetService {
 
         PetSnapshot snapshot = mapToSnapshot(pet);
 
-        // Event
         PetRenameEvent event = new PetRenameEvent(owner, snapshot, pet.customName(), validatedName);
         Bukkit.getPluginManager().callEvent(event);
         if (event.isCancelled()) {

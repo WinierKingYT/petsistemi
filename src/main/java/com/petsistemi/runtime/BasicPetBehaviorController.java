@@ -64,8 +64,11 @@ public class BasicPetBehaviorController implements PetBehaviorController {
                 lastTargets.remove(petId);
             } else if (distanceSquared > START_FOLLOW_DISTANCE_SQUARED) {
                 Location lastTarget = lastTargets.get(petId);
-                // Re-calculate path only if owner moved more than 1.5 blocks from last target location in same world
-                if (lastTarget == null || !lastTarget.getWorld().equals(ownerLoc.getWorld()) || lastTarget.distanceSquared(ownerLoc) > 2.25) {
+                boolean hasNoPath = !mob.getPathfinder().hasPath();
+                boolean targetMoved = lastTarget == null || !lastTarget.getWorld().equals(ownerLoc.getWorld()) || lastTarget.distanceSquared(ownerLoc) > 2.25;
+
+                // Re-calculate path if path is missing or owner moved significantly
+                if (hasNoPath || targetMoved) {
                     mob.getPathfinder().moveTo(ownerLoc, 1.3);
                     lastTargets.put(petId, ownerLoc.clone());
                 }

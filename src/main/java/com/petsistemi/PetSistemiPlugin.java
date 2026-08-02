@@ -113,6 +113,14 @@ public class PetSistemiPlugin extends JavaPlugin {
             }
         }, 100L, 100L);
 
+        // 11. Restore pets for online players (e.g. reload or late plugin load)
+        Bukkit.getScheduler().runTaskLater(this, () -> {
+            for (Player player : Bukkit.getOnlinePlayers()) {
+                petService.getSelectedPet(player.getUniqueId())
+                        .ifPresent(snapshot -> petService.summon(player, snapshot.petId()));
+            }
+        }, 20L);
+
         getLogger().info("PetSistemiPlugin (Paper 1.20.4, Java 17) başarıyla aktif edildi!");
     }
 

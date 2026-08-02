@@ -24,7 +24,7 @@ public class SqlitePetRepository implements PetRepository {
     }
 
     @Override
-    public Optional<PetInstance> findById(UUID petId) {
+    public synchronized Optional<PetInstance> findById(UUID petId) {
         String sql = "SELECT * FROM pets WHERE pet_id = ?;";
         try (PreparedStatement ps = dbManager.getConnection().prepareStatement(sql)) {
             ps.setString(1, petId.toString());
@@ -41,7 +41,7 @@ public class SqlitePetRepository implements PetRepository {
     }
 
     @Override
-    public List<PetInstance> findByOwner(UUID ownerId) {
+    public synchronized List<PetInstance> findByOwner(UUID ownerId) {
         List<PetInstance> list = new ArrayList<>();
         String sql = "SELECT * FROM pets WHERE owner_id = ?;";
         try (PreparedStatement ps = dbManager.getConnection().prepareStatement(sql)) {
@@ -59,7 +59,7 @@ public class SqlitePetRepository implements PetRepository {
     }
 
     @Override
-    public Optional<PetInstance> findActiveByOwner(UUID ownerId) {
+    public synchronized Optional<PetInstance> findActiveByOwner(UUID ownerId) {
         String sql = "SELECT p.* FROM pets p JOIN player_active_pets a ON p.pet_id = a.pet_id WHERE a.owner_id = ?;";
         try (PreparedStatement ps = dbManager.getConnection().prepareStatement(sql)) {
             ps.setString(1, ownerId.toString());
@@ -76,7 +76,7 @@ public class SqlitePetRepository implements PetRepository {
     }
 
     @Override
-    public void insert(PetInstance pet) {
+    public synchronized void insert(PetInstance pet) {
         String sql = "INSERT INTO pets (pet_id, owner_id, definition_id, custom_name, level, experience, state, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);";
         try (PreparedStatement ps = dbManager.getConnection().prepareStatement(sql)) {
             ps.setString(1, pet.petId().toString());
@@ -96,7 +96,7 @@ public class SqlitePetRepository implements PetRepository {
     }
 
     @Override
-    public void update(PetInstance pet) {
+    public synchronized void update(PetInstance pet) {
         String sql = "UPDATE pets SET custom_name = ?, level = ?, experience = ?, state = ?, updated_at = ? WHERE pet_id = ?;";
         try (PreparedStatement ps = dbManager.getConnection().prepareStatement(sql)) {
             ps.setString(1, pet.customName());
@@ -116,7 +116,7 @@ public class SqlitePetRepository implements PetRepository {
     }
 
     @Override
-    public void delete(UUID petId) {
+    public synchronized void delete(UUID petId) {
         String sql = "DELETE FROM pets WHERE pet_id = ?;";
         try (PreparedStatement ps = dbManager.getConnection().prepareStatement(sql)) {
             ps.setString(1, petId.toString());
@@ -128,7 +128,7 @@ public class SqlitePetRepository implements PetRepository {
     }
 
     @Override
-    public void setActivePet(UUID ownerId, UUID petId) {
+    public synchronized void setActivePet(UUID ownerId, UUID petId) {
         String sql = "INSERT OR REPLACE INTO player_active_pets (owner_id, pet_id, updated_at) VALUES (?, ?, ?);";
         try (PreparedStatement ps = dbManager.getConnection().prepareStatement(sql)) {
             ps.setString(1, ownerId.toString());
@@ -142,7 +142,7 @@ public class SqlitePetRepository implements PetRepository {
     }
 
     @Override
-    public void clearActivePet(UUID ownerId) {
+    public synchronized void clearActivePet(UUID ownerId) {
         String sql = "DELETE FROM player_active_pets WHERE owner_id = ?;";
         try (PreparedStatement ps = dbManager.getConnection().prepareStatement(sql)) {
             ps.setString(1, ownerId.toString());
@@ -159,7 +159,6 @@ public class SqlitePetRepository implements PetRepository {
         try {
             conn.setAutoCommit(false);
 
-            // 1. Reset previous pet state if present
             if (previousPetId != null) {
                 try (PreparedStatement ps = conn.prepareStatement("UPDATE pets SET state = ? WHERE pet_id = ?;")) {
                     ps.setString(1, PetStorageState.AVAILABLE.name());
@@ -168,7 +167,6 @@ public class SqlitePetRepository implements PetRepository {
                 }
             }
 
-            // 2. Insert or replace player_active_pets selection
             try (PreparedStatement ps = conn.prepareStatement("INSERT OR REPLACE INTO player_active_pets (owner_id, pet_id, updated_at) VALUES (?, ?, ?);")) {
                 ps.setString(1, ownerId.toString());
                 ps.setString(2, newPetId.toString());
@@ -176,7 +174,6 @@ public class SqlitePetRepository implements PetRepository {
                 ps.executeUpdate();
             }
 
-            // 3. Mark new pet as ACTIVE
             try (PreparedStatement ps = conn.prepareStatement("UPDATE pets SET state = ? WHERE pet_id = ?;")) {
                 ps.setString(1, PetStorageState.ACTIVE.name());
                 ps.setString(2, newPetId.toString());
@@ -203,13 +200,11 @@ public class SqlitePetRepository implements PetRepository {
         try {
             conn.setAutoCommit(false);
 
-            // 1. Delete player_active_pets row
             try (PreparedStatement ps = conn.prepareStatement("DELETE FROM player_active_pets WHERE owner_id = ?;")) {
                 ps.setString(1, ownerId.toString());
                 ps.executeUpdate();
             }
 
-            // 2. Set pet state to AVAILABLE if petId is provided
             if (petId != null) {
                 try (PreparedStatement ps = conn.prepareStatement("UPDATE pets SET state = ? WHERE pet_id = ?;")) {
                     ps.setString(1, PetStorageState.AVAILABLE.name());
@@ -225,6 +220,54 @@ public class SqlitePetRepository implements PetRepository {
             } catch (SQLException ignored) {}
             logger.severe("clearActivePetAndSetAvailable transaction hatası: " + e.getMessage());
             throw new PetPersistenceException("Aktif pet temizleme transaction işlemi başarısız.", e);
+        } finally {
+            try {
+                conn.setAutoCommit(true);
+            } catch (SQLException ignored) {}
+        }
+    }
+
+    @Override
+    public synchronized void restoreActivePet(UUID ownerId, UUID previousPetId, UUID failedPetId) {
+        Connection conn = dbManager.getConnection();
+        try {
+            conn.setAutoCommit(false);
+
+            if (failedPetId != null) {
+                try (PreparedStatement ps = conn.prepareStatement("UPDATE pets SET state = ? WHERE pet_id = ?;")) {
+                    ps.setString(1, PetStorageState.AVAILABLE.name());
+                    ps.setString(2, failedPetId.toString());
+                    ps.executeUpdate();
+                }
+            }
+
+            if (previousPetId != null) {
+                try (PreparedStatement ps = conn.prepareStatement("INSERT OR REPLACE INTO player_active_pets (owner_id, pet_id, updated_at) VALUES (?, ?, ?);")) {
+                    ps.setString(1, ownerId.toString());
+                    ps.setString(2, previousPetId.toString());
+                    ps.setLong(3, System.currentTimeMillis());
+                    ps.executeUpdate();
+                }
+
+                try (PreparedStatement ps = conn.prepareStatement("UPDATE pets SET state = ? WHERE pet_id = ?;")) {
+                    ps.setString(1, PetStorageState.ACTIVE.name());
+                    ps.setString(2, previousPetId.toString());
+                    ps.executeUpdate();
+                }
+            } else {
+                try (PreparedStatement ps = conn.prepareStatement("DELETE FROM player_active_pets WHERE owner_id = ?;")) {
+                    ps.setString(1, ownerId.toString());
+                    ps.executeUpdate();
+                }
+            }
+
+            conn.commit();
+        } catch (Exception e) {
+            try {
+                conn.rollback();
+            } catch (SQLException ignored) {}
+            logger.severe("restoreActivePet transaction hatası: " + e.getMessage());
+            throw new PetPersistenceException("Eski peti geri yükleme transaction işlemi başarısız.", e);
         } finally {
             try {
                 conn.setAutoCommit(true);

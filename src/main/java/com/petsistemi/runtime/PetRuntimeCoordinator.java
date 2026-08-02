@@ -4,7 +4,6 @@ import com.petsistemi.definition.PetDefinitionRegistry;
 import com.petsistemi.domain.PetDefinition;
 import com.petsistemi.domain.PetInstance;
 import com.petsistemi.domain.PetRuntimeState;
-import com.petsistemi.domain.PetStorageState;
 import com.petsistemi.persistence.PetRepository;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Entity;
@@ -52,19 +51,18 @@ public class PetRuntimeCoordinator {
 
     /**
      * Atomically spawns pet entity, initializes behavior, updates DB via single transaction, and registers runtime state.
-     * Performs complete rollback if any step fails.
+     * Performs complete rollback and restores previous selection if any step fails.
      */
     public synchronized Entity spawnAndRegister(Player owner, PetInstance pet, PetDefinition definition) throws Exception {
         UUID ownerId = owner.getUniqueId();
         
-        // Find current active pet ID if any to switch state in DB transaction
         Optional<PetInstance> currentActiveDb = repository.findActiveByOwner(ownerId);
         UUID previousPetId = currentActiveDb.map(PetInstance::petId).orElse(null);
 
-        // Despawn existing runtime entity if present
         despawnActiveEntity(ownerId);
 
         Entity spawnedEntity = null;
+        boolean databaseSwitched = false;
         try {
             // 1. Spawn entity via controller
             spawnedEntity = entityController.spawn(pet, definition, owner);
@@ -75,8 +73,9 @@ public class PetRuntimeCoordinator {
                 behaviorController.initialize(activePet, living, owner);
             }
 
-            // 3. Single Transaction DB Switch (Resets old pet to AVAILABLE, updates active selection, sets new pet to ACTIVE)
+            // 3. Single Transaction DB Switch
             repository.switchActivePet(ownerId, previousPetId, pet.petId());
+            databaseSwitched = true;
 
             // 4. Register in active runtime registry
             activeRegistry.register(activePet);
@@ -84,16 +83,19 @@ public class PetRuntimeCoordinator {
             return spawnedEntity;
 
         } catch (Exception e) {
-            // ROLLBACK if database or initialization failed
             plugin.getLogger().log(Level.SEVERE, "Pet spawn işlemi sırasında hata oluştu, rollback yapılıyor: " + pet.petId(), e);
             if (spawnedEntity != null && spawnedEntity.isValid()) {
                 entityController.remove(spawnedEntity);
             }
             activeRegistry.unregister(ownerId);
-            try {
-                repository.clearActivePetAndSetAvailable(ownerId, pet.petId());
-            } catch (Exception ignored) {}
 
+            if (databaseSwitched) {
+                try {
+                    repository.restoreActivePet(ownerId, previousPetId, pet.petId());
+                } catch (Exception ex) {
+                    plugin.getLogger().log(Level.SEVERE, "Rollback restore hatası!", ex);
+                }
+            }
             throw e;
         }
     }
@@ -106,19 +108,37 @@ public class PetRuntimeCoordinator {
         UUID petId = activeOpt.map(ActivePet::getPetId).orElse(null);
 
         if (petId == null) {
-            // Try fetching from DB selection if runtime entity was absent
             petId = repository.findActiveByOwner(ownerId).map(PetInstance::petId).orElse(null);
         }
 
         // Despawn physical entity and behavior
         despawnActiveEntity(ownerId);
 
-        // Determine if selection in DB should be preserved or cleared
         switch (cause) {
             case PLAYER_QUIT:
-            case CHUNK_UNLOAD:
             case WORLD_CHANGE:
-                // Preserve selection in player_active_pets table across sessions/unloads
+                // Preserve selection in player_active_pets table across sessions/worlds
+                break;
+
+            case CHUNK_UNLOAD:
+                // Preserve selection, and if owner is online, schedule next-tick re-summoning near owner
+                Player onlineOwner = Bukkit.getPlayer(ownerId);
+                if (onlineOwner != null && onlineOwner.isOnline() && petId != null) {
+                    final UUID finalPetId = petId;
+                    Bukkit.getScheduler().runTask(plugin, () -> {
+                        if (onlineOwner.isOnline() && activeRegistry.getByOwner(ownerId).isEmpty()) {
+                            repository.findById(finalPetId).ifPresent(p -> {
+                                definitionRegistry.find(p.definitionId()).ifPresent(def -> {
+                                    try {
+                                        spawnAndRegister(onlineOwner, p, def);
+                                    } catch (Exception e) {
+                                        plugin.getLogger().warning("Chunk unload sonrası pet yeniden çağırma hatası: " + e.getMessage());
+                                    }
+                                });
+                            });
+                        }
+                    });
+                }
                 break;
 
             case PLAYER_DISMISS:
@@ -196,13 +216,11 @@ public class PetRuntimeCoordinator {
             Player owner = Bukkit.getPlayer(ownerId);
             Entity entity = active.getSpawnedEntity();
 
-            // Case 1: Owner logged off
             if (owner == null || !owner.isOnline()) {
                 handleRemoval(ownerId, PetRemovalCause.PLAYER_QUIT);
                 continue;
             }
 
-            // Case 2: Entity destroyed externally or invalid
             if (entity == null || !entity.isValid() || entity.isDead()) {
                 plugin.getLogger().warning("Watchdog: Pet entitysi kaybolmuş tespit edildi (" + active.getPetId() + "). Runtime temizleniyor...");
                 handleRemoval(ownerId, PetRemovalCause.EXTERNAL_REMOVAL);
