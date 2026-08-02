@@ -18,6 +18,9 @@ repositories {
 dependencies {
     compileOnly("io.papermc.paper:paper-api:1.20.4-R0.1-SNAPSHOT")
     implementation("org.xerial:sqlite-jdbc:3.45.1.0")
+    testImplementation("io.papermc.paper:paper-api:1.20.4-R0.1-SNAPSHOT")
+    testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
 tasks.withType<JavaCompile>().configureEach {
@@ -33,4 +36,8 @@ tasks.jar {
         exclude("META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA", "META-INF/MANIFEST.MF")
     }
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+tasks.test {
+    useJUnitPlatform()
 }

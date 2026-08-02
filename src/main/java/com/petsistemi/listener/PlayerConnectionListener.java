@@ -41,6 +41,6 @@ public class PlayerConnectionListener implements Listener {
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
         // Despawn physical entity & active runtime registry, preserving selected pet in DB
-        coordinator.despawnOnQuit(event.getPlayer());
+        coordinator.despawnOnQuit(event.getPlayer().getUniqueId());
     }
 }

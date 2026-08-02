@@ -1,6 +1,5 @@
 package com.petsistemi.runtime;
 
-import com.petsistemi.api.PetSnapshot;
 import com.petsistemi.definition.PetDefinitionRegistry;
 import com.petsistemi.domain.PetDefinition;
 import com.petsistemi.domain.PetInstance;
@@ -20,6 +19,16 @@ import java.util.UUID;
 import java.util.logging.Level;
 
 public class PetRuntimeCoordinator {
+
+    public enum PetRemovalCause {
+        PLAYER_QUIT,
+        PLAYER_DISMISS,
+        CHUNK_UNLOAD,
+        ENTITY_DEATH,
+        EXTERNAL_REMOVAL,
+        PLUGIN_DISABLE,
+        WORLD_CHANGE
+    }
 
     private final JavaPlugin plugin;
     private final PetRepository repository;
@@ -42,12 +51,18 @@ public class PetRuntimeCoordinator {
     }
 
     /**
-     * Atomically spawns pet entity, initializes behavior, updates DB, and registers runtime state.
+     * Atomically spawns pet entity, initializes behavior, updates DB via single transaction, and registers runtime state.
      * Performs complete rollback if any step fails.
      */
     public synchronized Entity spawnAndRegister(Player owner, PetInstance pet, PetDefinition definition) throws Exception {
+        UUID ownerId = owner.getUniqueId();
+        
+        // Find current active pet ID if any to switch state in DB transaction
+        Optional<PetInstance> currentActiveDb = repository.findActiveByOwner(ownerId);
+        UUID previousPetId = currentActiveDb.map(PetInstance::petId).orElse(null);
+
         // Despawn existing runtime entity if present
-        despawnActiveEntity(owner.getUniqueId());
+        despawnActiveEntity(ownerId);
 
         Entity spawnedEntity = null;
         try {
@@ -55,16 +70,15 @@ public class PetRuntimeCoordinator {
             spawnedEntity = entityController.spawn(pet, definition, owner);
 
             // 2. Initialize behavior controller
+            ActivePet activePet = new ActivePet(pet.petId(), ownerId, spawnedEntity.getUniqueId(), spawnedEntity, PetRuntimeState.ACTIVE);
             if (spawnedEntity instanceof LivingEntity living) {
-                behaviorController.initialize(new ActivePet(pet.petId(), owner.getUniqueId(), spawnedEntity.getUniqueId(), spawnedEntity, PetRuntimeState.ACTIVE), living, owner);
+                behaviorController.initialize(activePet, living, owner);
             }
 
-            // 3. Database updates (atomic transaction logic)
-            repository.setActivePet(owner.getUniqueId(), pet.petId());
-            repository.update(pet.withStorageState(PetStorageState.ACTIVE));
+            // 3. Single Transaction DB Switch (Resets old pet to AVAILABLE, updates active selection, sets new pet to ACTIVE)
+            repository.switchActivePet(ownerId, previousPetId, pet.petId());
 
             // 4. Register in active runtime registry
-            ActivePet activePet = new ActivePet(pet.petId(), owner.getUniqueId(), spawnedEntity.getUniqueId(), spawnedEntity, PetRuntimeState.ACTIVE);
             activeRegistry.register(activePet);
 
             return spawnedEntity;
@@ -75,10 +89,9 @@ public class PetRuntimeCoordinator {
             if (spawnedEntity != null && spawnedEntity.isValid()) {
                 entityController.remove(spawnedEntity);
             }
-            activeRegistry.unregister(owner.getUniqueId());
+            activeRegistry.unregister(ownerId);
             try {
-                repository.update(pet.withStorageState(PetStorageState.AVAILABLE));
-                repository.clearActivePet(owner.getUniqueId());
+                repository.clearActivePetAndSetAvailable(ownerId, pet.petId());
             } catch (Exception ignored) {}
 
             throw e;
@@ -86,29 +99,54 @@ public class PetRuntimeCoordinator {
     }
 
     /**
-     * Despawns entity on player quit without clearing the selected pet ID in DB,
-     * so that the selected pet is restored when the player logs back in.
+     * Centralized removal handler for all lifecycle events.
      */
-    public synchronized void despawnOnQuit(Player player) {
-        despawnActiveEntity(player.getUniqueId());
+    public synchronized void handleRemoval(UUID ownerId, PetRemovalCause cause) {
+        Optional<ActivePet> activeOpt = activeRegistry.getByOwner(ownerId);
+        UUID petId = activeOpt.map(ActivePet::getPetId).orElse(null);
+
+        if (petId == null) {
+            // Try fetching from DB selection if runtime entity was absent
+            petId = repository.findActiveByOwner(ownerId).map(PetInstance::petId).orElse(null);
+        }
+
+        // Despawn physical entity and behavior
+        despawnActiveEntity(ownerId);
+
+        // Determine if selection in DB should be preserved or cleared
+        switch (cause) {
+            case PLAYER_QUIT:
+            case CHUNK_UNLOAD:
+            case WORLD_CHANGE:
+                // Preserve selection in player_active_pets table across sessions/unloads
+                break;
+
+            case PLAYER_DISMISS:
+            case ENTITY_DEATH:
+            case EXTERNAL_REMOVAL:
+            case PLUGIN_DISABLE:
+                // Clear selection and set pet state to AVAILABLE
+                try {
+                    repository.clearActivePetAndSetAvailable(ownerId, petId);
+                } catch (Exception e) {
+                    plugin.getLogger().warning("DB temizleme hatası (" + cause + "): " + e.getMessage());
+                }
+                break;
+        }
+    }
+
+    /**
+     * Despawns entity on player quit without clearing the selected pet ID in DB.
+     */
+    public synchronized void despawnOnQuit(UUID ownerId) {
+        handleRemoval(ownerId, PetRemovalCause.PLAYER_QUIT);
     }
 
     /**
      * Complete dismiss: removes entity AND clears active pet selection from DB.
      */
-    public synchronized void dismissAndClear(Player owner) {
-        Optional<ActivePet> activeOpt = activeRegistry.getByOwner(owner.getUniqueId());
-        if (activeOpt.isPresent()) {
-            ActivePet active = activeOpt.get();
-            despawnActiveEntity(owner.getUniqueId());
-            repository.clearActivePet(owner.getUniqueId());
-            repository.findById(active.getPetId()).ifPresent(pet ->
-                repository.update(pet.withStorageState(PetStorageState.AVAILABLE))
-            );
-        } else {
-            // Clear DB record just in case
-            repository.clearActivePet(owner.getUniqueId());
-        }
+    public synchronized void dismissAndClear(UUID ownerId) {
+        handleRemoval(ownerId, PetRemovalCause.PLAYER_DISMISS);
     }
 
     /**
@@ -141,9 +179,11 @@ public class PetRuntimeCoordinator {
                 entityController.remove(entity);
             } catch (Exception e) {
                 plugin.getLogger().warning("Shutdown sırasında entity temizleme uyarısı: " + e.getMessage());
+            } finally {
+                activeRegistry.unregister(active.getOwnerId());
             }
         }
-        activeRegistry.getAllActive().clear();
+        activeRegistry.clear();
     }
 
     /**
@@ -152,22 +192,20 @@ public class PetRuntimeCoordinator {
     public synchronized void runWatchdogCheck() {
         List<ActivePet> activeList = new ArrayList<>(activeRegistry.getAllActive());
         for (ActivePet active : activeList) {
-            Player owner = Bukkit.getPlayer(active.getOwnerId());
+            UUID ownerId = active.getOwnerId();
+            Player owner = Bukkit.getPlayer(ownerId);
             Entity entity = active.getSpawnedEntity();
 
             // Case 1: Owner logged off
             if (owner == null || !owner.isOnline()) {
-                despawnOnQuit(Bukkit.getOfflinePlayer(active.getOwnerId()).getPlayer() != null ? owner : owner);
+                handleRemoval(ownerId, PetRemovalCause.PLAYER_QUIT);
                 continue;
             }
 
             // Case 2: Entity destroyed externally or invalid
             if (entity == null || !entity.isValid() || entity.isDead()) {
                 plugin.getLogger().warning("Watchdog: Pet entitysi kaybolmuş tespit edildi (" + active.getPetId() + "). Runtime temizleniyor...");
-                despawnActiveEntity(active.getOwnerId());
-                repository.findById(active.getPetId()).ifPresent(p ->
-                    repository.update(p.withStorageState(PetStorageState.AVAILABLE))
-                );
+                handleRemoval(ownerId, PetRemovalCause.EXTERNAL_REMOVAL);
             }
         }
     }

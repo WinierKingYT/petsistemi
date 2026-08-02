@@ -22,4 +22,8 @@ public interface PetRepository {
     void setActivePet(UUID ownerId, UUID petId);
 
     void clearActivePet(UUID ownerId);
+
+    void switchActivePet(UUID ownerId, UUID previousPetId, UUID newPetId);
+
+    void clearActivePetAndSetAvailable(UUID ownerId, UUID petId);
 }

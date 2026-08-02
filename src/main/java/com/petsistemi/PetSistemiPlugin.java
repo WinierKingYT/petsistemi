@@ -81,7 +81,7 @@ public class PetSistemiPlugin extends JavaPlugin {
 
         // 7. Listeners Registration
         getServer().getPluginManager().registerEvents(new PlayerConnectionListener(this, petService, coordinator), this);
-        getServer().getPluginManager().registerEvents(new PetEntityListener(activeRegistry, repository), this);
+        getServer().getPluginManager().registerEvents(new PetEntityListener(activeRegistry, coordinator), this);
         getServer().getPluginManager().registerEvents(new PetProtectionListener(activeRegistry), this);
         getServer().getPluginManager().registerEvents(new WorldChangeListener(this, activeRegistry), this);
 

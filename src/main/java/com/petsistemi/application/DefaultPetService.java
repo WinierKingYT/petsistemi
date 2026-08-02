@@ -169,7 +169,7 @@ public class DefaultPetService implements PetService {
         }
 
         // Complete dismiss and clear selection from DB
-        coordinator.dismissAndClear(owner);
+        coordinator.dismissAndClear(owner.getUniqueId());
 
         PetDismissEvent dismissEvent = new PetDismissEvent(owner, pet);
         Bukkit.getPluginManager().callEvent(dismissEvent);

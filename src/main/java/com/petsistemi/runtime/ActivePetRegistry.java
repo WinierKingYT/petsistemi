@@ -32,4 +32,9 @@ public class ActivePetRegistry {
     public synchronized Collection<ActivePet> getAllActive() {
         return Collections.unmodifiableCollection(activePetsByOwner.values());
     }
+
+    public synchronized void clear() {
+        activePetsByOwner.clear();
+        activePetsByEntity.clear();
+    }
 }

@@ -1,10 +1,9 @@
 package com.petsistemi.listener;
 
-import com.petsistemi.domain.PetInstance;
-import com.petsistemi.domain.PetStorageState;
-import com.petsistemi.persistence.PetRepository;
 import com.petsistemi.runtime.ActivePet;
 import com.petsistemi.runtime.ActivePetRegistry;
+import com.petsistemi.runtime.PetRuntimeCoordinator;
+import com.petsistemi.runtime.PetRuntimeCoordinator.PetRemovalCause;
 import org.bukkit.entity.Entity;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -19,11 +18,11 @@ import java.util.Optional;
 public class PetEntityListener implements Listener {
 
     private final ActivePetRegistry activeRegistry;
-    private final PetRepository repository;
+    private final PetRuntimeCoordinator coordinator;
 
-    public PetEntityListener(ActivePetRegistry activeRegistry, PetRepository repository) {
+    public PetEntityListener(ActivePetRegistry activeRegistry, PetRuntimeCoordinator coordinator) {
         this.activeRegistry = activeRegistry;
-        this.repository = repository;
+        this.coordinator = coordinator;
     }
 
     @EventHandler
@@ -36,30 +35,19 @@ public class PetEntityListener implements Listener {
             event.getDrops().clear();
             event.setDroppedExp(0);
 
-            // Clean up registry
-            activeRegistry.unregister(activePet.getOwnerId());
-            repository.clearActivePet(activePet.getOwnerId());
-            
-            // Set state to AVAILABLE
-            repository.findById(activePet.getPetId()).ifPresent(pet -> 
-                repository.update(pet.withStorageState(PetStorageState.AVAILABLE))
-            );
+            // Delegate centralized loss handling to coordinator
+            coordinator.handleRemoval(activePet.getOwnerId(), PetRemovalCause.ENTITY_DEATH);
         }
     }
 
     @EventHandler
     public void onChunkUnload(ChunkUnloadEvent event) {
-        // If our pet is in this chunk, dismiss it to prevent being saved inside chunk file
+        // If our pet is in this chunk, handle unload via coordinator to prevent chunk save pollution
         for (Entity entity : event.getChunk().getEntities()) {
             Optional<ActivePet> activeOpt = activeRegistry.getByEntity(entity.getUniqueId());
             if (activeOpt.isPresent()) {
                 ActivePet active = activeOpt.get();
-                entity.remove();
-                activeRegistry.unregister(active.getOwnerId());
-                repository.clearActivePet(active.getOwnerId());
-                repository.findById(active.getPetId()).ifPresent(pet -> 
-                    repository.update(pet.withStorageState(PetStorageState.AVAILABLE))
-                );
+                coordinator.handleRemoval(active.getOwnerId(), PetRemovalCause.CHUNK_UNLOAD);
             }
         }
     }

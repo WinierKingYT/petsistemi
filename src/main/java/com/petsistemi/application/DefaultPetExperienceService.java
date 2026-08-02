@@ -154,6 +154,60 @@ public class DefaultPetExperienceService implements PetExperienceService {
     }
 
     @Override
+    public ExperienceResult setExperience(UUID petId, long amount, ExperienceSource source) {
+        if (!plugin.getConfig().getBoolean("progression.enabled", true)) {
+            return new ExperienceResult(false, "Sistem genelinde tecrübe sistemi devre dışı.", 0, false);
+        }
+
+        if (amount < 0) {
+            return new ExperienceResult(false, "Deneyim miktarı negatif olamaz.", 0, false);
+        }
+
+        Optional<PetInstance> petOpt = repository.findById(petId);
+        if (petOpt.isEmpty()) {
+            return new ExperienceResult(false, "Pet bulunamadı.", 0, false);
+        }
+
+        PetInstance pet = petOpt.get();
+        PetDefinition definition = definitionRegistry.find(pet.definitionId()).orElse(null);
+        int maxLevel = definition != null ? definition.maxLevel() : plugin.getConfig().getInt("progression.maximum-level", 100);
+
+        long newXp = amount;
+        int newLevel = calculateLevelFromXp(newXp);
+
+        if (newLevel > maxLevel) {
+            newLevel = maxLevel;
+            newXp = requiredExperienceForLevel(maxLevel);
+        }
+
+        boolean leveledUp = newLevel > pet.level();
+        int oldLevel = pet.level();
+
+        PetInstance updatedPet = pet.withLevelAndExperience(newLevel, newXp);
+        try {
+            repository.update(updatedPet);
+        } catch (Exception e) {
+            return new ExperienceResult(false, "Deneyim veritabanında güncellenemedi: " + e.getMessage(), pet.experience(), false);
+        }
+
+        // If active, update nameplate
+        Optional<ActivePet> activeOpt = activePetRegistry.getByOwner(pet.ownerId());
+        if (activeOpt.isPresent()) {
+            ActivePet activePet = activeOpt.get();
+            if (activePet.getPetId().equals(pet.petId()) && definition != null) {
+                entityController.updateName(activePet.getSpawnedEntity(), updatedPet, definition);
+            }
+        }
+
+        if (leveledUp) {
+            PetLevelUpEvent levelUpEvent = new PetLevelUpEvent(mapToSnapshot(updatedPet), oldLevel, newLevel);
+            Bukkit.getPluginManager().callEvent(levelUpEvent);
+        }
+
+        return new ExperienceResult(true, "Deneyim başarıyla ayarlandı.", newXp, leveledUp);
+    }
+
+    @Override
     public LevelResult setLevel(UUID petId, int level) {
         Optional<PetInstance> petOpt = repository.findById(petId);
         if (petOpt.isEmpty()) {

@@ -5,13 +5,17 @@ import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Mob;
 import org.bukkit.entity.Player;
 
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+
 public class BasicPetBehaviorController implements PetBehaviorController {
 
     private static final double TELEPORT_DISTANCE_SQUARED = 20.0 * 20.0;
     private static final double STOP_DISTANCE_SQUARED = 2.0 * 2.0;
     private static final double START_FOLLOW_DISTANCE_SQUARED = 3.5 * 3.5;
 
-    private Location lastTargetLocation;
+    private final Map<UUID, Location> lastTargets = new HashMap<>();
 
     @Override
     public void initialize(ActivePet activePet, LivingEntity entity, Player owner) {
@@ -27,12 +31,14 @@ public class BasicPetBehaviorController implements PetBehaviorController {
             return;
         }
 
+        UUID petId = activePet.getPetId();
         Location petLoc = entity.getLocation();
         Location ownerLoc = owner.getLocation();
 
         // 1. World Change Check
         if (!petLoc.getWorld().equals(ownerLoc.getWorld())) {
             entity.teleport(SafePetLocationFinder.findSafeLocation(ownerLoc));
+            lastTargets.remove(petId);
             return;
         }
 
@@ -41,7 +47,7 @@ public class BasicPetBehaviorController implements PetBehaviorController {
         // 2. Far away -> Teleport safely
         if (distanceSquared > TELEPORT_DISTANCE_SQUARED) {
             entity.teleport(SafePetLocationFinder.findSafeLocation(ownerLoc));
-            lastTargetLocation = null;
+            lastTargets.remove(petId);
             return;
         }
 
@@ -55,12 +61,13 @@ public class BasicPetBehaviorController implements PetBehaviorController {
                 if (mob.getPathfinder().hasPath()) {
                     mob.getPathfinder().stopPathfinding();
                 }
-                lastTargetLocation = null;
+                lastTargets.remove(petId);
             } else if (distanceSquared > START_FOLLOW_DISTANCE_SQUARED) {
-                // Re-calculate path only if owner moved more than 1.5 blocks from last target location
-                if (lastTargetLocation == null || lastTargetLocation.distanceSquared(ownerLoc) > 2.25) {
+                Location lastTarget = lastTargets.get(petId);
+                // Re-calculate path only if owner moved more than 1.5 blocks from last target location in same world
+                if (lastTarget == null || !lastTarget.getWorld().equals(ownerLoc.getWorld()) || lastTarget.distanceSquared(ownerLoc) > 2.25) {
                     mob.getPathfinder().moveTo(ownerLoc, 1.3);
-                    lastTargetLocation = ownerLoc.clone();
+                    lastTargets.put(petId, ownerLoc.clone());
                 }
             }
         }
@@ -72,6 +79,8 @@ public class BasicPetBehaviorController implements PetBehaviorController {
             mob.getPathfinder().stopPathfinding();
             mob.setTarget(null);
         }
-        lastTargetLocation = null;
+        if (activePet != null) {
+            lastTargets.remove(activePet.getPetId());
+        }
     }
 }

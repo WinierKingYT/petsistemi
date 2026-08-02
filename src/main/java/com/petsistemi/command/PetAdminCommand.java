@@ -305,11 +305,10 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
         }
 
         UUID petId = match.pet.petId();
-        experienceService.removeExperience(petId, match.pet.experience());
-        ExperienceResult res = experienceService.addExperience(petId, amount, ExperienceSource.ADMIN);
+        ExperienceResult res = experienceService.setExperience(petId, amount, ExperienceSource.ADMIN);
 
         if (res.success()) {
-            sender.sendMessage(Component.text("Deneyim başarıyla ayarlandı.", NamedTextColor.GREEN));
+            sender.sendMessage(Component.text("Deneyim başarıyla ayarlandı. Yeni XP: " + res.newExperience(), NamedTextColor.GREEN));
         } else {
             sender.sendMessage(Component.text(res.message(), NamedTextColor.RED));
         }

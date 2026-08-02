@@ -3,6 +3,7 @@ package com.petsistemi.persistence;
 import com.petsistemi.domain.PetInstance;
 import com.petsistemi.domain.PetStorageState;
 
+import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -149,6 +150,85 @@ public class SqlitePetRepository implements PetRepository {
         } catch (SQLException e) {
             logger.severe("clearActivePet sorgusunda veritabanı hatası: " + e.getMessage());
             throw new PetPersistenceException("Aktif pet kaydı temizlenemedi.", e);
+        }
+    }
+
+    @Override
+    public synchronized void switchActivePet(UUID ownerId, UUID previousPetId, UUID newPetId) {
+        Connection conn = dbManager.getConnection();
+        try {
+            conn.setAutoCommit(false);
+
+            // 1. Reset previous pet state if present
+            if (previousPetId != null) {
+                try (PreparedStatement ps = conn.prepareStatement("UPDATE pets SET state = ? WHERE pet_id = ?;")) {
+                    ps.setString(1, PetStorageState.AVAILABLE.name());
+                    ps.setString(2, previousPetId.toString());
+                    ps.executeUpdate();
+                }
+            }
+
+            // 2. Insert or replace player_active_pets selection
+            try (PreparedStatement ps = conn.prepareStatement("INSERT OR REPLACE INTO player_active_pets (owner_id, pet_id, updated_at) VALUES (?, ?, ?);")) {
+                ps.setString(1, ownerId.toString());
+                ps.setString(2, newPetId.toString());
+                ps.setLong(3, System.currentTimeMillis());
+                ps.executeUpdate();
+            }
+
+            // 3. Mark new pet as ACTIVE
+            try (PreparedStatement ps = conn.prepareStatement("UPDATE pets SET state = ? WHERE pet_id = ?;")) {
+                ps.setString(1, PetStorageState.ACTIVE.name());
+                ps.setString(2, newPetId.toString());
+                ps.executeUpdate();
+            }
+
+            conn.commit();
+        } catch (Exception e) {
+            try {
+                conn.rollback();
+            } catch (SQLException ignored) {}
+            logger.severe("switchActivePet transaction hatası: " + e.getMessage());
+            throw new PetPersistenceException("Pet değiştirme transaction işlemi başarısız.", e);
+        } finally {
+            try {
+                conn.setAutoCommit(true);
+            } catch (SQLException ignored) {}
+        }
+    }
+
+    @Override
+    public synchronized void clearActivePetAndSetAvailable(UUID ownerId, UUID petId) {
+        Connection conn = dbManager.getConnection();
+        try {
+            conn.setAutoCommit(false);
+
+            // 1. Delete player_active_pets row
+            try (PreparedStatement ps = conn.prepareStatement("DELETE FROM player_active_pets WHERE owner_id = ?;")) {
+                ps.setString(1, ownerId.toString());
+                ps.executeUpdate();
+            }
+
+            // 2. Set pet state to AVAILABLE if petId is provided
+            if (petId != null) {
+                try (PreparedStatement ps = conn.prepareStatement("UPDATE pets SET state = ? WHERE pet_id = ?;")) {
+                    ps.setString(1, PetStorageState.AVAILABLE.name());
+                    ps.setString(2, petId.toString());
+                    ps.executeUpdate();
+                }
+            }
+
+            conn.commit();
+        } catch (Exception e) {
+            try {
+                conn.rollback();
+            } catch (SQLException ignored) {}
+            logger.severe("clearActivePetAndSetAvailable transaction hatası: " + e.getMessage());
+            throw new PetPersistenceException("Aktif pet temizleme transaction işlemi başarısız.", e);
+        } finally {
+            try {
+                conn.setAutoCommit(true);
+            } catch (SQLException ignored) {}
         }
     }
 
