@@ -47,7 +47,15 @@ public final class SchemaMigrator {
         try {
             connection.setAutoCommit(false);
             
-            // 1. Detect duplicate pet_id selections across multiple owners
+            // 1. Count total selection records
+            int totalInspected = 0;
+            try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM player_active_pets;")) {
+                if (rs.next()) {
+                    totalInspected = rs.getInt(1);
+                }
+            }
+
+            // 2. Detect duplicate pet_id selections across multiple owners
             List<String> duplicatePetIds = new ArrayList<>();
             String checkDuplicatesSql = "SELECT pet_id FROM player_active_pets GROUP BY pet_id HAVING COUNT(*) > 1;";
             try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery(checkDuplicatesSql)) {
@@ -56,14 +64,14 @@ public final class SchemaMigrator {
                 }
             }
 
+            int supersededCount = 0;
             if (!duplicatePetIds.isEmpty()) {
-                LOGGER.warning("Migration V1: " + duplicatePetIds.size() + " adet mükerrer aktif pet_id seçimi tespit edildi. En güncel tercihler korunacak.");
                 for (String petId : duplicatePetIds) {
-                    resolveDuplicatePetId(connection, petId);
+                    supersededCount += resolveDuplicatePetId(connection, petId);
                 }
             }
 
-            // 2. Create player_active_pets_new table with UNIQUE constraint
+            // 3. Create player_active_pets_new table with UNIQUE constraint
             try (Statement stmt = connection.createStatement()) {
                 stmt.execute("CREATE TABLE IF NOT EXISTS player_active_pets_new (" +
                         "owner_id TEXT PRIMARY KEY, " +
@@ -73,13 +81,7 @@ public final class SchemaMigrator {
                         ");");
 
                 stmt.execute("INSERT INTO player_active_pets_new (owner_id, pet_id, updated_at) " +
-                        "SELECT old.owner_id, old.pet_id, old.updated_at " +
-                        "FROM player_active_pets old " +
-                        "JOIN (" +
-                        "    SELECT pet_id, MAX(updated_at) AS max_updated " +
-                        "    FROM player_active_pets " +
-                        "    GROUP BY pet_id" +
-                        ") latest ON old.pet_id = latest.pet_id AND old.updated_at = latest.max_updated;");
+                        "SELECT owner_id, pet_id, updated_at FROM player_active_pets;");
 
                 stmt.execute("DROP TABLE IF EXISTS player_active_pets;");
                 stmt.execute("ALTER TABLE player_active_pets_new RENAME TO player_active_pets;");
@@ -88,6 +90,14 @@ public final class SchemaMigrator {
             }
 
             connection.commit();
+
+            int retainedCount = totalInspected - supersededCount;
+            LOGGER.info("[PetSistemi] Migration V1 Raporu:");
+            LOGGER.info("  - " + totalInspected + " seçim kaydı incelendi");
+            LOGGER.info("  - " + duplicatePetIds.size() + " mükerrer pet seçimi bulundu");
+            LOGGER.info("  - " + retainedCount + " güncel seçim kaydı korundu");
+            LOGGER.info("  - " + supersededCount + " eski seçim elendi ve AVAILABLE statüsüne çekildi");
+
         } catch (SQLException e) {
             connection.rollback();
             LOGGER.severe("Migration V1 başarısız oldu, veritabanı geri alındı: " + e.getMessage());
@@ -97,7 +107,7 @@ public final class SchemaMigrator {
         }
     }
 
-    private static void resolveDuplicatePetId(Connection connection, String petId) throws SQLException {
+    private static int resolveDuplicatePetId(Connection connection, String petId) throws SQLException {
         String query = "SELECT owner_id, updated_at FROM player_active_pets WHERE pet_id = ? ORDER BY updated_at DESC, owner_id ASC;";
         record SelectionRecord(String ownerId, long updatedAt) {}
         List<SelectionRecord> records = new ArrayList<>();
@@ -111,19 +121,32 @@ public final class SchemaMigrator {
             }
         }
 
+        int removed = 0;
         if (records.size() > 1) {
             SelectionRecord kept = records.get(0);
             LOGGER.warning("Çakışan Pet ID '" + petId + "' için Owner '" + kept.ownerId + "' seçimi korundu (Timestamp: " + kept.updatedAt + ").");
 
             for (int i = 1; i < records.size(); i++) {
                 SelectionRecord dropped = records.get(i);
-                LOGGER.warning("Çakışan Pet ID '" + petId + "' için Owner '" + dropped.ownerId + "' eski seçimi siliniyor (Timestamp: " + dropped.updatedAt + ").");
+                LOGGER.warning("Çakışan Pet ID '" + petId + "' için Owner '" + dropped.ownerId + "' eski seçimi siliniyor ve AVAILABLE yapılıyor (Timestamp: " + dropped.updatedAt + ").");
+                
+                // Delete superseded selection row
                 try (PreparedStatement ps = connection.prepareStatement("DELETE FROM player_active_pets WHERE owner_id = ? AND pet_id = ?;")) {
                     ps.setString(1, dropped.ownerId);
                     ps.setString(2, petId);
                     ps.executeUpdate();
                 }
+
+                // Update pet state to AVAILABLE if state was ACTIVE
+                try (PreparedStatement ps = connection.prepareStatement("UPDATE pets SET state = 'AVAILABLE' WHERE pet_id = ? AND owner_id = ?;")) {
+                    ps.setString(1, petId);
+                    ps.setString(2, dropped.ownerId);
+                    ps.executeUpdate();
+                }
+
+                removed++;
             }
         }
+        return removed;
     }
 }

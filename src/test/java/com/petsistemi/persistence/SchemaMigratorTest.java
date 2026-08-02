@@ -20,7 +20,7 @@ class SchemaMigratorTest {
     void setUp() throws Exception {
         connection = DriverManager.getConnection("jdbc:sqlite::memory:");
         
-        // 1. Create old pre-v1 schema without UNIQUE constraint on pet_id
+        // Create old pre-v1 schema without UNIQUE constraint on pet_id
         try (Statement stmt = connection.createStatement()) {
             stmt.execute("PRAGMA foreign_keys = ON;");
             stmt.execute("CREATE TABLE pets (" +
@@ -35,7 +35,6 @@ class SchemaMigratorTest {
                     "updated_at INTEGER NOT NULL" +
                     ");");
 
-            // Old table without UNIQUE constraint
             stmt.execute("CREATE TABLE player_active_pets (" +
                     "owner_id TEXT PRIMARY KEY, " +
                     "pet_id TEXT NOT NULL, " +
@@ -53,13 +52,13 @@ class SchemaMigratorTest {
     }
 
     @Test
-    void testMigrationV1WithDuplicatePetIds() throws Exception {
+    void testMigrationV1WithDuplicatePetIdsConvertsSupersededToAvailable() throws Exception {
         UUID sharedPetId = UUID.randomUUID();
         UUID ownerA = UUID.randomUUID();
         UUID ownerB = UUID.randomUUID();
 
         try (Statement stmt = connection.createStatement()) {
-            stmt.execute("INSERT INTO pets VALUES ('" + sharedPetId + "', '" + ownerA + "', 'wolf', 'Dog', 1, 0, 'AVAILABLE', 100, 100);");
+            stmt.execute("INSERT INTO pets VALUES ('" + sharedPetId + "', '" + ownerA + "', 'wolf', 'Dog', 1, 0, 'ACTIVE', 100, 100);");
             stmt.execute("INSERT INTO player_active_pets VALUES ('" + ownerA + "', '" + sharedPetId + "', 100);");
             stmt.execute("INSERT INTO player_active_pets VALUES ('" + ownerB + "', '" + sharedPetId + "', 500);"); // Newer selection by Owner B
         }
@@ -86,6 +85,12 @@ class SchemaMigratorTest {
             assertTrue(rs.next());
             assertEquals(ownerB.toString(), rs.getString("owner_id"));
             assertFalse(rs.next()); // Only 1 unique row exists
+        }
+
+        // Verify superseded pet state is set to AVAILABLE
+        try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery("SELECT state FROM pets WHERE pet_id = '" + sharedPetId + "';")) {
+            assertTrue(rs.next());
+            assertEquals("AVAILABLE", rs.getString("state"));
         }
     }
 
