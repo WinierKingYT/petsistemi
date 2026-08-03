@@ -52,11 +52,22 @@ public class PetRuntimeCoordinator {
 
     public synchronized void restoreOnJoin(Player owner) {
         if (owner == null || !owner.isOnline()) return;
+
+        // Double-register guard: if a valid pet is already spawned, skip
+        Optional<ActivePet> existing = activeRegistry.getByOwner(owner.getUniqueId());
+        if (existing.isPresent()) {
+            Entity e = existing.get().getSpawnedEntity();
+            if (e != null && e.isValid() && !e.isDead()) return;
+            // Stale registry entry — clean up before restoring
+            activeRegistry.unregister(owner.getUniqueId());
+        }
+
         Optional<PetInstance> selectedOpt = repository.findActiveByOwner(owner.getUniqueId());
         if (selectedOpt.isPresent()) {
             PetInstance pet = selectedOpt.get();
             if (pet.availabilityState() == com.petsistemi.domain.PetAvailabilityState.DISABLED) {
-                if (plugin != null) plugin.getLogger().warning("Çevrimiçi oyuncunun seçili peti DISABLED olduğu için restore edilmedi ve seçim temizlendi: " + pet.petId());
+                if (plugin != null) plugin.getLogger().warning(
+                        "Çevrimiçi oyuncunun seçili peti DISABLED olduğu için restore edilmedi ve seçim temizlendi: " + pet.petId());
                 repository.clearActivePetAndSetAvailable(owner.getUniqueId(), pet.petId());
                 return;
             }
@@ -285,14 +296,23 @@ public class PetRuntimeCoordinator {
             Player owner = Bukkit.getPlayer(ownerId);
             Entity entity = active.getSpawnedEntity();
 
+            // Owner went offline — clean up silently
             if (owner == null || !owner.isOnline()) {
                 handleRemoval(ownerId, PetRemovalCause.PLAYER_QUIT);
                 continue;
             }
 
+            // Entity disappeared (chunk unload, external plugin removal, server bug)
             if (entity == null || !entity.isValid() || entity.isDead()) {
-                if (plugin != null) plugin.getLogger().warning("Watchdog: Pet entitysi kaybolmuş tespit edildi (" + active.getPetId() + "). Runtime temizleniyor...");
-                handleRemoval(ownerId, PetRemovalCause.EXTERNAL_REMOVAL);
+                if (plugin != null) plugin.getLogger().warning(
+                        "Watchdog: Pet entitysi kaybolmuş tespit edildi (" + active.getPetId()
+                        + "). Otomatik restore deneniyor...");
+                // Unregister the stale entry first
+                activeRegistry.unregister(ownerId);
+                // Attempt restore on the next tick (owner is online)
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    if (owner.isOnline()) restoreOnJoin(owner);
+                });
             }
         }
     }

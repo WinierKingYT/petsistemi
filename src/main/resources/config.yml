@@ -18,6 +18,13 @@ progression:
   xp-per-level: 100
   # Pasif XP — her 1 dakikada (1200t) petlere verilen XP miktarı
   passive-xp-per-minute: 10
+  # Yürüme: her N blokta M XP kazanılır
+  walk-xp-threshold: 50.0
+  walk-xp-amount: 5
+  # Blok kırma: sabit XP (0 = devre dışı)
+  block-break-xp: 2
+  # Mob öldürme: maks-can × çarpan (0.5 = max-can/2)
+  kill-xp-multiplier: 0.5
 
 runtime:
   tick-interval-ticks: 5
