@@ -98,9 +98,16 @@ public class MigrationRunner {
             }
 
             connection.commit();
-        } catch (SQLException e) {
-            connection.rollback();
-            throw e;
+        } catch (Throwable failure) {
+            try {
+                connection.rollback();
+            } catch (SQLException rollbackFailure) {
+                failure.addSuppressed(rollbackFailure);
+            }
+            if (failure instanceof SQLException sql) {
+                throw sql;
+            }
+            throw new SQLException("Migration beklenmeyen hata nedeniyle başarısız oldu: " + failure.getMessage(), failure);
         } finally {
             connection.setAutoCommit(autoCommit);
             try (Statement pragmaStmt = connection.createStatement()) {

@@ -430,8 +430,8 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage(Component.text("=== PetSistemi Sağlık Raporu ===", NamedTextColor.GOLD));
 
         if (connectionProvider != null && connectionProvider.getConnection() != null) {
-            try (Connection conn = connectionProvider.getConnection();
-                 Statement stmt = conn.createStatement()) {
+            Connection conn = connectionProvider.getConnection();
+            try (Statement stmt = conn.createStatement()) {
 
                 String integrity = "Bilinmiyor";
                 try (ResultSet rs = stmt.executeQuery("PRAGMA integrity_check;")) {
@@ -559,7 +559,11 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
         try {
             UUID full = UUID.fromString(input);
             Optional<PetInstance> pet = repository.findById(full);
-            return pet.map(petInstance -> new SearchResult(SearchStatus.FOUND, petInstance)).orElseGet(() -> new SearchResult(SearchStatus.NOT_FOUND, null));
+            if (pet.isPresent() && pet.get().ownerId().equals(ownerId)) {
+                return new SearchResult(SearchStatus.FOUND, pet.get());
+            } else {
+                return new SearchResult(SearchStatus.NOT_FOUND, null);
+            }
         } catch (IllegalArgumentException ignored) {}
 
         List<PetInstance> pets = repository.findByOwner(ownerId);

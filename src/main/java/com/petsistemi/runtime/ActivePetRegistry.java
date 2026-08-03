@@ -30,7 +30,7 @@ public class ActivePetRegistry {
     }
 
     public synchronized Collection<ActivePet> getAllActive() {
-        return Collections.unmodifiableCollection(activePetsByOwner.values());
+        return List.copyOf(activePetsByOwner.values());
     }
 
     public synchronized void clear() {

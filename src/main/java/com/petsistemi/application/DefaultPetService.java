@@ -318,28 +318,30 @@ public class DefaultPetService implements PetService {
         PetInstance pet = petOpt.get();
         UUID ownerId = pet.ownerId();
 
-        // Only despawn if currently spawned runtime pet matches target petId
         Optional<ActivePet> activeOpt = activePetRegistry.getByOwner(ownerId);
-        if (activeOpt.isPresent() && activeOpt.get().getPetId().equals(petId)) {
-            coordinator.dismissAndClear(ownerId);
-        }
+        boolean targetWasActive = activeOpt.isPresent() && activeOpt.get().getPetId().equals(petId);
 
-        // Only clear selection if active selection matches target petId
         Optional<PetSelection> selectionOpt = selectionRepository.findByOwner(ownerId);
-        if (selectionOpt.isPresent() && selectionOpt.get().petId().equals(petId)) {
-            selectionRepository.clear(ownerId);
-        }
+        boolean targetWasSelected = selectionOpt.isPresent() && selectionOpt.get().petId().equals(petId);
 
         PetInstance updated = new PetInstance(pet.petId(), pet.ownerId(), pet.definitionId(), pet.customName(), pet.level(), pet.experience(), PetAvailabilityState.DISABLED, pet.createdAt(), System.currentTimeMillis());
         try {
-            repository.update(updated);
-            if (profileCache != null) {
-                profileCache.invalidate(ownerId);
+            if (targetWasSelected) {
+                selectionRepository.clear(ownerId);
             }
-            return new PetDisableResult(true, "Pet başarıyla devre dışı bırakıldı (DISABLED).");
+            repository.update(updated);
         } catch (Exception e) {
             return new PetDisableResult(false, "Pet güncellenemedi: " + e.getMessage());
         }
+
+        // Perform runtime cleanup and cache invalidation ONLY AFTER DB persistence succeeds
+        if (targetWasActive) {
+            coordinator.dismissAndClear(ownerId);
+        }
+        if (profileCache != null) {
+            profileCache.invalidate(ownerId);
+        }
+        return new PetDisableResult(true, "Pet başarıyla devre dışı bırakıldı (DISABLED).");
     }
 
     @Override
@@ -372,27 +374,29 @@ public class DefaultPetService implements PetService {
         PetInstance pet = petOpt.get();
         UUID ownerId = pet.ownerId();
 
-        // Only despawn if currently spawned runtime pet matches target petId
         Optional<ActivePet> activeOpt = activePetRegistry.getByOwner(ownerId);
-        if (activeOpt.isPresent() && activeOpt.get().getPetId().equals(petId)) {
-            coordinator.dismissAndClear(ownerId);
-        }
+        boolean targetWasActive = activeOpt.isPresent() && activeOpt.get().getPetId().equals(petId);
 
-        // Only clear selection if active selection matches target petId
         Optional<PetSelection> selectionOpt = selectionRepository.findByOwner(ownerId);
-        if (selectionOpt.isPresent() && selectionOpt.get().petId().equals(petId)) {
-            selectionRepository.clear(ownerId);
-        }
+        boolean targetWasSelected = selectionOpt.isPresent() && selectionOpt.get().petId().equals(petId);
 
         try {
-            repository.delete(petId);
-            if (profileCache != null) {
-                profileCache.invalidate(ownerId);
+            if (targetWasSelected) {
+                selectionRepository.clear(ownerId);
             }
-            return new PetRemoveResult(true, "Pet başarıyla silindi.");
+            repository.delete(petId);
         } catch (Exception e) {
             return new PetRemoveResult(false, "Pet silinemedi: " + e.getMessage());
         }
+
+        // Perform runtime cleanup and cache invalidation ONLY AFTER DB deletion succeeds
+        if (targetWasActive) {
+            coordinator.dismissAndClear(ownerId);
+        }
+        if (profileCache != null) {
+            profileCache.invalidate(ownerId);
+        }
+        return new PetRemoveResult(true, "Pet başarıyla silindi.");
     }
 
     private String validateName(String name) {

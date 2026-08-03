@@ -13,7 +13,6 @@ commands:
     usage: /pet [list|summon|dismiss|info|rename|help]
   petadmin:
     description: Yönetici pet yönetim komutları.
-    permission: companionpets.admin
     usage: /petadmin <give|remove|list|info|addxp|setxp|setlevel|summon|dismiss|reload|inspect|health|backup|reconcile|disable|enable>
 
 permissions:
@@ -26,7 +25,15 @@ permissions:
     children:
       companionpets.admin.give: true
       companionpets.admin.remove: true
+      companionpets.admin.list: true
+      companionpets.admin.info: true
+      companionpets.admin.addxp: true
+      companionpets.admin.setxp: true
+      companionpets.admin.setlevel: true
+      companionpets.admin.summon: true
+      companionpets.admin.dismiss: true
       companionpets.admin.reload: true
+      companionpets.admin.inspect: true
       companionpets.admin.health: true
       companionpets.admin.backup: true
       companionpets.admin.reconcile: true
@@ -38,21 +45,45 @@ permissions:
   companionpets.admin.remove:
     description: Pet silme yetkisi.
     default: op
+  companionpets.admin.list:
+    description: Oyuncunun petlerini listeleme yetkisi.
+    default: op
+  companionpets.admin.info:
+    description: Pet detaylarını görüntüleme yetkisi.
+    default: op
+  companionpets.admin.addxp:
+    description: Pete XP ekleme yetkisi.
+    default: op
+  companionpets.admin.setxp:
+    description: Pet XP ayarlama yetkisi.
+    default: op
+  companionpets.admin.setlevel:
+    description: Pet seviye ayarlama yetkisi.
+    default: op
+  companionpets.admin.summon:
+    description: Oyuncunun petini çağırma yetkisi.
+    default: op
+  companionpets.admin.dismiss:
+    description: Oyuncunun petini kaldırma yetkisi.
+    default: op
   companionpets.admin.reload:
-    description: Konfigürasyon ve tanımları yenileme yetkisi.
+    description: Konfigürasyon yenileme yetkisi.
+    default: op
+  companionpets.admin.inspect:
+    description: Baktığı varlığı denetleme yetkisi.
     default: op
   companionpets.admin.health:
-    description: Eklenti sağlık raporunu görüntüleme yetkisi.
+    description: Sistem sağlık durumunu görüntüleme yetkisi.
     default: op
   companionpets.admin.backup:
-    description: Veritabanı yedeği alma yetkisi.
+    description: Manuel yedek alma yetkisi.
     default: op
   companionpets.admin.reconcile:
     description: Veritabanı ve dünya pet uzlaştırma yetkisi.
     default: op
   companionpets.admin.disable:
-    description: Peti devre dışı bırakma yetkisi.
+    description: Pet devre dışı bırakma yetkisi.
     default: op
   companionpets.admin.enable:
-    description: Peti etkinleştirme yetkisi.
+    description: Pet etkinleştirme yetkisi.
     default: op

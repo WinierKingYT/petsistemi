@@ -75,14 +75,38 @@ class DefaultPetServiceTargetTest {
         assertTrue(petRepository.findById(petBId).isEmpty());
     }
 
+    @Test
+    void disablingSelectedPetADespawnsAndClearsSelection() {
+        PetDisableResult result = petService.disablePet(petAId);
+
+        assertTrue(result.success());
+        assertTrue(coordinator.dismissCalledForOwner, "Coordinator dismiss MUST be called when disabling selected Pet A");
+        assertTrue(selectionRepository.findByOwner(ownerId).isEmpty(), "Selection MUST be cleared when disabling selected Pet A");
+        assertEquals(PetAvailabilityState.DISABLED, petRepository.findById(petAId).get().availabilityState());
+    }
+
+    @Test
+    void dbFailureOnDisableDoesNotDespawnActivePetA() {
+        petRepository.shouldFailUpdate = true;
+
+        PetDisableResult result = petService.disablePet(petAId);
+
+        assertFalse(result.success());
+        assertFalse(coordinator.dismissCalledForOwner, "Coordinator dismiss must NOT be called if DB update fails");
+    }
+
     private static class TestPetRepository implements PetRepository {
         private final Map<UUID, PetInstance> map = new HashMap<>();
+        boolean shouldFailUpdate = false;
 
         @Override public Optional<PetInstance> findById(UUID petId) { return Optional.ofNullable(map.get(petId)); }
         @Override public List<PetInstance> findByOwner(UUID ownerId) { return map.values().stream().filter(p -> p.ownerId().equals(ownerId)).toList(); }
         @Override public Optional<PetInstance> findActiveByOwner(UUID ownerId) { return Optional.empty(); }
         @Override public void insert(PetInstance pet) { map.put(pet.petId(), pet); }
-        @Override public void update(PetInstance pet) { map.put(pet.petId(), pet); }
+        @Override public void update(PetInstance pet) {
+            if (shouldFailUpdate) throw new RuntimeException("DB update simulated failure");
+            map.put(pet.petId(), pet);
+        }
         @Override public void delete(UUID petId) { map.remove(petId); }
         @Override public void setActivePet(UUID ownerId, UUID petId) {}
         @Override public void clearActivePet(UUID ownerId) {}
