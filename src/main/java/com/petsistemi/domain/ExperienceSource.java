@@ -5,5 +5,7 @@ public enum ExperienceSource {
     PLAY_TIME,
     MOB_KILL,
     COMMAND,
-    EXTERNAL_PLUGIN
+    EXTERNAL_PLUGIN,
+    WALKING,
+    ONLINE_TIME
 }

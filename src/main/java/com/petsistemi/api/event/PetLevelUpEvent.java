@@ -23,6 +23,10 @@ public class PetLevelUpEvent extends Event {
         return pet;
     }
 
+    public PetSnapshot getPetSnapshot() {
+        return pet;
+    }
+
     public int getOldLevel() {
         return oldLevel;
     }

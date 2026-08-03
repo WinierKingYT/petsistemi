@@ -5,6 +5,7 @@ import com.petsistemi.api.PetSnapshot;
 import com.petsistemi.api.result.PetDismissResult;
 import com.petsistemi.api.result.PetRenameResult;
 import com.petsistemi.api.result.PetSummonResult;
+import com.petsistemi.definition.PetDefinitionRegistry;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.command.Command;
@@ -24,9 +25,16 @@ public class PetCommand implements CommandExecutor, TabCompleter {
     private final JavaPlugin plugin;
     private final PetService petService;
 
-    public PetCommand(JavaPlugin plugin, PetService petService) {
+    private final PetDefinitionRegistry definitionRegistry;
+
+    public PetCommand(JavaPlugin plugin, PetService petService, PetDefinitionRegistry definitionRegistry) {
         this.plugin = plugin;
         this.petService = petService;
+        this.definitionRegistry = definitionRegistry;
+    }
+
+    public PetCommand(JavaPlugin plugin, PetService petService) {
+        this(plugin, petService, null);
     }
 
     @Override
@@ -42,7 +50,7 @@ public class PetCommand implements CommandExecutor, TabCompleter {
         }
 
         if (args.length == 0) {
-            com.petsistemi.gui.PetListMenu.open(player, petService, 0, plugin);
+            com.petsistemi.gui.PetListMenu.open(player, petService, 0, plugin, definitionRegistry);
             return true;
         }
 

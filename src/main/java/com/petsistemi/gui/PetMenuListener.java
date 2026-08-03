@@ -2,9 +2,11 @@ package com.petsistemi.gui;
 
 import com.petsistemi.api.PetService;
 import com.petsistemi.api.PetSnapshot;
+import com.petsistemi.definition.PetDefinitionRegistry;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.NamespacedKey;
+import org.bukkit.Sound;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -23,11 +25,17 @@ public class PetMenuListener implements Listener {
     private final JavaPlugin plugin;
     private final PetService petService;
     private final PlayerInputSessionManager sessionManager;
+    private final PetDefinitionRegistry definitionRegistry;
 
     public PetMenuListener(JavaPlugin plugin, PetService petService, PlayerInputSessionManager sessionManager) {
+        this(plugin, petService, sessionManager, null);
+    }
+
+    public PetMenuListener(JavaPlugin plugin, PetService petService, PlayerInputSessionManager sessionManager, PetDefinitionRegistry definitionRegistry) {
         this.plugin = plugin;
         this.petService = petService;
         this.sessionManager = sessionManager;
+        this.definitionRegistry = definitionRegistry;
     }
 
     @EventHandler
@@ -41,12 +49,15 @@ public class PetMenuListener implements Listener {
 
             int slot = event.getRawSlot();
             if (slot == 45 && holder.page() > 0) {
-                PetListMenu.open(player, petService, holder.page() - 1, plugin);
+                player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 0.7f, 1.2f);
+                PetListMenu.open(player, petService, holder.page() - 1, plugin, definitionRegistry);
                 return;
             } else if (slot == 53) {
-                PetListMenu.open(player, petService, holder.page() + 1, plugin);
+                player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 0.7f, 1.2f);
+                PetListMenu.open(player, petService, holder.page() + 1, plugin, definitionRegistry);
                 return;
             } else if (slot == 49) {
+                player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 0.7f, 0.8f);
                 player.closeInventory();
                 return;
             }
@@ -63,6 +74,7 @@ public class PetMenuListener implements Listener {
             UUID petId = UUID.fromString(petIdStr);
 
             if (event.isShiftClick()) {
+                player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 0.8f, 1.4f);
                 player.closeInventory();
                 if (sessionManager != null) {
                     sessionManager.startRenameSession(player.getUniqueId(), petId);
@@ -75,11 +87,13 @@ public class PetMenuListener implements Listener {
             boolean isSpawned = spawned.map(s -> s.petId().equals(petId)).orElse(false);
 
             if (isSpawned) {
+                player.playSound(player.getLocation(), Sound.ENTITY_ENDERMAN_TELEPORT, 0.8f, 1.1f);
                 petService.dismiss(player);
-                PetListMenu.open(player, petService, holder.page(), plugin);
+                PetListMenu.open(player, petService, holder.page(), plugin, definitionRegistry);
             } else {
+                player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, 1.2f);
                 petService.summon(player, petId);
-                PetListMenu.open(player, petService, holder.page(), plugin);
+                PetListMenu.open(player, petService, holder.page(), plugin, definitionRegistry);
             }
         }
     }

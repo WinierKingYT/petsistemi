@@ -4,6 +4,7 @@ import org.bukkit.Location;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Mob;
 import org.bukkit.entity.Player;
+import org.bukkit.util.Vector;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -60,6 +61,12 @@ public class BasicPetBehaviorController implements PetBehaviorController {
             if (distanceSquared < STOP_DISTANCE_SQUARED) {
                 if (mob.getPathfinder().hasPath()) {
                     mob.getPathfinder().stopPathfinding();
+                }
+                Location lookLoc = petLoc.clone();
+                Vector dir = ownerLoc.toVector().subtract(petLoc.toVector());
+                if (dir.lengthSquared() > 0.01) {
+                    lookLoc.setDirection(dir);
+                    entity.setRotation(lookLoc.getYaw(), lookLoc.getPitch());
                 }
                 lastTargets.remove(petId);
             } else if (distanceSquared > START_FOLLOW_DISTANCE_SQUARED) {
