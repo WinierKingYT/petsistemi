@@ -16,6 +16,10 @@ public final class TaskRegistry {
         }
     }
 
+    public int size() {
+        return tasks.size();
+    }
+
     public void cancelAll() {
         for (BukkitTask task : tasks) {
             try {

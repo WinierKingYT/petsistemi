@@ -22,6 +22,7 @@ import com.petsistemi.runtime.ActivePetRegistry;
 import com.petsistemi.runtime.PetRuntimeCoordinator;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.Bukkit;
 import org.bukkit.NamespacedKey;
 import org.bukkit.OfflinePlayer;
@@ -58,6 +59,7 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
     private final PetRuntimeCoordinator coordinator;
     private final PlayerPetProfileCache profileCache;
     private final MessageService messageService;
+    private final com.petsistemi.bootstrap.TaskRegistry taskRegistry;
 
     private final NamespacedKey petIdKey;
 
@@ -72,6 +74,21 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
                            PetRuntimeCoordinator coordinator,
                            PlayerPetProfileCache profileCache,
                            MessageService messageService) {
+        this(plugin, petService, experienceService, definitionRegistry, activeRegistry, repository, selectionRepository, connectionProvider, auditLogger, coordinator, profileCache, messageService, null);
+    }
+
+    public PetAdminCommand(JavaPlugin plugin, PetService petService,
+                           PetExperienceService experienceService,
+                           PetDefinitionRegistry definitionRegistry,
+                           ActivePetRegistry activeRegistry,
+                           PetRepository repository,
+                           PetSelectionRepository selectionRepository,
+                           ConnectionProvider connectionProvider,
+                           AuditLogger auditLogger,
+                           PetRuntimeCoordinator coordinator,
+                           PlayerPetProfileCache profileCache,
+                           MessageService messageService,
+                           com.petsistemi.bootstrap.TaskRegistry taskRegistry) {
         this.plugin = plugin;
         this.petService = petService;
         this.experienceService = experienceService;
@@ -84,6 +101,7 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
         this.coordinator = coordinator;
         this.profileCache = profileCache;
         this.messageService = messageService;
+        this.taskRegistry = taskRegistry;
 
         this.petIdKey = new NamespacedKey(plugin, "pet_id");
     }
@@ -252,12 +270,26 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
             return;
         }
         OfflinePlayer target = Bukkit.getOfflinePlayer(args[1]);
+        Collection<PetSnapshot> owned = petService.getOwnedPets(target.getUniqueId());
         Optional<PetSnapshot> selected = petService.getSelectedPet(target.getUniqueId());
         Optional<PetSnapshot> spawned = petService.getSpawnedPet(target.getUniqueId());
 
-        sender.sendMessage(Component.text("=== Oyuncu Pet Durumu: " + target.getName() + " ===", NamedTextColor.GOLD));
-        sender.sendMessage(Component.text("Seçili Pet: " + selected.map(s -> s.customName() + " (" + s.petId() + ")").orElse("Yok"), NamedTextColor.YELLOW));
-        sender.sendMessage(Component.text("Çağırılmış Varlık: " + spawned.map(s -> s.customName() + " (" + s.petId() + ")").orElse("Yok"), NamedTextColor.YELLOW));
+        sender.sendMessage(Component.text("-----------------------------------------", NamedTextColor.DARK_GRAY));
+        sender.sendMessage(Component.text("=== Oyuncu Pet Raporu: " + (target.getName() != null ? target.getName() : target.getUniqueId()) + " ===", NamedTextColor.GOLD, TextDecoration.BOLD));
+        sender.sendMessage(Component.text("Oyuncu UUID: ", NamedTextColor.GRAY).append(Component.text(target.getUniqueId().toString(), NamedTextColor.WHITE)));
+        sender.sendMessage(Component.text("Toplam Pet Sayısı: ", NamedTextColor.GRAY).append(Component.text(owned.size(), NamedTextColor.YELLOW)));
+        sender.sendMessage(Component.text("Seçili Pet ID: ", NamedTextColor.GRAY).append(Component.text(selected.map(s -> s.petId().toString().substring(0, 8)).orElse("Yok"), NamedTextColor.AQUA)));
+        sender.sendMessage(Component.text("Dünyada Spawned: ", NamedTextColor.GRAY).append(Component.text(spawned.map(s -> s.petId().toString().substring(0, 8)).orElse("Yok"), NamedTextColor.GREEN)));
+        sender.sendMessage(Component.text("-----------------------------------------", NamedTextColor.DARK_GRAY));
+        for (PetSnapshot pet : owned) {
+            String name = pet.customName() != null ? pet.customName() : pet.definitionId();
+            sender.sendMessage(Component.text("- [" + pet.definitionId() + "] ", NamedTextColor.GOLD)
+                    .append(Component.text(name, NamedTextColor.WHITE))
+                    .append(Component.text(" (Lv." + pet.level() + ", " + pet.experience() + " XP) ", NamedTextColor.YELLOW))
+                    .append(Component.text("[" + pet.availabilityState() + "]", pet.availabilityState() == PetAvailabilityState.DISABLED ? NamedTextColor.RED : NamedTextColor.GREEN))
+                    .append(Component.text(" ID: " + pet.petId().toString().substring(0, 8), NamedTextColor.DARK_GRAY)));
+        }
+        sender.sendMessage(Component.text("-----------------------------------------", NamedTextColor.DARK_GRAY));
     }
 
     private void handleAddXp(CommandSender sender, String[] args) {
@@ -421,13 +453,41 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
         }
 
         String petIdStr = pdc.get(petIdKey, PersistentDataType.STRING);
-        player.sendMessage(Component.text("=== Baktığınız Pet Varlık Verileri ===", NamedTextColor.GOLD));
-        player.sendMessage(Component.text("Pet UUID: " + petIdStr, NamedTextColor.YELLOW));
-        player.sendMessage(Component.text("Entity ID: " + target.getEntityId() + " | Type: " + target.getType(), NamedTextColor.YELLOW));
+        UUID petId = UUID.fromString(petIdStr);
+
+        Optional<ActivePet> activeOpt = activeRegistry.getByEntity(target.getUniqueId());
+        if (activeOpt.isEmpty()) {
+            activeOpt = activeRegistry.getAllActive().stream().filter(a -> a.getPetId().equals(petId)).findFirst();
+        }
+
+        player.sendMessage(Component.text("-----------------------------------------", NamedTextColor.DARK_GRAY));
+        player.sendMessage(Component.text("=== Baktığınız Pet Varlık Denetimi ===", NamedTextColor.GOLD, TextDecoration.BOLD));
+        player.sendMessage(Component.text("Entity Type: ", NamedTextColor.GRAY).append(Component.text(target.getType().name(), NamedTextColor.WHITE)));
+        player.sendMessage(Component.text("Pet Instance ID: ", NamedTextColor.GRAY).append(Component.text(petIdStr, NamedTextColor.YELLOW)));
+
+        if (target instanceof org.bukkit.entity.LivingEntity living) {
+            double hp = living.getHealth();
+            org.bukkit.attribute.AttributeInstance maxAttr = living.getAttribute(org.bukkit.attribute.Attribute.GENERIC_MAX_HEALTH);
+            double maxHp = maxAttr != null ? maxAttr.getValue() : hp;
+            player.sendMessage(Component.text("Can Durumu: ", NamedTextColor.GRAY).append(Component.text(String.format("%.1f / %.1f HP", hp, maxHp), NamedTextColor.GREEN)));
+        }
+
+        if (activeOpt.isPresent()) {
+            ActivePet activePet = activeOpt.get();
+            OfflinePlayer owner = Bukkit.getOfflinePlayer(activePet.getOwnerId());
+            player.sendMessage(Component.text("Sahibi: ", NamedTextColor.GRAY).append(Component.text(owner.getName() != null ? owner.getName() : owner.getUniqueId().toString(), NamedTextColor.AQUA)));
+            player.sendMessage(Component.text("Runtime State: ", NamedTextColor.GRAY).append(Component.text("ACTIVE", NamedTextColor.GREEN)));
+        } else {
+            player.sendMessage(Component.text("Registry Durumu: ", NamedTextColor.GRAY).append(Component.text("YETİM / UNREGISTERED", NamedTextColor.RED)));
+        }
+
+        player.sendMessage(Component.text("Konum: ", NamedTextColor.GRAY).append(Component.text(String.format("%s (%.1f, %.1f, %.1f)", target.getWorld().getName(), target.getLocation().getX(), target.getLocation().getY(), target.getLocation().getZ()), NamedTextColor.WHITE)));
+        player.sendMessage(Component.text("-----------------------------------------", NamedTextColor.DARK_GRAY));
     }
 
     private void handleHealth(CommandSender sender) {
-        sender.sendMessage(Component.text("=== PetSistemi Sağlık Raporu ===", NamedTextColor.GOLD));
+        sender.sendMessage(Component.text("-----------------------------------------", NamedTextColor.DARK_GRAY));
+        sender.sendMessage(Component.text("=== PetSistemi Sağlık ve Raporlama ===", NamedTextColor.GOLD, TextDecoration.BOLD));
 
         if (connectionProvider != null && connectionProvider.getConnection() != null) {
             Connection conn = connectionProvider.getConnection();
@@ -443,8 +503,8 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
                     if (rs.next()) fkClean = false;
                 }
 
-                sender.sendMessage(Component.text("SQLite Bütünlüğü (Integrity): " + ("ok".equalsIgnoreCase(integrity) ? "TAM" : integrity), "ok".equalsIgnoreCase(integrity) ? NamedTextColor.GREEN : NamedTextColor.RED));
-                sender.sendMessage(Component.text("Yabancı Anahtar İhlali: " + (fkClean ? "YOK (Temiz)" : "İHLAL VAR!"), fkClean ? NamedTextColor.GREEN : NamedTextColor.RED));
+                sender.sendMessage(Component.text("SQLite Bütünlüğü (Integrity): ", NamedTextColor.GRAY).append(Component.text("ok".equalsIgnoreCase(integrity) ? "TAM (OK)" : integrity, "ok".equalsIgnoreCase(integrity) ? NamedTextColor.GREEN : NamedTextColor.RED)));
+                sender.sendMessage(Component.text("Yabancı Anahtar İhlali: ", NamedTextColor.GRAY).append(Component.text(fkClean ? "YOK (Temiz)" : "İHLAL VAR!", fkClean ? NamedTextColor.GREEN : NamedTextColor.RED)));
 
             } catch (Exception e) {
                 sender.sendMessage(Component.text("Veritabanı sağlık sorgusu hatası: " + e.getMessage(), NamedTextColor.RED));
@@ -453,12 +513,21 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
 
         File dbFile = new File(plugin.getDataFolder(), "database.db");
         long dbSizeKb = dbFile.exists() ? dbFile.length() / 1024 : 0;
-        sender.sendMessage(Component.text("Veritabanı Dosya Boyutu: " + dbSizeKb + " KB", NamedTextColor.YELLOW));
-        sender.sendMessage(Component.text("Yüklü Pet Tanımları: " + definitionRegistry.getAll().size(), NamedTextColor.YELLOW));
-        sender.sendMessage(Component.text("Aktif Runtime Petler: " + activeRegistry.getAllActive().size(), NamedTextColor.YELLOW));
+        long totalMemMb = Runtime.getRuntime().totalMemory() / 1024 / 1024;
+        long freeMemMb = Runtime.getRuntime().freeMemory() / 1024 / 1024;
+        long usedMemMb = totalMemMb - freeMemMb;
+
+        sender.sendMessage(Component.text("Veritabanı Dosya Boyutu: ", NamedTextColor.GRAY).append(Component.text(dbSizeKb + " KB", NamedTextColor.YELLOW)));
+        sender.sendMessage(Component.text("JVM Bellek Kullanımı: ", NamedTextColor.GRAY).append(Component.text(usedMemMb + " MB / " + totalMemMb + " MB", NamedTextColor.AQUA)));
+        sender.sendMessage(Component.text("Yüklü Pet Tanımları: ", NamedTextColor.GRAY).append(Component.text(definitionRegistry.getAll().size(), NamedTextColor.YELLOW)));
+        sender.sendMessage(Component.text("Aktif Runtime Petler: ", NamedTextColor.GRAY).append(Component.text(activeRegistry.getAllActive().size(), NamedTextColor.GREEN)));
         if (profileCache != null) {
-            sender.sendMessage(Component.text("Profil Önbellek Kayıtları: " + profileCache.size(), NamedTextColor.YELLOW));
+            sender.sendMessage(Component.text("Profil Önbellek Kayıtları: ", NamedTextColor.GRAY).append(Component.text(profileCache.size(), NamedTextColor.YELLOW)));
         }
+        if (taskRegistry != null) {
+            sender.sendMessage(Component.text("Kayıtlı Arka Plan Görevleri: ", NamedTextColor.GRAY).append(Component.text(taskRegistry.size(), NamedTextColor.LIGHT_PURPLE)));
+        }
+        sender.sendMessage(Component.text("-----------------------------------------", NamedTextColor.DARK_GRAY));
     }
 
     private void handleBackup(CommandSender sender) {

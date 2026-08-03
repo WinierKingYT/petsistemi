@@ -25,7 +25,8 @@ public final class CommandRegistrar {
                 context.auditLogger(),
                 context.coordinator(),
                 context.profileCache(),
-                context.messageService()
+                context.messageService(),
+                context.taskRegistry()
         );
 
         if (context.plugin().getCommand("petadmin") != null) {
