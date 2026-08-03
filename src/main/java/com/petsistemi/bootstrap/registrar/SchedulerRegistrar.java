@@ -51,7 +51,7 @@ public final class SchedulerRegistrar {
         // Milestone 2 Tasks: Passive XP, Ability Buffs, Magnet, Particles
         BukkitTask passiveXpTask = Bukkit.getScheduler().runTaskTimer(
                 context.plugin(),
-                new com.petsistemi.progression.PetPassiveXpTask(context.activePetRegistry(), context.experienceService()),
+                new com.petsistemi.progression.PetPassiveXpTask(context.activePetRegistry(), context.experienceService(), context.plugin().getConfig()),
                 1200L, 1200L
         );
         context.taskRegistry().register(passiveXpTask);

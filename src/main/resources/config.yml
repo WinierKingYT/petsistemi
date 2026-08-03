@@ -15,8 +15,9 @@ progression:
   enabled: true
   maximum-level: 100
   # XP her seviye başına gereken miktar (LinearExperienceCurve)
-  # Lv2 için: 1 * xp-per-level, Lv10 için: 9 * xp-per-level
   xp-per-level: 100
+  # Pasif XP — her 1 dakikada (1200t) petlere verilen XP miktarı
+  passive-xp-per-minute: 10
 
 runtime:
   tick-interval-ticks: 5

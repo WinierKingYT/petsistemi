@@ -60,7 +60,7 @@ public final class PetPluginBootstrap {
 
             // 6. Runtime Components & Sessions
             PetEntityController entityController = new PaperPetEntityController(plugin);
-            PetBehaviorController behaviorController = new BasicPetBehaviorController();
+            PetBehaviorController behaviorController = new BasicPetBehaviorController(plugin.getConfig());
             ActivePetRegistry activePetRegistry = new ActivePetRegistry();
             PetRuntimeCoordinator coordinator = new PetRuntimeCoordinator(plugin, petRepository, definitionRegistry, activePetRegistry, entityController, behaviorController);
             PlayerInputSessionManager sessionManager = new PlayerInputSessionManager();

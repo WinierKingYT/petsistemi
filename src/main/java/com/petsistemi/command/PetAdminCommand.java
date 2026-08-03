@@ -180,23 +180,33 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
     }
 
     private void sendHelp(CommandSender sender) {
-        sender.sendMessage(Component.text("=== PetSistemi Yönetici Komutları ===", NamedTextColor.GOLD));
-        sender.sendMessage(Component.text("/petadmin give <oyuncu> <tur_id>", NamedTextColor.YELLOW));
-        sender.sendMessage(Component.text("/petadmin remove <oyuncu> <pet_id>", NamedTextColor.YELLOW));
-        sender.sendMessage(Component.text("/petadmin list <oyuncu>", NamedTextColor.YELLOW));
-        sender.sendMessage(Component.text("/petadmin info <oyuncu>", NamedTextColor.YELLOW));
-        sender.sendMessage(Component.text("/petadmin addxp <oyuncu> <pet_id> <miktar>", NamedTextColor.YELLOW));
-        sender.sendMessage(Component.text("/petadmin setxp <oyuncu> <pet_id> <miktar>", NamedTextColor.YELLOW));
-        sender.sendMessage(Component.text("/petadmin setlevel <oyuncu> <pet_id> <seviye>", NamedTextColor.YELLOW));
-        sender.sendMessage(Component.text("/petadmin summon <oyuncu> <pet_id>", NamedTextColor.YELLOW));
-        sender.sendMessage(Component.text("/petadmin dismiss <oyuncu>", NamedTextColor.YELLOW));
-        sender.sendMessage(Component.text("/petadmin reload", NamedTextColor.YELLOW));
-        sender.sendMessage(Component.text("/petadmin inspect", NamedTextColor.YELLOW));
-        sender.sendMessage(Component.text("/petadmin health", NamedTextColor.YELLOW));
-        sender.sendMessage(Component.text("/petadmin backup", NamedTextColor.YELLOW));
-        sender.sendMessage(Component.text("/petadmin reconcile", NamedTextColor.YELLOW));
-        sender.sendMessage(Component.text("/petadmin disable <pet_id>", NamedTextColor.YELLOW));
-        sender.sendMessage(Component.text("/petadmin enable <pet_id>", NamedTextColor.YELLOW));
+        sender.sendMessage(Component.text("-----------------------------------------", NamedTextColor.DARK_GRAY));
+        sender.sendMessage(Component.text("=== PetSistemi Yönetici Komutları ===", NamedTextColor.GOLD, TextDecoration.BOLD));
+        sendHelpLine(sender, "/petadmin give <oyuncu> <tur_id>",         "Pet ver");
+        sendHelpLine(sender, "/petadmin remove <oyuncu> <pet_id>",       "Pet sil");
+        sendHelpLine(sender, "/petadmin list <oyuncu>",                  "Pet listesi");
+        sendHelpLine(sender, "/petadmin info <oyuncu>",                  "Detaylı pet raporu");
+        sendHelpLine(sender, "/petadmin addxp <oyuncu> <pet_id> <xp>",   "XP ekle");
+        sendHelpLine(sender, "/petadmin setxp <oyuncu> <pet_id> <xp>",   "XP ayarla");
+        sendHelpLine(sender, "/petadmin setlevel <oyuncu> <pet_id> <lv>","Seviye ayarla");
+        sendHelpLine(sender, "/petadmin summon <oyuncu> <pet_id>",        "Pet çağır");
+        sendHelpLine(sender, "/petadmin dismiss <oyuncu>",                "Peti gönder");
+        sendHelpLine(sender, "/petadmin disable <pet_id>",                "Peti devre dışı bırak");
+        sendHelpLine(sender, "/petadmin enable <pet_id>",                 "Peti etkinleştir");
+        sendHelpLine(sender, "/petadmin inspect",                         "Baktığın peti denetle");
+        sendHelpLine(sender, "/petadmin health",                          "Sistem sağlığı raporu");
+        sendHelpLine(sender, "/petadmin backup",                          "Veritabanı yedeği al");
+        sendHelpLine(sender, "/petadmin reconcile",                       "Yetim entity uzlaştır");
+        sendHelpLine(sender, "/petadmin reload",                          "Yapılandırmayı yenile");
+        sender.sendMessage(Component.text("-----------------------------------------", NamedTextColor.DARK_GRAY));
+    }
+
+    private void sendHelpLine(CommandSender sender, String cmd, String desc) {
+        sender.sendMessage(
+            Component.text("  ", NamedTextColor.DARK_GRAY)
+                .append(Component.text(cmd, NamedTextColor.YELLOW))
+                .append(Component.text(" — " + desc, NamedTextColor.GRAY))
+        );
     }
 
     private void handleGive(CommandSender sender, String[] args) {
@@ -206,16 +216,23 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
         }
         OfflinePlayer target = Bukkit.getOfflinePlayer(args[1]);
         String defId = args[2].toLowerCase();
+        String targetName = target.getName() != null ? target.getName() : target.getUniqueId().toString().substring(0, 8);
 
         PetGiveResult result = petService.givePet(target.getUniqueId(), defId);
         if (result.success() && result.petSnapshot() != null) {
             UUID petId = result.petSnapshot().petId();
-            sender.sendMessage(Component.text("Pet başarıyla verildi! Pet ID: " + petId, NamedTextColor.GREEN));
+            sender.sendMessage(Component.text("-----------------------------------------", NamedTextColor.DARK_GRAY));
+            sender.sendMessage(Component.text("✔ Pet başarıyla verildi!", NamedTextColor.GREEN, TextDecoration.BOLD));
+            sender.sendMessage(Component.text("  Oyuncu: ", NamedTextColor.GRAY).append(Component.text(targetName, NamedTextColor.AQUA)));
+            sender.sendMessage(Component.text("  Tür: ", NamedTextColor.GRAY).append(Component.text(defId.toUpperCase(), NamedTextColor.GOLD)));
+            sender.sendMessage(Component.text("  Pet ID: ", NamedTextColor.GRAY).append(Component.text(petId.toString(), NamedTextColor.YELLOW)));
+            sender.sendMessage(Component.text("-----------------------------------------", NamedTextColor.DARK_GRAY));
             if (auditLogger != null) {
                 auditLogger.logAction("GIVE_PET", sender.getName(), target.getUniqueId(), petId, "Tür: " + defId);
             }
         } else {
-            sender.sendMessage(Component.text("Pet verilemedi: " + result.message(), NamedTextColor.RED));
+            sender.sendMessage(Component.text("✖ Pet verilemedi: ", NamedTextColor.RED)
+                    .append(Component.text(result.message(), NamedTextColor.DARK_RED)));
         }
     }
 
