@@ -252,16 +252,34 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
             return;
         }
         OfflinePlayer target = Bukkit.getOfflinePlayer(args[1]);
+        String targetName = target.getName() != null ? target.getName() : target.getUniqueId().toString().substring(0, 8);
         Collection<PetSnapshot> pets = petService.getOwnedPets(target.getUniqueId());
-        if (pets.isEmpty()) {
-            sender.sendMessage(Component.text("Bu oyuncunun hiç peti yok.", NamedTextColor.YELLOW));
-            return;
-        }
 
-        sender.sendMessage(Component.text("=== " + target.getName() + " Oyuncusunun Petleri ===", NamedTextColor.GOLD));
-        for (PetSnapshot pet : pets) {
-            sender.sendMessage(Component.text("- ID: " + pet.petId().toString().substring(0, 6) + " | İsim: " + pet.customName() + " | Tür: " + pet.definitionId() + " | Lv: " + pet.level() + " | State: " + pet.availabilityState(), NamedTextColor.YELLOW));
+        sender.sendMessage(Component.text("-----------------------------------------", NamedTextColor.DARK_GRAY));
+        sender.sendMessage(Component.text("=== " + targetName + " — Pet Listesi (", NamedTextColor.GOLD, TextDecoration.BOLD)
+                .append(Component.text(pets.size(), NamedTextColor.YELLOW))
+                .append(Component.text(" pet) ===", NamedTextColor.GOLD, TextDecoration.BOLD)));
+
+        if (pets.isEmpty()) {
+            sender.sendMessage(Component.text("  Bu oyuncunun hiç peti yok.", NamedTextColor.GRAY));
+        } else {
+            for (PetSnapshot pet : pets) {
+                String name = pet.customName() != null ? pet.customName() : pet.definitionId();
+                NamedTextColor stateColor = pet.availabilityState() == PetAvailabilityState.DISABLED
+                        ? NamedTextColor.RED : NamedTextColor.GREEN;
+                String stateLabel = pet.availabilityState() == PetAvailabilityState.DISABLED
+                        ? "KAPALI" : (pet.spawned() ? "AKTIF" : "HAZIR");
+                sender.sendMessage(
+                    Component.text("  ● ", NamedTextColor.GOLD)
+                        .append(Component.text("[" + pet.definitionId().toUpperCase() + "] ", NamedTextColor.LIGHT_PURPLE))
+                        .append(Component.text(name, NamedTextColor.WHITE))
+                        .append(Component.text(" Lv." + pet.level(), NamedTextColor.YELLOW))
+                        .append(Component.text(" [" + stateLabel + "]", stateColor))
+                        .append(Component.text(" #" + pet.petId().toString().substring(0, 8), NamedTextColor.DARK_GRAY))
+                );
+            }
         }
+        sender.sendMessage(Component.text("-----------------------------------------", NamedTextColor.DARK_GRAY));
     }
 
     private void handleInfo(CommandSender sender, String[] args) {

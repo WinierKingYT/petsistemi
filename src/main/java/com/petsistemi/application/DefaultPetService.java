@@ -402,7 +402,7 @@ public class DefaultPetService implements PetService {
     private String validateName(String name) {
         if (name == null) return null;
         String clean = name.trim();
-        
+
         int min = plugin.getConfig().getInt("naming.minimum-length", 2);
         int max = plugin.getConfig().getInt("naming.maximum-length", 16);
         boolean allowColors = plugin.getConfig().getBoolean("naming.allow-colors", false);
@@ -412,11 +412,23 @@ public class DefaultPetService implements PetService {
             return null;
         }
 
+        // Block legacy color codes (& and §) unless explicitly enabled
         if (!allowColors && (clean.contains("&") || clean.contains("§"))) {
             return null;
         }
 
+        // Block MiniMessage tag injection (<red>, <bold>, etc.) unless formatting allowed
         if (!allowFormatting && (clean.contains("<") || clean.contains(">"))) {
+            return null;
+        }
+
+        // Block newline / carriage return injection (chat exploit prevention)
+        if (clean.contains("\n") || clean.contains("\r")) {
+            return null;
+        }
+
+        // Enforce safe character set: letters, digits, spaces, hyphens, underscores, apostrophes
+        if (!clean.matches("[\\w\\s'\\-]+")) {
             return null;
         }
 

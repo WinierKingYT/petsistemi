@@ -67,7 +67,8 @@ public final class PetPluginBootstrap {
 
             // 7. Application Services
             DefaultPetService petService = new DefaultPetService(plugin, petRepository, selectionRepository, definitionRegistry, activePetRegistry, entityController, coordinator, profileCache);
-            DefaultPetExperienceService experienceService = new DefaultPetExperienceService(plugin, petRepository, definitionRegistry, activePetRegistry, entityController, new LinearExperienceCurve(100));
+            long xpPerLevel = plugin.getConfig().getLong("progression.xp-per-level", 100L);
+            DefaultPetExperienceService experienceService = new DefaultPetExperienceService(plugin, petRepository, definitionRegistry, activePetRegistry, entityController, new LinearExperienceCurve(xpPerLevel));
 
             // 8. Task Registry
             TaskRegistry taskRegistry = new TaskRegistry();

@@ -1,6 +1,5 @@
 package com.petsistemi.runtime.task;
 
-import com.petsistemi.domain.PetInstance;
 import com.petsistemi.persistence.PetRepository;
 import com.petsistemi.runtime.ActivePet;
 import com.petsistemi.runtime.ActivePetRegistry;
@@ -8,8 +7,7 @@ import org.bukkit.Bukkit;
 import org.bukkit.Particle;
 import org.bukkit.World;
 import org.bukkit.entity.Entity;
-
-import java.util.Optional;
+import org.bukkit.entity.Player;
 
 public class PetParticleTask implements Runnable {
 
@@ -25,30 +23,34 @@ public class PetParticleTask implements Runnable {
     public void run() {
         for (ActivePet activePet : activePetRegistry.getAllActive()) {
             Entity entity = activePet.getSpawnedEntity();
-            if (entity == null || !entity.isValid()) {
-                continue;
-            }
+            if (entity == null || !entity.isValid() || entity.isDead()) continue;
 
-            Optional<PetInstance> petOpt = petRepository.findById(activePet.getPetId());
-            if (petOpt.isEmpty()) {
-                continue;
-            }
+            // Guard: owner must be online and in the same world
+            Player owner = Bukkit.getPlayer(activePet.getOwnerId());
+            if (owner == null || !owner.isOnline()) continue;
 
             World world = entity.getWorld();
-            String defId = petOpt.get().definitionId();
+            if (!world.equals(owner.getWorld())) continue;
+
+            String defId = petRepository.findById(activePet.getPetId())
+                    .map(p -> p.definitionId().toLowerCase())
+                    .orElse("");
+
             Particle particle;
             try {
-                particle = switch (defId.toLowerCase()) {
+                particle = switch (defId) {
                     case "wolf" -> Particle.valueOf("VILLAGER_HAPPY");
                     case "cat" -> Particle.HEART;
                     case "allay" -> Particle.valueOf("SOUL_FIRE_FLAME");
-                    default -> Particle.valueOf("VILLAGER_HAPPY");
+                    default -> Particle.HEART;
                 };
             } catch (Throwable t) {
                 particle = Particle.HEART;
             }
 
-            world.spawnParticle(particle, entity.getLocation().add(0, 0.6, 0), 2, 0.2, 0.2, 0.2, 0.02);
+            try {
+                world.spawnParticle(particle, entity.getLocation().add(0, 0.6, 0), 2, 0.2, 0.2, 0.2, 0.02);
+            } catch (Throwable ignored) {}
         }
     }
 }

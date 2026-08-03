@@ -14,6 +14,9 @@ naming:
 progression:
   enabled: true
   maximum-level: 100
+  # XP her seviye başına gereken miktar (LinearExperienceCurve)
+  # Lv2 için: 1 * xp-per-level, Lv10 için: 9 * xp-per-level
+  xp-per-level: 100
 
 runtime:
   tick-interval-ticks: 5
