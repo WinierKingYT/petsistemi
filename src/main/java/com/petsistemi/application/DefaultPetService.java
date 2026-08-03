@@ -11,6 +11,7 @@ import com.petsistemi.domain.PetInstance;
 import com.petsistemi.domain.PetSelection;
 import com.petsistemi.persistence.PetRepository;
 import com.petsistemi.persistence.PetSelectionRepository;
+import com.petsistemi.persistence.PlayerPetProfileCache;
 import com.petsistemi.runtime.ActivePet;
 import com.petsistemi.runtime.ActivePetRegistry;
 import com.petsistemi.runtime.PetEntityController;
@@ -33,6 +34,7 @@ public class DefaultPetService implements PetService {
     private final ActivePetRegistry activePetRegistry;
     private final PetEntityController entityController;
     private final PetRuntimeCoordinator coordinator;
+    private final PlayerPetProfileCache profileCache;
 
     public DefaultPetService(JavaPlugin plugin, PetRepository repository,
                              PetSelectionRepository selectionRepository,
@@ -40,6 +42,16 @@ public class DefaultPetService implements PetService {
                              ActivePetRegistry activePetRegistry,
                              PetEntityController entityController,
                              PetRuntimeCoordinator coordinator) {
+        this(plugin, repository, selectionRepository, definitionRegistry, activePetRegistry, entityController, coordinator, null);
+    }
+
+    public DefaultPetService(JavaPlugin plugin, PetRepository repository,
+                             PetSelectionRepository selectionRepository,
+                             PetDefinitionRegistry definitionRegistry,
+                             ActivePetRegistry activePetRegistry,
+                             PetEntityController entityController,
+                             PetRuntimeCoordinator coordinator,
+                             PlayerPetProfileCache profileCache) {
         this.plugin = plugin;
         this.repository = repository;
         this.selectionRepository = selectionRepository;
@@ -47,6 +59,7 @@ public class DefaultPetService implements PetService {
         this.activePetRegistry = activePetRegistry;
         this.entityController = entityController;
         this.coordinator = coordinator;
+        this.profileCache = profileCache;
     }
 
     @Override
@@ -126,6 +139,9 @@ public class DefaultPetService implements PetService {
 
         try {
             repository.insert(pet);
+            if (profileCache != null) {
+                profileCache.invalidate(ownerId);
+            }
         } catch (Exception e) {
             return new PetGiveResult(false, "Pet veritabanına kaydedilirken hata oluştu: " + e.getMessage(), null);
         }
@@ -290,6 +306,93 @@ public class DefaultPetService implements PetService {
         }
 
         return new PetRenameResult(true, "Pet ismi başarıyla değiştirildi.");
+    }
+
+    @Override
+    public PetDisableResult disablePet(UUID petId) {
+        Optional<PetInstance> petOpt = repository.findById(petId);
+        if (petOpt.isEmpty()) {
+            return new PetDisableResult(false, "Pet bulunamadı.");
+        }
+
+        PetInstance pet = petOpt.get();
+        UUID ownerId = pet.ownerId();
+
+        // Only despawn if currently spawned runtime pet matches target petId
+        Optional<ActivePet> activeOpt = activePetRegistry.getByOwner(ownerId);
+        if (activeOpt.isPresent() && activeOpt.get().getPetId().equals(petId)) {
+            coordinator.dismissAndClear(ownerId);
+        }
+
+        // Only clear selection if active selection matches target petId
+        Optional<PetSelection> selectionOpt = selectionRepository.findByOwner(ownerId);
+        if (selectionOpt.isPresent() && selectionOpt.get().petId().equals(petId)) {
+            selectionRepository.clear(ownerId);
+        }
+
+        PetInstance updated = new PetInstance(pet.petId(), pet.ownerId(), pet.definitionId(), pet.customName(), pet.level(), pet.experience(), PetAvailabilityState.DISABLED, pet.createdAt(), System.currentTimeMillis());
+        try {
+            repository.update(updated);
+            if (profileCache != null) {
+                profileCache.invalidate(ownerId);
+            }
+            return new PetDisableResult(true, "Pet başarıyla devre dışı bırakıldı (DISABLED).");
+        } catch (Exception e) {
+            return new PetDisableResult(false, "Pet güncellenemedi: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public PetDisableResult enablePet(UUID petId) {
+        Optional<PetInstance> petOpt = repository.findById(petId);
+        if (petOpt.isEmpty()) {
+            return new PetDisableResult(false, "Pet bulunamadı.");
+        }
+
+        PetInstance pet = petOpt.get();
+        PetInstance updated = new PetInstance(pet.petId(), pet.ownerId(), pet.definitionId(), pet.customName(), pet.level(), pet.experience(), PetAvailabilityState.AVAILABLE, pet.createdAt(), System.currentTimeMillis());
+        try {
+            repository.update(updated);
+            if (profileCache != null) {
+                profileCache.invalidate(pet.ownerId());
+            }
+            return new PetDisableResult(true, "Pet başarıyla etkinleştirildi (AVAILABLE).");
+        } catch (Exception e) {
+            return new PetDisableResult(false, "Pet güncellenemedi: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public PetRemoveResult removePet(UUID petId) {
+        Optional<PetInstance> petOpt = repository.findById(petId);
+        if (petOpt.isEmpty()) {
+            return new PetRemoveResult(false, "Pet bulunamadı.");
+        }
+
+        PetInstance pet = petOpt.get();
+        UUID ownerId = pet.ownerId();
+
+        // Only despawn if currently spawned runtime pet matches target petId
+        Optional<ActivePet> activeOpt = activePetRegistry.getByOwner(ownerId);
+        if (activeOpt.isPresent() && activeOpt.get().getPetId().equals(petId)) {
+            coordinator.dismissAndClear(ownerId);
+        }
+
+        // Only clear selection if active selection matches target petId
+        Optional<PetSelection> selectionOpt = selectionRepository.findByOwner(ownerId);
+        if (selectionOpt.isPresent() && selectionOpt.get().petId().equals(petId)) {
+            selectionRepository.clear(ownerId);
+        }
+
+        try {
+            repository.delete(petId);
+            if (profileCache != null) {
+                profileCache.invalidate(ownerId);
+            }
+            return new PetRemoveResult(true, "Pet başarıyla silindi.");
+        } catch (Exception e) {
+            return new PetRemoveResult(false, "Pet silinemedi: " + e.getMessage());
+        }
     }
 
     private String validateName(String name) {

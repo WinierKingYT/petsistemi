@@ -40,11 +40,7 @@ public class MigrationRunner {
         ensureSchemaMigrationsTable(connection);
 
         Set<Integer> appliedVersions = getAppliedVersions(connection);
-
-        // 1. Legacy Repair for databases upgraded under broken 954e114 V2 migration
-        if (appliedVersions.contains(2) && !appliedVersions.contains(3)) {
-            performLegacyV2Repair(connection);
-        }
+        boolean needsLegacyV2Repair = appliedVersions.contains(2) && !appliedVersions.contains(3);
 
         List<DatabaseMigration> pending = new ArrayList<>();
         for (DatabaseMigration m : migrations) {
@@ -53,12 +49,14 @@ public class MigrationRunner {
             }
         }
 
-        if (pending.isEmpty()) {
+        if (pending.isEmpty() && !needsLegacyV2Repair) {
             logger.info("Veritabanı en güncel sürümde (" + getLatestAppliedVersion(appliedVersions) + "). Migration gerekmiyor.");
             return;
         }
 
-        int targetVersion = pending.get(pending.size() - 1).version();
+        int targetVersion = pending.isEmpty() ? 2 : pending.get(pending.size() - 1).version();
+
+        // 1. Take WAL-safe backup BEFORE modifying any data
         if (dbFile != null && backupDir != null) {
             try {
                 backupManager.createBackup(connection, dbFile, backupDir, targetVersion, backupEnabled, failOnBackupError, maxBackups);
@@ -78,11 +76,17 @@ public class MigrationRunner {
         boolean autoCommit = connection.getAutoCommit();
         try {
             connection.setAutoCommit(false);
+
+            // 2. Perform Legacy Repair INSIDE transaction after backup
+            if (needsLegacyV2Repair) {
+                performLegacyV2Repair(connection);
+            }
+
             for (DatabaseMigration migration : pending) {
                 applySingleMigration(connection, migration);
             }
 
-            // 2. Final Foreign Key Integrity Check BEFORE Commit
+            // 3. Final Foreign Key Integrity Check BEFORE Commit
             try (Statement stmt = connection.createStatement();
                  ResultSet rs = stmt.executeQuery("PRAGMA foreign_key_check;")) {
                 if (rs.next()) {

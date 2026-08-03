@@ -79,7 +79,7 @@ public class AtomicPetDefinitionRegistry implements PetDefinitionRegistry {
                     boolean nameplateEnabled = yaml.getBoolean("nameplate.enabled", true);
                     List<String> nameplateFormat = yaml.getStringList("nameplate.format");
                     if (nameplateFormat == null || nameplateFormat.isEmpty()) {
-                        nameplateFormat = List.of("<gradient:#ffaa00:#ff5500><name></gradient> <gray>Lv.<level></gray>");
+                        nameplateFormat = List.of("<gradient:#ffaa00:#ff5500>{pet_name}</gradient> <gray>Lv.{level}</gray>");
                     }
 
                     PetDefinition def = new PetDefinition(

@@ -37,4 +37,10 @@ public interface PetService {
     PetRenameResult rename(Player owner, UUID petId, String newName);
 
     PetRenameResult rename(UUID ownerId, UUID petId, String newName);
+
+    PetDisableResult disablePet(UUID petId);
+
+    PetDisableResult enablePet(UUID petId);
+
+    PetRemoveResult removePet(UUID petId);
 }

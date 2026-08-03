@@ -18,4 +18,8 @@ follow-distances:
 progression:
   enabled: true
   maximum-level: 100
+nameplate:
+  enabled: true
+  format:
+    - "<gold>{pet_name}</gold> <gray>Lv.{level}</gray>"
 permission: companionpets.pet.wolf

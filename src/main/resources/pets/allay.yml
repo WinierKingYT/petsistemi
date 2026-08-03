@@ -8,13 +8,10 @@ glowing: true
 invulnerable: true
 silent: false
 gravity: false
-
 progression:
   enabled: true
   maximum-level: 100
-
 nameplate:
   enabled: true
   format:
-    - "<cyan>{pet_name}"
-    - "<gray>Lv.{level}"
+    - "<cyan>{pet_name}</cyan> <gray>Lv.{level}</gray>"

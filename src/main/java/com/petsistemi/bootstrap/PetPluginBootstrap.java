@@ -66,7 +66,7 @@ public final class PetPluginBootstrap {
             PlayerInputSessionManager sessionManager = new PlayerInputSessionManager();
 
             // 7. Application Services
-            DefaultPetService petService = new DefaultPetService(plugin, petRepository, selectionRepository, definitionRegistry, activePetRegistry, entityController, coordinator);
+            DefaultPetService petService = new DefaultPetService(plugin, petRepository, selectionRepository, definitionRegistry, activePetRegistry, entityController, coordinator, profileCache);
             DefaultPetExperienceService experienceService = new DefaultPetExperienceService(plugin, petRepository, definitionRegistry, activePetRegistry, entityController, new LinearExperienceCurve(100));
 
             // 8. Task Registry

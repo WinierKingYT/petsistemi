@@ -90,12 +90,8 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
 
     @Override
     public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, @NotNull String[] args) {
-        if (!sender.hasPermission("companionpets.admin")) {
-            sender.sendMessage(Component.text("Bu komutu kullanmak için yetkiniz yok.", NamedTextColor.RED));
-            return true;
-        }
-
         if (args.length == 0) {
+            if (!checkPerm(sender, "companionpets.admin")) return true;
             sendHelp(sender);
             return true;
         }
@@ -158,11 +154,11 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
     }
 
     private boolean checkPerm(CommandSender sender, String perm) {
-        if (!sender.hasPermission(perm)) {
-            sender.sendMessage(Component.text("Bu komut için yetkiniz yok: " + perm, NamedTextColor.RED));
-            return false;
+        if (sender.hasPermission("companionpets.admin") || sender.hasPermission(perm)) {
+            return true;
         }
-        return true;
+        sender.sendMessage(Component.text("Bu komut için yetkiniz yok: " + perm, NamedTextColor.RED));
+        return false;
     }
 
     private void sendHelp(CommandSender sender) {
@@ -221,17 +217,15 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
         }
 
         UUID petId = search.pet().petId();
-        if (coordinator != null) {
-            coordinator.dismissAndClear(target.getUniqueId());
+        com.petsistemi.api.result.PetRemoveResult result = petService.removePet(petId);
+        if (result.success()) {
+            if (auditLogger != null) {
+                auditLogger.logAction("REMOVE_PET", sender.getName(), target.getUniqueId(), petId, "Pet silindi");
+            }
+            sender.sendMessage(Component.text("Pet başarıyla silindi.", NamedTextColor.GREEN));
+        } else {
+            sender.sendMessage(Component.text("Pet silinemedi: " + result.message(), NamedTextColor.RED));
         }
-        repository.delete(petId);
-        if (selectionRepository != null) {
-            selectionRepository.clear(target.getUniqueId());
-        }
-        if (auditLogger != null) {
-            auditLogger.logAction("REMOVE_PET", sender.getName(), target.getUniqueId(), petId, "Pet silindi");
-        }
-        sender.sendMessage(Component.text("Pet başarıyla silindi.", NamedTextColor.GREEN));
     }
 
     private void handleList(CommandSender sender, String[] args) {
@@ -492,11 +486,11 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
         int despawnedOrphans = 0;
         int restoredCount = 0;
 
-        // 1. Despawn runtime pets with offline owners or missing selection
+        // 1. Despawn runtime entity ONLY for offline owners (preserving persistent selection!)
         for (ActivePet activePet : activeRegistry.getAllActive()) {
             Player owner = Bukkit.getPlayer(activePet.getOwnerId());
             if (owner == null || !owner.isOnline()) {
-                if (coordinator != null) coordinator.dismissAndClear(activePet.getOwnerId());
+                if (coordinator != null) coordinator.despawnOnQuit(activePet.getOwnerId());
                 despawnedOrphans++;
             }
         }
@@ -506,7 +500,9 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
             if (activeRegistry.getByOwner(online.getUniqueId()).isEmpty()) {
                 if (coordinator != null) {
                     coordinator.restoreOnJoin(online);
-                    restoredCount++;
+                    if (activeRegistry.getByOwner(online.getUniqueId()).isPresent()) {
+                        restoredCount++;
+                    }
                 }
             }
         }
@@ -524,31 +520,15 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
         }
         try {
             UUID petId = UUID.fromString(args[1]);
-            Optional<PetInstance> petOpt = repository.findById(petId);
-            if (petOpt.isEmpty()) {
-                sender.sendMessage(Component.text("Pet bulunamadı.", NamedTextColor.RED));
-                return;
+            com.petsistemi.api.result.PetDisableResult result = petService.disablePet(petId);
+            if (result.success()) {
+                if (auditLogger != null) {
+                    auditLogger.logAction("DISABLE_PET", sender.getName(), null, petId, "Pet DISABLED yapıldı");
+                }
+                sender.sendMessage(Component.text("Pet " + petId + " başarıyla devre dışı bırakıldı (DISABLED).", NamedTextColor.GREEN));
+            } else {
+                sender.sendMessage(Component.text("Pet devre dışı bırakılamadı: " + result.message(), NamedTextColor.RED));
             }
-            PetInstance pet = petOpt.get();
-
-            // Despawn physical entity if active
-            if (coordinator != null) {
-                coordinator.dismissAndClear(pet.ownerId());
-            }
-
-            // Clear selection from DB
-            if (selectionRepository != null) {
-                selectionRepository.clear(pet.ownerId());
-            }
-
-            // Update availability_state = DISABLED
-            PetInstance updated = new PetInstance(pet.petId(), pet.ownerId(), pet.definitionId(), pet.customName(), pet.level(), pet.experience(), PetAvailabilityState.DISABLED, pet.createdAt(), System.currentTimeMillis());
-            repository.update(updated);
-
-            if (auditLogger != null) {
-                auditLogger.logAction("DISABLE_PET", sender.getName(), pet.ownerId(), pet.petId(), "Pet DISABLED yapıldı");
-            }
-            sender.sendMessage(Component.text("Pet " + petId + " başarıyla devre dışı bırakıldı (DISABLED) ve runtime/seçim temizlendi.", NamedTextColor.GREEN));
         } catch (IllegalArgumentException e) {
             sender.sendMessage(Component.text("Geçersiz UUID formatı.", NamedTextColor.RED));
         }
@@ -561,19 +541,15 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
         }
         try {
             UUID petId = UUID.fromString(args[1]);
-            Optional<PetInstance> petOpt = repository.findById(petId);
-            if (petOpt.isEmpty()) {
-                sender.sendMessage(Component.text("Pet bulunamadı.", NamedTextColor.RED));
-                return;
+            com.petsistemi.api.result.PetDisableResult result = petService.enablePet(petId);
+            if (result.success()) {
+                if (auditLogger != null) {
+                    auditLogger.logAction("ENABLE_PET", sender.getName(), null, petId, "Pet AVAILABLE yapıldı");
+                }
+                sender.sendMessage(Component.text("Pet " + petId + " başarıyla etkinleştirildi (AVAILABLE).", NamedTextColor.GREEN));
+            } else {
+                sender.sendMessage(Component.text("Pet etkinleştirilemedi: " + result.message(), NamedTextColor.RED));
             }
-            PetInstance pet = petOpt.get();
-            PetInstance updated = new PetInstance(pet.petId(), pet.ownerId(), pet.definitionId(), pet.customName(), pet.level(), pet.experience(), PetAvailabilityState.AVAILABLE, pet.createdAt(), System.currentTimeMillis());
-            repository.update(updated);
-
-            if (auditLogger != null) {
-                auditLogger.logAction("ENABLE_PET", sender.getName(), pet.ownerId(), pet.petId(), "Pet AVAILABLE yapıldı");
-            }
-            sender.sendMessage(Component.text("Pet " + petId + " başarıyla etkinleştirildi (AVAILABLE).", NamedTextColor.GREEN));
         } catch (IllegalArgumentException e) {
             sender.sendMessage(Component.text("Geçersiz UUID formatı.", NamedTextColor.RED));
         }
