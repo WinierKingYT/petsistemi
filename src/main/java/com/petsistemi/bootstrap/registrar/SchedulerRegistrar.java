@@ -36,5 +36,16 @@ public final class SchedulerRegistrar {
         }, 100L, 100L);
 
         context.taskRegistry().register(watchdogTask);
+
+        // Online Players Reload Restore Task
+        Bukkit.getScheduler().runTaskLater(context.plugin(), () -> {
+            for (Player player : Bukkit.getOnlinePlayers()) {
+                context.petService().getSelectedPet(player.getUniqueId()).ifPresent(snapshot -> {
+                    if (context.activePetRegistry().getByOwner(player.getUniqueId()).isEmpty()) {
+                        context.coordinator().restoreOnJoin(player);
+                    }
+                });
+            }
+        }, 20L);
     }
 }

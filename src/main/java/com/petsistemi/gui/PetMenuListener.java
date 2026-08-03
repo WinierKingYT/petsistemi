@@ -1,18 +1,33 @@
 package com.petsistemi.gui;
 
 import com.petsistemi.api.PetService;
+import com.petsistemi.api.PetSnapshot;
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.format.NamedTextColor;
+import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.plugin.java.JavaPlugin;
+
+import java.util.Optional;
+import java.util.UUID;
 
 public class PetMenuListener implements Listener {
 
+    private final JavaPlugin plugin;
     private final PetService petService;
+    private final PlayerInputSessionManager sessionManager;
 
-    public PetMenuListener(PetService petService) {
+    public PetMenuListener(JavaPlugin plugin, PetService petService, PlayerInputSessionManager sessionManager) {
+        this.plugin = plugin;
         this.petService = petService;
+        this.sessionManager = sessionManager;
     }
 
     @EventHandler
@@ -26,11 +41,45 @@ public class PetMenuListener implements Listener {
 
             int slot = event.getRawSlot();
             if (slot == 45 && holder.page() > 0) {
-                PetListMenu.open(player, petService, holder.page() - 1);
+                PetListMenu.open(player, petService, holder.page() - 1, plugin);
+                return;
             } else if (slot == 53) {
-                PetListMenu.open(player, petService, holder.page() + 1);
+                PetListMenu.open(player, petService, holder.page() + 1, plugin);
+                return;
             } else if (slot == 49) {
                 player.closeInventory();
+                return;
+            }
+
+            ItemStack clicked = event.getCurrentItem();
+            if (clicked == null || !clicked.hasItemMeta()) return;
+
+            ItemMeta meta = clicked.getItemMeta();
+            NamespacedKey key = new NamespacedKey(plugin, "pet_id");
+            if (!meta.getPersistentDataContainer().has(key, PersistentDataType.STRING)) return;
+
+            String petIdStr = meta.getPersistentDataContainer().get(key, PersistentDataType.STRING);
+            if (petIdStr == null) return;
+            UUID petId = UUID.fromString(petIdStr);
+
+            if (event.isShiftClick()) {
+                player.closeInventory();
+                if (sessionManager != null) {
+                    sessionManager.startRenameSession(player.getUniqueId(), petId);
+                    player.sendMessage(Component.text("Lütfen chat ekranına yeni pet ismini yazın ('iptal' yazarak iptal edebilirsiniz):", NamedTextColor.YELLOW));
+                }
+                return;
+            }
+
+            Optional<PetSnapshot> spawned = petService.getSpawnedPet(player.getUniqueId());
+            boolean isSpawned = spawned.map(s -> s.petId().equals(petId)).orElse(false);
+
+            if (isSpawned) {
+                petService.dismiss(player);
+                PetListMenu.open(player, petService, holder.page(), plugin);
+            } else {
+                petService.summon(player, petId);
+                PetListMenu.open(player, petService, holder.page(), plugin);
             }
         }
     }

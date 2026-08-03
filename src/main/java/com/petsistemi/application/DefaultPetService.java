@@ -9,6 +9,7 @@ import com.petsistemi.domain.PetAvailabilityState;
 import com.petsistemi.domain.PetDefinition;
 import com.petsistemi.domain.PetInstance;
 import com.petsistemi.persistence.PetRepository;
+import com.petsistemi.persistence.PetSelectionRepository;
 import com.petsistemi.runtime.ActivePet;
 import com.petsistemi.runtime.ActivePetRegistry;
 import com.petsistemi.runtime.PetEntityController;
@@ -26,18 +27,21 @@ public class DefaultPetService implements PetService {
 
     private final JavaPlugin plugin;
     private final PetRepository repository;
+    private final PetSelectionRepository selectionRepository;
     private final PetDefinitionRegistry definitionRegistry;
     private final ActivePetRegistry activePetRegistry;
     private final PetEntityController entityController;
     private final PetRuntimeCoordinator coordinator;
 
     public DefaultPetService(JavaPlugin plugin, PetRepository repository,
+                             PetSelectionRepository selectionRepository,
                              PetDefinitionRegistry definitionRegistry,
                              ActivePetRegistry activePetRegistry,
                              PetEntityController entityController,
                              PetRuntimeCoordinator coordinator) {
         this.plugin = plugin;
         this.repository = repository;
+        this.selectionRepository = selectionRepository;
         this.definitionRegistry = definitionRegistry;
         this.activePetRegistry = activePetRegistry;
         this.entityController = entityController;
@@ -58,7 +62,9 @@ public class DefaultPetService implements PetService {
 
     @Override
     public Optional<PetSnapshot> getSelectedPet(UUID ownerId) {
-        return repository.findActiveByOwner(ownerId).map(this::mapToSnapshot);
+        return selectionRepository.findByOwner(ownerId)
+                .flatMap(selection -> repository.findById(selection.petId()))
+                .map(this::mapToSnapshot);
     }
 
     @Override
@@ -192,6 +198,37 @@ public class DefaultPetService implements PetService {
     }
 
     @Override
+    public PetRenameResult rename(UUID ownerId, UUID petId, String newName) {
+        Player player = Bukkit.getPlayer(ownerId);
+        if (player != null && player.isOnline()) {
+            return rename(player, petId, newName);
+        }
+
+        Optional<PetInstance> petOpt = repository.findById(petId);
+        if (petOpt.isEmpty()) {
+            return new PetRenameResult(false, "Pet bulunamadı.");
+        }
+
+        PetInstance pet = petOpt.get();
+        if (!pet.ownerId().equals(ownerId)) {
+            return new PetRenameResult(false, "Bu pet bu oyuncuya ait değil.");
+        }
+
+        String validatedName = validateName(newName);
+        if (validatedName == null) {
+            return new PetRenameResult(false, "Geçersiz isim!");
+        }
+
+        PetInstance updated = pet.withCustomName(validatedName);
+        try {
+            repository.update(updated);
+            return new PetRenameResult(true, "Pet ismi güncellendi.");
+        } catch (Exception e) {
+            return new PetRenameResult(false, "İsim veritabanına kaydedilemedi: " + e.getMessage());
+        }
+    }
+
+    @Override
     public PetRenameResult rename(Player owner, UUID petId, String newName) {
         Optional<PetInstance> petOpt = repository.findById(petId);
         if (petOpt.isEmpty()) {
@@ -263,6 +300,13 @@ public class DefaultPetService implements PetService {
     }
 
     private PetSnapshot mapToSnapshot(PetInstance p) {
+        boolean selected = selectionRepository.findByOwner(p.ownerId())
+                .map(s -> s.petId().equals(p.petId()))
+                .orElse(false);
+        boolean spawned = activePetRegistry.getByOwner(p.ownerId())
+                .map(a -> a.getPetId().equals(p.petId()))
+                .orElse(false);
+
         return new PetSnapshot(
                 p.petId(),
                 p.ownerId(),
@@ -271,8 +315,8 @@ public class DefaultPetService implements PetService {
                 p.level(),
                 p.experience(),
                 p.availabilityState(),
-                p.createdAt(),
-                p.updatedAt()
+                selected,
+                spawned
         );
     }
 }

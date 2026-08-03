@@ -2,9 +2,14 @@ package com.petsistemi.bootstrap;
 
 import com.petsistemi.application.DefaultPetExperienceService;
 import com.petsistemi.application.DefaultPetService;
+import com.petsistemi.config.PluginConfiguration;
+import com.petsistemi.config.PluginConfigurationLoader;
+import com.petsistemi.definition.AtomicPetDefinitionRegistry;
 import com.petsistemi.definition.PetDefinitionRegistry;
-import com.petsistemi.definition.YamlPetDefinitionRegistry;
+import com.petsistemi.gui.PlayerInputSessionManager;
+import com.petsistemi.message.MessageService;
 import com.petsistemi.persistence.*;
+import com.petsistemi.progression.LinearExperienceCurve;
 import com.petsistemi.runtime.*;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -18,11 +23,12 @@ public final class PetPluginBootstrap {
     public static PetPluginContext bootstrap(JavaPlugin plugin) {
         plugin.getLogger().info("PetSistemi önyükleme (bootstrap) başlatılıyor...");
 
-        // 1. Config Setup
+        // 1. Config & Messages Setup
         plugin.saveDefaultConfig();
+        PluginConfiguration config = PluginConfigurationLoader.load(plugin.getConfig());
+        MessageService messageService = new MessageService(plugin);
 
-        // 2. Database Connection
-        File dbFile = new File(plugin.getDataFolder(), "pets.db");
+        // 2. Database Connection & Executor
         DatabaseManager databaseManager = new DatabaseManager(plugin);
         try {
             databaseManager.initialize();
@@ -32,13 +38,15 @@ public final class PetPluginBootstrap {
         }
 
         Connection connection = databaseManager.getConnection();
+        File dbFile = databaseManager.getDbFile();
+        DatabaseExecutor dbExecutor = new DatabaseExecutor(plugin.getLogger());
 
         // 3. Database Backup & Migrations
         try {
             File backupDir = new File(plugin.getDataFolder(), "database-backups");
-            boolean backupEnabled = plugin.getConfig().getBoolean("database.migration-backup.enabled", true);
-            boolean failOnBackupError = plugin.getConfig().getBoolean("database.migration-backup.fail-startup-on-backup-error", true);
-            int maxBackups = plugin.getConfig().getInt("database.migration-backup.maximum-backups", 5);
+            boolean backupEnabled = config.database().backupEnabled();
+            boolean failOnBackupError = config.database().failOnBackupError();
+            int maxBackups = config.database().maxBackups();
 
             SchemaMigrator.migrate(connection, dbFile, backupDir, backupEnabled, failOnBackupError, maxBackups);
         } catch (Exception e) {
@@ -47,22 +55,25 @@ public final class PetPluginBootstrap {
         }
 
         // 4. Definition Registry
-        PetDefinitionRegistry definitionRegistry = new YamlPetDefinitionRegistry(plugin);
+        PetDefinitionRegistry definitionRegistry = new AtomicPetDefinitionRegistry(plugin);
         definitionRegistry.reload();
 
-        // 5. Repositories
+        // 5. Repositories, Cache & Audit
         PetRepository petRepository = new SqlitePetRepository(databaseManager, plugin.getLogger());
         PetSelectionRepository selectionRepository = new SqlitePetSelectionRepository(databaseManager, plugin.getLogger());
+        PlayerPetProfileCache profileCache = new PlayerPetProfileCache(petRepository, selectionRepository);
+        AuditLogger auditLogger = new AuditLogger(databaseManager, plugin.getLogger());
 
-        // 6. Runtime Components
+        // 6. Runtime Components & Sessions
         PetEntityController entityController = new PaperPetEntityController(plugin);
         PetBehaviorController behaviorController = new BasicPetBehaviorController();
         ActivePetRegistry activePetRegistry = new ActivePetRegistry();
         PetRuntimeCoordinator coordinator = new PetRuntimeCoordinator(plugin, petRepository, definitionRegistry, activePetRegistry, entityController, behaviorController);
+        PlayerInputSessionManager sessionManager = new PlayerInputSessionManager();
 
         // 7. Application Services
-        DefaultPetService petService = new DefaultPetService(plugin, petRepository, definitionRegistry, activePetRegistry, entityController, coordinator);
-        DefaultPetExperienceService experienceService = new DefaultPetExperienceService(plugin, petRepository, definitionRegistry, activePetRegistry, entityController);
+        DefaultPetService petService = new DefaultPetService(plugin, petRepository, selectionRepository, definitionRegistry, activePetRegistry, entityController, coordinator);
+        DefaultPetExperienceService experienceService = new DefaultPetExperienceService(plugin, petRepository, definitionRegistry, activePetRegistry, entityController, new LinearExperienceCurve(100));
 
         // 8. Task Registry
         TaskRegistry taskRegistry = new TaskRegistry();
@@ -71,9 +82,14 @@ public final class PetPluginBootstrap {
 
         return new PetPluginContext(
                 plugin,
+                config,
+                messageService,
                 databaseManager,
+                dbExecutor,
                 petRepository,
                 selectionRepository,
+                profileCache,
+                auditLogger,
                 definitionRegistry,
                 activePetRegistry,
                 entityController,
@@ -81,6 +97,7 @@ public final class PetPluginBootstrap {
                 coordinator,
                 petService,
                 experienceService,
+                sessionManager,
                 taskRegistry
         );
     }

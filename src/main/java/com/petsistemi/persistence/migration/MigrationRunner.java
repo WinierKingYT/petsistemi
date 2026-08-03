@@ -65,34 +65,37 @@ public class MigrationRunner {
         }
 
         logger.info("Uygulanacak " + pending.size() + " adet migration bulundu. Çalıştırılıyor...");
-        for (DatabaseMigration migration : pending) {
-            applySingleMigration(connection, migration);
+        
+        try (Statement pragmaStmt = connection.createStatement()) {
+            pragmaStmt.execute("PRAGMA foreign_keys = OFF;");
+        }
+
+        boolean autoCommit = connection.getAutoCommit();
+        try {
+            connection.setAutoCommit(false);
+            for (DatabaseMigration migration : pending) {
+                applySingleMigration(connection, migration);
+            }
+            connection.commit();
+        } catch (SQLException e) {
+            connection.rollback();
+            throw e;
+        } finally {
+            connection.setAutoCommit(autoCommit);
+            try (Statement pragmaStmt = connection.createStatement()) {
+                pragmaStmt.execute("PRAGMA foreign_keys = ON;");
+            }
         }
     }
 
     private void applySingleMigration(Connection connection, DatabaseMigration migration) throws SQLException {
-        boolean autoCommit = connection.getAutoCommit();
-        try {
-            connection.setAutoCommit(false);
-            logger.info("Migration V" + migration.version() + " (" + migration.name() + ") uygulanıyor...");
+        logger.info("Migration V" + migration.version() + " (" + migration.name() + ") uygulanıyor...");
 
-            migration.apply(connection);
+        migration.apply(connection);
 
-            recordMigration(connection, migration.version());
+        recordMigration(connection, migration.version());
 
-            connection.commit();
-            logger.info("Migration V" + migration.version() + " başarıyla tamamlandı.");
-        } catch (SQLException e) {
-            try {
-                connection.rollback();
-            } catch (SQLException ignored) {}
-            logger.severe("Migration V" + migration.version() + " başarısız oldu! Veritabanı geri alındı: " + e.getMessage());
-            throw e;
-        } finally {
-            try {
-                connection.setAutoCommit(autoCommit);
-            } catch (SQLException ignored) {}
-        }
+        logger.info("Migration V" + migration.version() + " başarıyla tamamlandı.");
     }
 
     private void ensureSchemaMigrationsTable(Connection connection) throws SQLException {

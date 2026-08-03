@@ -95,9 +95,8 @@ class PetSelectionRepositoryTest {
 
         petRepository.insert(new PetInstance(disabledPetId, ownerId, "wolf", "DisabledBobi", 1, 0, PetAvailabilityState.DISABLED, 1000L, 1000L));
 
-        // Attempting to select a pet with composite FK enforces DB matching
-        selectionRepository.select(ownerId, disabledPetId);
+        assertThrows(IllegalArgumentException.class, () -> selectionRepository.select(ownerId, disabledPetId));
         Optional<PetSelection> selection = selectionRepository.findByOwner(ownerId);
-        assertTrue(selection.isPresent());
+        assertTrue(selection.isEmpty(), "Disabled pet must not be selected");
     }
 }

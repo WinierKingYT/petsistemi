@@ -50,6 +50,23 @@ public class PetRuntimeCoordinator {
         this.behaviorController = behaviorController;
     }
 
+    public synchronized void restoreOnJoin(Player owner) {
+        if (owner == null || !owner.isOnline()) return;
+        Optional<PetInstance> selectedOpt = repository.findActiveByOwner(owner.getUniqueId());
+        if (selectedOpt.isPresent()) {
+            PetInstance pet = selectedOpt.get();
+            definitionRegistry.find(pet.definitionId()).ifPresent(def -> {
+                try {
+                    spawnAndRegister(owner, pet, def);
+                } catch (Exception e) {
+                    if (plugin != null) {
+                        plugin.getLogger().log(Level.SEVERE, "Join restore hatası: " + e.getMessage(), e);
+                    }
+                }
+            });
+        }
+    }
+
     /**
      * Atomically spawns pet entity, initializes behavior, updates DB via single transaction, and registers runtime state.
      * Performs complete rollback (restoring previous selection and physical entity) if any step fails.

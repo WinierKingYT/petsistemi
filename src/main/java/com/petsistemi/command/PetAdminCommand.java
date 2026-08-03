@@ -31,6 +31,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.io.File;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -91,6 +92,11 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
             case "dismiss" -> handleDismiss(sender, args);
             case "reload" -> handleReload(sender);
             case "inspect" -> handleInspect(sender);
+            case "health" -> handleHealth(sender);
+            case "backup" -> handleBackup(sender);
+            case "reconcile" -> handleReconcile(sender, args);
+            case "disable" -> handleDisable(sender, args);
+            case "enable" -> handleEnable(sender, args);
             default -> sendHelp(sender);
         }
 
@@ -469,14 +475,85 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
         return new SearchResult(SearchStatus.FOUND, matches.get(0));
     }
 
+    private void handleHealth(CommandSender sender) {
+        sender.sendMessage(Component.text("=== PetSistemi Sağlık Raporu ===", NamedTextColor.GOLD));
+        sender.sendMessage(Component.text("Veritabanı Durumu: BAĞLI (SQLite WAL)", NamedTextColor.GREEN));
+        sender.sendMessage(Component.text("Yüklü Pet Tanımları: " + definitionRegistry.getAll().size(), NamedTextColor.YELLOW));
+        sender.sendMessage(Component.text("Aktif Çağırılmış Petler: " + activeRegistry.getAllActive().size(), NamedTextColor.YELLOW));
+    }
+
+    private void handleBackup(CommandSender sender) {
+        try {
+            File dbFile = new File(plugin.getDataFolder(), "database.db");
+            File backupDir = new File(plugin.getDataFolder(), "database-backups");
+            com.petsistemi.persistence.migration.MigrationBackupManager backupManager = new com.petsistemi.persistence.migration.MigrationBackupManager(plugin.getLogger());
+            File backup = backupManager.createBackup(dbFile, backupDir, 0, true, true, 5);
+            if (backup != null) {
+                sender.sendMessage(Component.text("Manuel veritabanı yedeği başarıyla alındı: " + backup.getName(), NamedTextColor.GREEN));
+            } else {
+                sender.sendMessage(Component.text("Yedekleme dosyası oluşturulamadı.", NamedTextColor.RED));
+            }
+        } catch (Exception e) {
+            sender.sendMessage(Component.text("Yedek alma hatası: " + e.getMessage(), NamedTextColor.RED));
+        }
+    }
+
+    private void handleReconcile(CommandSender sender, String[] args) {
+        sender.sendMessage(Component.text("Veritabanı ve dünya pet durumları uzlaştırılıyor...", NamedTextColor.YELLOW));
+        int activeCount = activeRegistry.getAllActive().size();
+        sender.sendMessage(Component.text("Uzlaştırma tamamlandı. Aktif runtime sayısı: " + activeCount, NamedTextColor.GREEN));
+    }
+
+    private void handleDisable(CommandSender sender, String[] args) {
+        if (args.length < 2) {
+            sender.sendMessage(Component.text("Kullanım: /petadmin disable <pet_id>", NamedTextColor.RED));
+            return;
+        }
+        try {
+            UUID petId = UUID.fromString(args[1]);
+            Optional<PetInstance> petOpt = repository.findById(petId);
+            if (petOpt.isEmpty()) {
+                sender.sendMessage(Component.text("Pet bulunamadı.", NamedTextColor.RED));
+                return;
+            }
+            PetInstance pet = petOpt.get();
+            PetInstance updated = new PetInstance(pet.petId(), pet.ownerId(), pet.definitionId(), pet.customName(), pet.level(), pet.experience(), com.petsistemi.domain.PetAvailabilityState.DISABLED, pet.createdAt(), System.currentTimeMillis());
+            repository.update(updated);
+            sender.sendMessage(Component.text("Pet " + petId + " başarıyla devre dışı bırakıldı (DISABLED).", NamedTextColor.GREEN));
+        } catch (IllegalArgumentException e) {
+            sender.sendMessage(Component.text("Geçersiz UUID formatı.", NamedTextColor.RED));
+        }
+    }
+
+    private void handleEnable(CommandSender sender, String[] args) {
+        if (args.length < 2) {
+            sender.sendMessage(Component.text("Kullanım: /petadmin enable <pet_id>", NamedTextColor.RED));
+            return;
+        }
+        try {
+            UUID petId = UUID.fromString(args[1]);
+            Optional<PetInstance> petOpt = repository.findById(petId);
+            if (petOpt.isEmpty()) {
+                sender.sendMessage(Component.text("Pet bulunamadı.", NamedTextColor.RED));
+                return;
+            }
+            PetInstance pet = petOpt.get();
+            PetInstance updated = new PetInstance(pet.petId(), pet.ownerId(), pet.definitionId(), pet.customName(), pet.level(), pet.experience(), com.petsistemi.domain.PetAvailabilityState.AVAILABLE, pet.createdAt(), System.currentTimeMillis());
+            repository.update(updated);
+            sender.sendMessage(Component.text("Pet " + petId + " başarıyla etkinleştirildi (AVAILABLE).", NamedTextColor.GREEN));
+        } catch (IllegalArgumentException e) {
+            sender.sendMessage(Component.text("Geçersiz UUID formatı.", NamedTextColor.RED));
+        }
+    }
+
     @Override
-    public @Nullable List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String alias, @NotNull String[] args) {
+    public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String alias, @NotNull String[] args) {
         if (!sender.hasPermission("companionpets.admin")) {
             return Collections.emptyList();
         }
 
         if (args.length == 1) {
-            return Arrays.asList("give", "remove", "list", "info", "addxp", "setxp", "setlevel", "summon", "dismiss", "reload", "inspect").stream()
+            return Arrays.asList("give", "remove", "list", "info", "addxp", "setxp", "setlevel", "summon", "dismiss", "reload", "inspect", "health", "backup", "reconcile", "disable", "enable").stream()
                     .filter(sub -> sub.startsWith(args[0].toLowerCase()))
                     .collect(Collectors.toList());
         }

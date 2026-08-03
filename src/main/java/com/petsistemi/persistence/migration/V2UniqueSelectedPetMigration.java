@@ -49,7 +49,8 @@ public class V2UniqueSelectedPetMigration implements DatabaseMigration {
                     ");");
 
             stmt.execute("INSERT OR IGNORE INTO player_active_pets_v2 (owner_id, pet_id, updated_at) " +
-                    "SELECT owner_id, pet_id, updated_at FROM player_active_pets;");
+                    "SELECT pap.owner_id, pap.pet_id, pap.updated_at FROM player_active_pets pap " +
+                    "INNER JOIN pets p ON pap.pet_id = p.pet_id AND pap.owner_id = p.owner_id;");
 
             stmt.execute("DROP TABLE IF EXISTS player_active_pets;");
             stmt.execute("ALTER TABLE player_active_pets_v2 RENAME TO player_active_pets;");

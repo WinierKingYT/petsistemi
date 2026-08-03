@@ -1,8 +1,9 @@
-# Minecraft Pet Sistemi Configuration
+# PetSistemi Yapılandırması
+
+locale: 'tr_TR'
 
 limits:
   maximum-owned-pets: 20
-  maximum-active-pets: 1
 
 naming:
   minimum-length: 2
@@ -13,3 +14,16 @@ naming:
 progression:
   enabled: true
   maximum-level: 100
+
+runtime:
+  tick-interval-ticks: 5
+  start-distance: 5.0
+  stop-distance: 2.0
+  teleport-distance: 15.0
+  follow-speed: 1.2
+
+database:
+  migration-backup:
+    enabled: true
+    fail-startup-on-backup-error: true
+    maximum-backups: 5

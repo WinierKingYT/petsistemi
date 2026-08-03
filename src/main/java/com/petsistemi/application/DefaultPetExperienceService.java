@@ -11,6 +11,7 @@ import com.petsistemi.domain.ExperienceSource;
 import com.petsistemi.domain.PetDefinition;
 import com.petsistemi.domain.PetInstance;
 import com.petsistemi.persistence.PetRepository;
+import com.petsistemi.progression.ExperienceCurve;
 import com.petsistemi.runtime.ActivePet;
 import com.petsistemi.runtime.ActivePetRegistry;
 import com.petsistemi.runtime.PetEntityController;
@@ -28,15 +29,26 @@ public class DefaultPetExperienceService implements PetExperienceService {
     private final ActivePetRegistry activePetRegistry;
     private final PetEntityController entityController;
 
+    private final ExperienceCurve experienceCurve;
+
+    public DefaultPetExperienceService(JavaPlugin plugin, PetRepository repository,
+                                       PetDefinitionRegistry definitionRegistry,
+                                       ActivePetRegistry activePetRegistry,
+                                       PetEntityController entityController) {
+        this(plugin, repository, definitionRegistry, activePetRegistry, entityController, new com.petsistemi.progression.LinearExperienceCurve(100));
+    }
+
     public DefaultPetExperienceService(JavaPlugin plugin, PetRepository repository,
                                       PetDefinitionRegistry definitionRegistry,
                                       ActivePetRegistry activePetRegistry,
-                                      PetEntityController entityController) {
+                                      PetEntityController entityController,
+                                      ExperienceCurve experienceCurve) {
         this.plugin = plugin;
         this.repository = repository;
         this.definitionRegistry = definitionRegistry;
         this.activePetRegistry = activePetRegistry;
         this.entityController = entityController;
+        this.experienceCurve = experienceCurve != null ? experienceCurve : new com.petsistemi.progression.LinearExperienceCurve(100);
     }
 
     @Override
@@ -248,16 +260,21 @@ public class DefaultPetExperienceService implements PetExperienceService {
 
     @Override
     public long requiredExperienceForLevel(int level) {
-        if (level <= 1) return 0;
-        return 100L * (level - 1) * (level - 1);
+        return experienceCurve.getRequiredExperience(level);
     }
 
     public int calculateLevelFromXp(long totalXp) {
-        if (totalXp <= 0) return 1;
-        return (int) (Math.sqrt(totalXp / 100.0) + 1);
+        return experienceCurve.getLevelForExperience(totalXp);
     }
 
     private PetSnapshot mapToSnapshot(PetInstance p) {
+        boolean selected = repository.findActiveByOwner(p.ownerId())
+                .map(s -> s.petId().equals(p.petId()))
+                .orElse(false);
+        boolean spawned = activePetRegistry.getByOwner(p.ownerId())
+                .map(a -> a.getPetId().equals(p.petId()))
+                .orElse(false);
+
         return new PetSnapshot(
                 p.petId(),
                 p.ownerId(),
@@ -266,8 +283,8 @@ public class DefaultPetExperienceService implements PetExperienceService {
                 p.level(),
                 p.experience(),
                 p.availabilityState(),
-                p.createdAt(),
-                p.updatedAt()
+                selected,
+                spawned
         );
     }
 }

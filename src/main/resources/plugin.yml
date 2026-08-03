@@ -2,20 +2,57 @@ name: PetSistemi
 version: '${version}'
 main: com.petsistemi.PetSistemiPlugin
 api-version: '1.20'
-description: Advanced modular Paper 1.20.4 Minecraft pet system
+author: Antigravity
+description: Advanced Paper 1.20.4 Pet System Plugin
+
 commands:
   pet:
-    description: Pet system command
-    usage: /pet
+    description: Oyuncu pet yönetim ve GUI komutu.
+    aliases: [companion, pets]
     permission: companionpets.use
+    usage: /pet [list|summon|dismiss|info|rename|help]
   petadmin:
-    description: Pet admin command
-    usage: /petadmin
+    description: Yönetici pet yönetim komutları.
     permission: companionpets.admin
+    usage: /petadmin <give|remove|list|info|addxp|setxp|setlevel|summon|dismiss|reload|inspect|health|backup|reconcile|disable|enable>
+
 permissions:
   companionpets.use:
-    description: Allows using the pet system
+    description: Pet sistemi temel oyuncu komutlarını ve GUI kullanım yetkisi.
     default: true
   companionpets.admin:
-    description: Allows using administrative commands
+    description: Tüm yönetici komutlarına genel erişim yetkisi.
+    default: op
+    children:
+      companionpets.admin.give: true
+      companionpets.admin.remove: true
+      companionpets.admin.reload: true
+      companionpets.admin.health: true
+      companionpets.admin.backup: true
+      companionpets.admin.reconcile: true
+      companionpets.admin.disable: true
+      companionpets.admin.enable: true
+  companionpets.admin.give:
+    description: Oyunculara pet verme yetkisi.
+    default: op
+  companionpets.admin.remove:
+    description: Pet silme yetkisi.
+    default: op
+  companionpets.admin.reload:
+    description: Konfigürasyon ve tanımları yenileme yetkisi.
+    default: op
+  companionpets.admin.health:
+    description: Eklenti sağlık raporunu görüntüleme yetkisi.
+    default: op
+  companionpets.admin.backup:
+    description: Veritabanı yedeği alma yetkisi.
+    default: op
+  companionpets.admin.reconcile:
+    description: Veritabanı ve dünya pet uzlaştırma yetkisi.
+    default: op
+  companionpets.admin.disable:
+    description: Peti devre dışı bırakma yetkisi.
+    default: op
+  companionpets.admin.enable:
+    description: Peti etkinleştirme yetkisi.
     default: op

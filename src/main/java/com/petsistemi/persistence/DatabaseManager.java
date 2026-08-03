@@ -22,6 +22,10 @@ public class DatabaseManager implements ConnectionProvider {
         this.dbFile = new File(plugin.getDataFolder(), "database.db");
     }
 
+    public File getDbFile() {
+        return dbFile;
+    }
+
     public synchronized void initialize() throws Exception {
         if (!plugin.getDataFolder().exists()) {
             plugin.getDataFolder().mkdirs();
@@ -32,10 +36,12 @@ public class DatabaseManager implements ConnectionProvider {
         
         try (Statement stmt = connection.createStatement()) {
             stmt.execute("PRAGMA foreign_keys = ON;");
+            stmt.execute("PRAGMA journal_mode = WAL;");
+            stmt.execute("PRAGMA busy_timeout = 5000;");
+            stmt.execute("PRAGMA synchronous = NORMAL;");
         }
 
-        SchemaMigrator.migrate(connection);
-        plugin.getLogger().info("SQLite Veritabanı başarıyla bağlandı ve şemalar doğrulandı.");
+        plugin.getLogger().info("SQLite Veritabanı başarıyla bağlandı ve pragmalar uygulandı.");
     }
 
     @Override
@@ -45,6 +51,9 @@ public class DatabaseManager implements ConnectionProvider {
                 connection = DriverManager.getConnection("jdbc:sqlite:" + dbFile.getAbsolutePath());
                 try (Statement stmt = connection.createStatement()) {
                     stmt.execute("PRAGMA foreign_keys = ON;");
+                    stmt.execute("PRAGMA journal_mode = WAL;");
+                    stmt.execute("PRAGMA busy_timeout = 5000;");
+                    stmt.execute("PRAGMA synchronous = NORMAL;");
                 }
             }
         } catch (SQLException e) {

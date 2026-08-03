@@ -12,6 +12,7 @@ import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
+import org.bukkit.plugin.java.JavaPlugin;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -20,9 +21,11 @@ import java.util.stream.Collectors;
 
 public class PetCommand implements CommandExecutor, TabCompleter {
 
+    private final JavaPlugin plugin;
     private final PetService petService;
 
-    public PetCommand(PetService petService) {
+    public PetCommand(JavaPlugin plugin, PetService petService) {
+        this.plugin = plugin;
         this.petService = petService;
     }
 
@@ -39,7 +42,7 @@ public class PetCommand implements CommandExecutor, TabCompleter {
         }
 
         if (args.length == 0) {
-            com.petsistemi.gui.PetListMenu.open(player, petService, 0);
+            com.petsistemi.gui.PetListMenu.open(player, petService, 0, plugin);
             return true;
         }
 

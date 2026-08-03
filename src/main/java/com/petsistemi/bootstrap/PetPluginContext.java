@@ -2,21 +2,24 @@ package com.petsistemi.bootstrap;
 
 import com.petsistemi.api.PetExperienceService;
 import com.petsistemi.api.PetService;
+import com.petsistemi.config.PluginConfiguration;
 import com.petsistemi.definition.PetDefinitionRegistry;
-import com.petsistemi.persistence.ConnectionProvider;
-import com.petsistemi.persistence.PetRepository;
-import com.petsistemi.persistence.PetSelectionRepository;
-import com.petsistemi.runtime.ActivePetRegistry;
-import com.petsistemi.runtime.PetBehaviorController;
-import com.petsistemi.runtime.PetEntityController;
-import com.petsistemi.runtime.PetRuntimeCoordinator;
+import com.petsistemi.gui.PlayerInputSessionManager;
+import com.petsistemi.message.MessageService;
+import com.petsistemi.persistence.*;
+import com.petsistemi.runtime.*;
 import org.bukkit.plugin.java.JavaPlugin;
 
 public record PetPluginContext(
         JavaPlugin plugin,
+        PluginConfiguration config,
+        MessageService messageService,
         ConnectionProvider connectionProvider,
+        DatabaseExecutor dbExecutor,
         PetRepository petRepository,
         PetSelectionRepository selectionRepository,
+        PlayerPetProfileCache profileCache,
+        AuditLogger auditLogger,
         PetDefinitionRegistry definitionRegistry,
         ActivePetRegistry activePetRegistry,
         PetEntityController entityController,
@@ -24,5 +27,6 @@ public record PetPluginContext(
         PetRuntimeCoordinator coordinator,
         PetService petService,
         PetExperienceService experienceService,
+        PlayerInputSessionManager sessionManager,
         TaskRegistry taskRegistry
 ) {}

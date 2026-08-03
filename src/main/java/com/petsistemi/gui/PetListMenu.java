@@ -7,20 +7,27 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Bukkit;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.persistence.PersistentDataType;
+import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 
 public class PetListMenu {
 
-    public static void open(Player player, PetService petService, int page) {
+    public static void open(Player player, PetService petService, int page, JavaPlugin plugin) {
         List<PetSnapshot> ownedPets = new ArrayList<>(petService.getOwnedPets(player.getUniqueId()));
+        Optional<PetSnapshot> spawnedPet = petService.getSpawnedPet(player.getUniqueId());
+        UUID spawnedPetId = spawnedPet.map(PetSnapshot::petId).orElse(null);
 
-        int pageSize = 36; // 4 rows
+        int pageSize = 36;
         int totalPages = Math.max(1, (int) Math.ceil((double) ownedPets.size() / pageSize));
         int currentPage = Math.max(0, Math.min(page, totalPages - 1));
 
@@ -35,10 +42,9 @@ public class PetListMenu {
 
         for (int i = startIndex; i < endIndex; i++) {
             PetSnapshot pet = ownedPets.get(i);
-            inv.setItem(i - startIndex, createPetItem(pet, petService, player));
+            inv.setItem(i - startIndex, createPetItem(pet, spawnedPetId, plugin));
         }
 
-        // Navigation Items
         if (currentPage > 0) {
             inv.setItem(45, createNavItem(Material.ARROW, "Önceki Sayfa (" + currentPage + ")"));
         }
@@ -51,7 +57,7 @@ public class PetListMenu {
         player.openInventory(inv);
     }
 
-    private static ItemStack createPetItem(PetSnapshot pet, PetService petService, Player player) {
+    private static ItemStack createPetItem(PetSnapshot pet, UUID spawnedPetId, JavaPlugin plugin) {
         ItemStack item = new ItemStack(Material.BONE);
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
@@ -63,21 +69,25 @@ public class PetListMenu {
             lore.add(Component.text("Seviye: " + pet.level(), NamedTextColor.YELLOW));
             lore.add(Component.text("Deneyim: " + pet.experience(), NamedTextColor.YELLOW));
 
+            boolean isSpawned = spawnedPetId != null && spawnedPetId.equals(pet.petId());
             if (pet.availabilityState() == PetAvailabilityState.DISABLED) {
                 lore.add(Component.text("Durum: DEVRE DIŞI", NamedTextColor.RED));
+            } else if (isSpawned) {
+                lore.add(Component.text("Durum: ÇAĞIRILMIŞ (SPAWNED)", NamedTextColor.GREEN));
+                lore.add(Component.text("▶ Sol Tık: Peti Geri Gönder", NamedTextColor.LIGHT_PURPLE));
             } else {
-                boolean isSpawned = petService.getSpawnedPet(player.getUniqueId())
-                        .map(s -> s.petId().equals(pet.petId()))
-                        .orElse(false);
-                if (isSpawned) {
-                    lore.add(Component.text("Durum: ÇAĞIRILMIŞ (SPAWNED)", NamedTextColor.GREEN));
-                } else {
-                    lore.add(Component.text("Durum: KULLANILABİLİR", NamedTextColor.GRAY));
-                }
+                lore.add(Component.text("Durum: KULLANILABİLİR", NamedTextColor.GRAY));
+                lore.add(Component.text("▶ Sol Tık: Peti Çağır", NamedTextColor.GREEN));
             }
 
+            lore.add(Component.text("▶ Shift + Sol Tık: İsim Değiştir", NamedTextColor.AQUA));
             lore.add(Component.text("Pet ID: " + pet.petId().toString().substring(0, 8), NamedTextColor.DARK_GRAY));
             meta.lore(lore);
+
+            if (plugin != null) {
+                meta.getPersistentDataContainer().set(new NamespacedKey(plugin, "pet_id"), PersistentDataType.STRING, pet.petId().toString());
+            }
+
             item.setItemMeta(meta);
         }
         return item;

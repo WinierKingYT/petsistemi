@@ -33,6 +33,9 @@ class SchemaMigratorTest {
     @BeforeEach
     void setUp() throws Exception {
         connection = DriverManager.getConnection("jdbc:sqlite::memory:");
+        try (Statement stmt = connection.createStatement()) {
+            stmt.execute("PRAGMA foreign_keys = ON;");
+        }
         logger = Logger.getLogger("TestLogger");
     }
 
@@ -209,6 +212,26 @@ class SchemaMigratorTest {
         // Verify test_rollback table was rolled back
         try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery("SELECT 1 FROM sqlite_master WHERE type='table' AND name='test_rollback';")) {
             assertFalse(rs.next(), "Table created in failing migration must be rolled back");
+        }
+    }
+
+    @Test
+    void testV5PreservesActivePetSelectionWithForeignKeysOn() throws Exception {
+        executeSqlResource("/migrations/v3-schema.sql");
+        
+        try (Statement stmt = connection.createStatement()) {
+            stmt.execute("INSERT INTO pets (pet_id, owner_id, definition_id, custom_name, level, experience, state, created_at, updated_at) " +
+                    "VALUES ('pet-123', 'owner-456', 'wolf', 'Wolfy', 1, 0, 'ACTIVE', 100, 100);");
+            stmt.execute("INSERT INTO player_active_pets (owner_id, pet_id, updated_at) " +
+                    "VALUES ('owner-456', 'pet-123', 100);");
+        }
+
+        SchemaMigrator.migrate(connection);
+
+        try (Statement stmt = connection.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT owner_id, pet_id FROM player_selected_pets WHERE owner_id = 'owner-456';")) {
+            assertTrue(rs.next(), "Selection must be preserved after V5/V6 migrations even with foreign_keys = ON");
+            assertEquals("pet-123", rs.getString("pet_id"));
         }
     }
 }

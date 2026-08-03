@@ -51,7 +51,20 @@ public class PetSistemiPlugin extends JavaPlugin {
             // 3. Unregister Bukkit services
             ServiceRegistrar.unregister(context);
 
-            // 4. Close database connection
+            // 4. Close Database Executor
+            if (context.dbExecutor() != null) {
+                context.dbExecutor().close();
+            }
+
+            // 5. Clear Caches & Sessions
+            if (context.profileCache() != null) {
+                context.profileCache().clearAll();
+            }
+            if (context.sessionManager() != null) {
+                context.sessionManager().clearAll();
+            }
+
+            // 6. Close database connection
             if (context.connectionProvider() != null) {
                 try {
                     context.connectionProvider().close();

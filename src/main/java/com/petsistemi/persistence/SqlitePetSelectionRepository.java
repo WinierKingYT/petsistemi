@@ -43,6 +43,25 @@ public class SqlitePetSelectionRepository implements PetSelectionRepository {
 
     @Override
     public synchronized void select(UUID ownerId, UUID petId) {
+        String checkSql = "SELECT availability_state FROM pets WHERE pet_id = ? AND owner_id = ?;";
+        try (PreparedStatement checkPs = connectionProvider.getConnection().prepareStatement(checkSql)) {
+            checkPs.setString(1, petId.toString());
+            checkPs.setString(2, ownerId.toString());
+            try (ResultSet rs = checkPs.executeQuery()) {
+                if (rs.next()) {
+                    String state = rs.getString("availability_state");
+                    if ("DISABLED".equalsIgnoreCase(state)) {
+                        throw new IllegalArgumentException("Devre dışı bırakılmış petler seçilemez.");
+                    }
+                } else {
+                    throw new IllegalArgumentException("Pet bulunamadı veya oyuncuya ait değil.");
+                }
+            }
+        } catch (SQLException e) {
+            logger.severe("select kullanılabilirlik sorgusunda veritabanı hatası: " + e.getMessage());
+            throw new PetPersistenceException("Pet kullanılabilirlik durumu doğrulanamadı.", e);
+        }
+
         String sql = "INSERT INTO player_selected_pets (owner_id, pet_id, selected_at) VALUES (?, ?, ?) " +
                 "ON CONFLICT(owner_id) DO UPDATE SET pet_id = excluded.pet_id, selected_at = excluded.selected_at;";
         try (PreparedStatement ps = connectionProvider.getConnection().prepareStatement(sql)) {

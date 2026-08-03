@@ -68,8 +68,13 @@ public class V5AvailabilityStateMigration implements DatabaseMigration {
                 throw new SQLException("Migration V5 satır sayısı uyuşmazlığı! Beklenen kaynak: " + sourceCount + ", aktarılan hedef: " + destCount);
             }
 
-            stmt.execute("DROP TABLE IF EXISTS pets;");
-            stmt.execute("ALTER TABLE pets_v5 RENAME TO pets;");
+            stmt.execute("PRAGMA foreign_keys = OFF;");
+            try {
+                stmt.execute("DROP TABLE IF EXISTS pets;");
+                stmt.execute("ALTER TABLE pets_v5 RENAME TO pets;");
+            } finally {
+                stmt.execute("PRAGMA foreign_keys = ON;");
+            }
         }
     }
 }

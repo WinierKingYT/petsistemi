@@ -1,24 +1,21 @@
-id: wolf
-
-display:
-  name: "<gray>Kurt"
-  description:
-    - "<dark_gray>Sadık bir evcil hayvan."
-
-entity:
-  type: WOLF
-  baby: false
-  glowing: false
-  invulnerable: true
-  silent: false
-  gravity: true
-
+schema-version: 1
+display-name: "<gold>Kurt Dostu</gold>"
+description:
+  - "<gray>Sadık ve cesur bir kurt arkadaş.</gray>"
+gui-material: WOLF_SPAWN_EGG
+entity-type: WOLF
+baby: false
+glowing: false
+invulnerable: true
+silent: false
+gravity: true
+behavior-profile: DEFAULT
+follow-speed: 1.2
+follow-distances:
+  start: 5.0
+  stop: 2.0
+  teleport: 15.0
 progression:
   enabled: true
   maximum-level: 100
-
-nameplate:
-  enabled: true
-  format:
-    - "<white>{pet_name}"
-    - "<gray>Seviye {level}"
+permission: companionpets.pet.wolf

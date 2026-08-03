@@ -35,4 +35,6 @@ public interface PetService {
     PetDismissResult dismiss(Player owner);
 
     PetRenameResult rename(Player owner, UUID petId, String newName);
+
+    PetRenameResult rename(UUID ownerId, UUID petId, String newName);
 }

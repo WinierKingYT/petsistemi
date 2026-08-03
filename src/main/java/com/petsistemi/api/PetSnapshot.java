@@ -1,6 +1,7 @@
 package com.petsistemi.api;
 
 import com.petsistemi.domain.PetAvailabilityState;
+
 import java.util.UUID;
 
 public record PetSnapshot(
@@ -11,7 +12,6 @@ public record PetSnapshot(
         int level,
         long experience,
         PetAvailabilityState availabilityState,
-        long createdAt,
-        long updatedAt
-) {
-}
+        boolean selected,
+        boolean spawned
+) {}
