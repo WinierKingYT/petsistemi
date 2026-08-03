@@ -15,16 +15,18 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 
-import java.util.HashMap;
+import org.bukkit.event.player.PlayerQuitEvent;
+
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class PetProgressionListener implements Listener {
 
     private final ActivePetRegistry activePetRegistry;
     private final PetExperienceService experienceService;
-    private final Map<UUID, Double> distanceAccumulator = new HashMap<>();
+    private final Map<UUID, Double> distanceAccumulator = new ConcurrentHashMap<>();
 
     public PetProgressionListener(ActivePetRegistry activePetRegistry, PetExperienceService experienceService) {
         this.activePetRegistry = activePetRegistry;
@@ -84,5 +86,10 @@ public class PetProgressionListener implements Listener {
         } else {
             distanceAccumulator.put(uuid, current);
         }
+    }
+
+    @EventHandler
+    public void onQuit(PlayerQuitEvent event) {
+        distanceAccumulator.remove(event.getPlayer().getUniqueId());
     }
 }

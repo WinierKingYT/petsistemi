@@ -19,11 +19,17 @@ public class RenameInputSessionListener implements Listener {
     private final JavaPlugin plugin;
     private final PetService petService;
     private final PlayerInputSessionManager sessionManager;
+    private final com.petsistemi.definition.PetDefinitionRegistry definitionRegistry;
 
-    public RenameInputSessionListener(JavaPlugin plugin, PetService petService, PlayerInputSessionManager sessionManager) {
+    public RenameInputSessionListener(JavaPlugin plugin, PetService petService, PlayerInputSessionManager sessionManager, com.petsistemi.definition.PetDefinitionRegistry definitionRegistry) {
         this.plugin = plugin;
         this.petService = petService;
         this.sessionManager = sessionManager;
+        this.definitionRegistry = definitionRegistry;
+    }
+
+    public RenameInputSessionListener(JavaPlugin plugin, PetService petService, PlayerInputSessionManager sessionManager) {
+        this(plugin, petService, sessionManager, null);
     }
 
     @EventHandler(priority = EventPriority.LOWEST)
@@ -40,7 +46,7 @@ public class RenameInputSessionListener implements Listener {
         String input = event.getMessage().trim();
         if ("iptal".equalsIgnoreCase(input) || "cancel".equalsIgnoreCase(input)) {
             player.sendMessage(Component.text("İsim değiştirme işlemi iptal edildi.", NamedTextColor.YELLOW));
-            plugin.getServer().getScheduler().runTask(plugin, () -> PetListMenu.open(player, petService, 0, plugin));
+            plugin.getServer().getScheduler().runTask(plugin, () -> PetListMenu.open(player, petService, 0, plugin, definitionRegistry));
             return;
         }
 
@@ -51,7 +57,7 @@ public class RenameInputSessionListener implements Listener {
             } else {
                 player.sendMessage(Component.text("İsim değiştirilemedi: " + result.message(), NamedTextColor.RED));
             }
-            PetListMenu.open(player, petService, 0, plugin);
+            PetListMenu.open(player, petService, 0, plugin, definitionRegistry);
         });
     }
 

@@ -101,12 +101,21 @@ public class PetListMenu {
             lore.add(Component.text("Tür: ", NamedTextColor.GRAY).append(Component.text(capitalize(pet.definitionId()), NamedTextColor.WHITE)));
             lore.add(Component.text("Seviye: ", NamedTextColor.GRAY).append(Component.text(pet.level(), NamedTextColor.YELLOW, TextDecoration.BOLD)));
 
-            // XP Progress Bar
+            // XP Progress Bar — uses 100 XP per level (LinearExperienceCurve default)
             long currentXp = pet.experience();
-            long nextLevelXp = (long) pet.level() * 100L;
-            int progress = (int) Math.min(10, Math.max(0, (currentXp % 100) / 10));
-            String bar = "■".repeat(progress) + "□".repeat(10 - progress);
-            lore.add(Component.text("XP: [" + bar + "] " + currentXp + " XP", NamedTextColor.AQUA));
+            long xpPerLevel = 100L;
+            long xpThisLevel = currentXp - (long)(pet.level() - 1) * xpPerLevel;
+            long xpToNext = xpPerLevel;
+            xpThisLevel = Math.max(0, Math.min(xpThisLevel, xpToNext));
+            int progress = (int) Math.round((double) xpThisLevel / xpToNext * 10.0);
+            progress = Math.max(0, Math.min(10, progress));
+            String filledBar = "■".repeat(progress);
+            String emptyBar = "□".repeat(10 - progress);
+            lore.add(Component.text("XP: [", NamedTextColor.GRAY)
+                    .append(Component.text(filledBar, NamedTextColor.GREEN))
+                    .append(Component.text(emptyBar, NamedTextColor.DARK_GREEN))
+                    .append(Component.text("] ", NamedTextColor.GRAY))
+                    .append(Component.text(xpThisLevel + "/" + xpToNext + " XP", NamedTextColor.AQUA)));
 
             lore.add(Component.empty());
 
