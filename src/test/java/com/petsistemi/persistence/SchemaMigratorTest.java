@@ -234,4 +234,35 @@ class SchemaMigratorTest {
             assertEquals("pet-123", rs.getString("pet_id"));
         }
     }
+
+    @Test
+    void testLegacyV2ImposterRepair() throws Exception {
+        try (Statement stmt = connection.createStatement()) {
+            stmt.execute("CREATE TABLE schema_migrations (version INTEGER PRIMARY KEY, applied_at INTEGER NOT NULL);");
+            stmt.execute("INSERT INTO schema_migrations VALUES (1, 100), (2, 200);");
+            stmt.execute("CREATE TABLE pets (pet_id TEXT PRIMARY KEY, owner_id TEXT, definition_id TEXT, custom_name TEXT, level INTEGER, experience INTEGER, state TEXT, created_at INTEGER, updated_at INTEGER);");
+            stmt.execute("CREATE TABLE player_active_pets (owner_id TEXT PRIMARY KEY, pet_id TEXT, updated_at INTEGER);");
+
+            // Real pet and valid selection
+            stmt.execute("INSERT INTO pets VALUES ('pet-real', 'owner-real', 'wolf', 'Bobi', 1, 0, 'AVAILABLE', 100, 100);");
+            stmt.execute("INSERT INTO player_active_pets VALUES ('owner-real', 'pet-real', 100);");
+
+            // Imposter selection inserted under broken 954e114 V2 migration
+            stmt.execute("INSERT INTO player_active_pets VALUES ('owner-imposter', 'pet-nonexistent', 100);");
+        }
+
+        assertDoesNotThrow(() -> SchemaMigrator.migrate(connection));
+
+        try (Statement stmt = connection.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM schema_migrations;")) {
+            assertTrue(rs.next());
+            assertEquals(7, rs.getInt(1));
+        }
+
+        try (Statement stmt = connection.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT owner_id FROM player_selected_pets WHERE pet_id = 'pet-real';")) {
+            assertTrue(rs.next());
+            assertEquals("owner-real", rs.getString("owner_id"));
+        }
+    }
 }

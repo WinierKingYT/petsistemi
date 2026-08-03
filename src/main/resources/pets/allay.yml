@@ -1,17 +1,13 @@
-id: allay
-
-display:
-  name: "<aqua>Allay"
-  description:
-    - "<dark_gray>Gökyüzünde süzülen neşeli bir pet."
-
-entity:
-  type: ALLAY
-  baby: false
-  glowing: true
-  invulnerable: true
-  silent: false
-  gravity: false
+schema-version: 1
+display-name: "<cyan>Allay"
+description:
+  - "<blue>Sevimli ve parlak bir peri."
+entity-type: ALLAY
+baby: false
+glowing: true
+invulnerable: true
+silent: false
+gravity: false
 
 progression:
   enabled: true
@@ -20,5 +16,5 @@ progression:
 nameplate:
   enabled: true
   format:
-    - "<white>{pet_name}"
-    - "<gray>Seviye {level}"
+    - "<cyan>{pet_name}"
+    - "<gray>Lv.{level}"

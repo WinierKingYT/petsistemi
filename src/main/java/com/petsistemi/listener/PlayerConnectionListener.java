@@ -2,6 +2,8 @@ package com.petsistemi.listener;
 
 import com.petsistemi.api.PetService;
 import com.petsistemi.api.PetSnapshot;
+import com.petsistemi.persistence.DatabaseExecutor;
+import com.petsistemi.persistence.PlayerPetProfileCache;
 import com.petsistemi.runtime.PetRuntimeCoordinator;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -18,22 +20,30 @@ public class PlayerConnectionListener implements Listener {
     private final JavaPlugin plugin;
     private final PetService petService;
     private final PetRuntimeCoordinator coordinator;
+    private final PlayerPetProfileCache profileCache;
+    private final DatabaseExecutor dbExecutor;
 
-    public PlayerConnectionListener(JavaPlugin plugin, PetService petService, PetRuntimeCoordinator coordinator) {
+    public PlayerConnectionListener(JavaPlugin plugin, PetService petService, PetRuntimeCoordinator coordinator, PlayerPetProfileCache profileCache, DatabaseExecutor dbExecutor) {
         this.plugin = plugin;
         this.petService = petService;
         this.coordinator = coordinator;
+        this.profileCache = profileCache;
+        this.dbExecutor = dbExecutor;
     }
 
     @EventHandler
     public void onJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
-        
-        // Wait 20 ticks (1s) to allow player chunk loading before summoning pet
+
+        // 1. Asynchronously load profile into cache
+        if (dbExecutor != null && profileCache != null) {
+            dbExecutor.executeAsync(() -> profileCache.loadProfile(player.getUniqueId()));
+        }
+
+        // 2. Restore pet 20 ticks later after chunk loading
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
             if (player.isOnline()) {
-                Optional<PetSnapshot> selectedOpt = petService.getSelectedPet(player.getUniqueId());
-                selectedOpt.ifPresent(snapshot -> petService.summon(player, snapshot.petId()));
+                coordinator.restoreOnJoin(player);
             }
         }, 20L);
     }
@@ -41,5 +51,8 @@ public class PlayerConnectionListener implements Listener {
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
         coordinator.despawnOnQuit(event.getPlayer().getUniqueId());
+        if (profileCache != null) {
+            profileCache.invalidate(event.getPlayer().getUniqueId());
+        }
     }
 }

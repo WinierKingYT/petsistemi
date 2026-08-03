@@ -1,6 +1,7 @@
 package com.petsistemi.message;
 
 import net.kyori.adventure.text.Component;
+import org.bukkit.command.CommandSender;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -16,6 +17,10 @@ public class MessageService {
 
     public MessageService(JavaPlugin plugin) {
         this.plugin = plugin;
+        loadBundle(plugin.getConfig().getString("locale", "tr_TR"));
+    }
+
+    public void reload() {
         loadBundle(plugin.getConfig().getString("locale", "tr_TR"));
     }
 
@@ -41,11 +46,26 @@ public class MessageService {
     }
 
     public Component getComponent(String key, String fallback, PlaceholderMap placeholders) {
+        if (activeBundle == null) {
+            return MiniMessageRenderer.render(fallback, placeholders);
+        }
         String raw = activeBundle.getMessage(key, fallback);
         return MiniMessageRenderer.render(raw, placeholders);
     }
 
     public Component getComponent(String key, String fallback) {
         return getComponent(key, fallback, null);
+    }
+
+    public void send(CommandSender sender, String key, String fallback) {
+        if (sender != null) {
+            sender.sendMessage(getComponent(key, fallback));
+        }
+    }
+
+    public void send(CommandSender sender, String key, String fallback, PlaceholderMap placeholders) {
+        if (sender != null) {
+            sender.sendMessage(getComponent(key, fallback, placeholders));
+        }
     }
 }

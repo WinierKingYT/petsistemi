@@ -6,5 +6,19 @@ public enum PetRuntimeState {
     ACTIVE,
     RESTORING,
     DESPAWNING,
-    FAILED
+    FAILED;
+
+    public boolean canTransitionTo(PetRuntimeState nextState) {
+        if (nextState == null) return false;
+        if (this == nextState) return true;
+
+        return switch (this) {
+            case ABSENT -> nextState == SPAWNING || nextState == RESTORING || nextState == FAILED;
+            case SPAWNING -> nextState == ACTIVE || nextState == FAILED || nextState == DESPAWNING;
+            case ACTIVE -> nextState == DESPAWNING || nextState == RESTORING || nextState == FAILED;
+            case RESTORING -> nextState == ACTIVE || nextState == FAILED || nextState == DESPAWNING;
+            case DESPAWNING -> nextState == ABSENT || nextState == FAILED;
+            case FAILED -> nextState == SPAWNING || nextState == RESTORING || nextState == ABSENT;
+        };
+    }
 }

@@ -6,10 +6,6 @@ import org.bukkit.entity.EntityType;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
-import java.io.InputStream;
-import java.io.InputStreamReader;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -76,9 +72,15 @@ public class AtomicPetDefinitionRegistry implements PetDefinitionRegistry {
                     boolean invulnerable = yaml.getBoolean("invulnerable", true);
                     boolean silent = yaml.getBoolean("silent", false);
                     boolean gravity = yaml.getBoolean("gravity", true);
+
+                    boolean progressionEnabled = yaml.getBoolean("progression.enabled", true);
                     int maxLevel = yaml.getInt("progression.maximum-level", 100);
-                    boolean enabled = yaml.getBoolean("progression.enabled", true);
-                    List<String> abilities = yaml.getStringList("abilities");
+
+                    boolean nameplateEnabled = yaml.getBoolean("nameplate.enabled", true);
+                    List<String> nameplateFormat = yaml.getStringList("nameplate.format");
+                    if (nameplateFormat == null || nameplateFormat.isEmpty()) {
+                        nameplateFormat = List.of("<gradient:#ffaa00:#ff5500><name></gradient> <gray>Lv.<level></gray>");
+                    }
 
                     PetDefinition def = new PetDefinition(
                             id,
@@ -90,10 +92,10 @@ public class AtomicPetDefinitionRegistry implements PetDefinitionRegistry {
                             invulnerable,
                             silent,
                             gravity,
-                            enabled,
+                            progressionEnabled,
                             maxLevel,
-                            enabled,
-                            abilities
+                            nameplateEnabled,
+                            nameplateFormat
                     );
 
                     List<String> errors = PetDefinitionValidator.validate(def, schemaVersion);
@@ -121,11 +123,14 @@ public class AtomicPetDefinitionRegistry implements PetDefinitionRegistry {
     }
 
     private void saveDefaultPetFiles(File petsFolder) {
-        try {
-            File wolfFile = new File(petsFolder, "wolf.yml");
-            if (!wolfFile.exists()) {
-                plugin.saveResource("pets/wolf.yml", false);
-            }
-        } catch (Exception ignored) {}
+        String[] defaults = new String[]{"wolf.yml", "cat.yml", "allay.yml"};
+        for (String defFile : defaults) {
+            try {
+                File target = new File(petsFolder, defFile);
+                if (!target.exists()) {
+                    plugin.saveResource("pets/" + defFile, false);
+                }
+            } catch (Exception ignored) {}
+        }
     }
 }

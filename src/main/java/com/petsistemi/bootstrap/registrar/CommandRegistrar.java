@@ -19,7 +19,13 @@ public final class CommandRegistrar {
                 context.experienceService(),
                 context.definitionRegistry(),
                 context.activePetRegistry(),
-                context.petRepository()
+                context.petRepository(),
+                context.selectionRepository(),
+                context.connectionProvider(),
+                context.auditLogger(),
+                context.coordinator(),
+                context.profileCache(),
+                context.messageService()
         );
 
         if (context.plugin().getCommand("petadmin") != null) {

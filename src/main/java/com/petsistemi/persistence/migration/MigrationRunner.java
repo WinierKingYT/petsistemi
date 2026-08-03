@@ -8,7 +8,6 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Comparator;
-
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -41,6 +40,12 @@ public class MigrationRunner {
         ensureSchemaMigrationsTable(connection);
 
         Set<Integer> appliedVersions = getAppliedVersions(connection);
+
+        // 1. Legacy Repair for databases upgraded under broken 954e114 V2 migration
+        if (appliedVersions.contains(2) && !appliedVersions.contains(3)) {
+            performLegacyV2Repair(connection);
+        }
+
         List<DatabaseMigration> pending = new ArrayList<>();
         for (DatabaseMigration m : migrations) {
             if (!appliedVersions.contains(m.version())) {
@@ -56,7 +61,7 @@ public class MigrationRunner {
         int targetVersion = pending.get(pending.size() - 1).version();
         if (dbFile != null && backupDir != null) {
             try {
-                backupManager.createBackup(dbFile, backupDir, targetVersion, backupEnabled, failOnBackupError, maxBackups);
+                backupManager.createBackup(connection, dbFile, backupDir, targetVersion, backupEnabled, failOnBackupError, maxBackups);
             } catch (Exception e) {
                 if (failOnBackupError) {
                     throw new SQLException("Migration öncesi yedekleme başarısız olduğu için durduruldu: " + e.getMessage(), e);
@@ -76,6 +81,18 @@ public class MigrationRunner {
             for (DatabaseMigration migration : pending) {
                 applySingleMigration(connection, migration);
             }
+
+            // 2. Final Foreign Key Integrity Check BEFORE Commit
+            try (Statement stmt = connection.createStatement();
+                 ResultSet rs = stmt.executeQuery("PRAGMA foreign_key_check;")) {
+                if (rs.next()) {
+                    String table = rs.getString(1);
+                    String rowid = rs.getString(2);
+                    String parent = rs.getString(3);
+                    throw new SQLException("Migration sonu Yabancı Anahtar Doğrulaması Başarısız! Tablo: " + table + ", RowID: " + rowid + ", Parent: " + parent);
+                }
+            }
+
             connection.commit();
         } catch (SQLException e) {
             connection.rollback();
@@ -84,6 +101,26 @@ public class MigrationRunner {
             connection.setAutoCommit(autoCommit);
             try (Statement pragmaStmt = connection.createStatement()) {
                 pragmaStmt.execute("PRAGMA foreign_keys = ON;");
+                try (ResultSet rs = pragmaStmt.executeQuery("PRAGMA foreign_keys;")) {
+                    if (rs.next() && rs.getInt(1) != 1) {
+                        logger.warning("FOREIGN KEY enforcement re-enable edilemedi!");
+                    }
+                }
+            }
+        }
+    }
+
+    private void performLegacyV2Repair(Connection connection) throws SQLException {
+        logger.info("Legacy V2 upgrade repair kontrolü çalıştırılıyor...");
+        String sql = "DELETE FROM player_active_pets WHERE ROWID IN (" +
+                     "  SELECT pap.ROWID FROM player_active_pets pap " +
+                     "  LEFT JOIN pets p ON pap.pet_id = p.pet_id AND pap.owner_id = p.owner_id " +
+                     "  WHERE p.pet_id IS NULL" +
+                     ");";
+        try (Statement stmt = connection.createStatement()) {
+            int deleted = stmt.executeUpdate(sql);
+            if (deleted > 0) {
+                logger.info("Legacy V2 repair tamamlandı: " + deleted + " adet sahte (imposter) aktif pet seçimi temizlendi.");
             }
         }
     }

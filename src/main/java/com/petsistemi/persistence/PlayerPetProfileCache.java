@@ -57,6 +57,14 @@ public class PlayerPetProfileCache {
         profiles.remove(ownerId);
     }
 
+    public void invalidate(UUID ownerId) {
+        evict(ownerId);
+    }
+
+    public int size() {
+        return profiles.size();
+    }
+
     public void clearAll() {
         profiles.clear();
     }

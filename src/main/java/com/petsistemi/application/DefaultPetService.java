@@ -8,6 +8,7 @@ import com.petsistemi.definition.PetDefinitionRegistry;
 import com.petsistemi.domain.PetAvailabilityState;
 import com.petsistemi.domain.PetDefinition;
 import com.petsistemi.domain.PetInstance;
+import com.petsistemi.domain.PetSelection;
 import com.petsistemi.persistence.PetRepository;
 import com.petsistemi.persistence.PetSelectionRepository;
 import com.petsistemi.runtime.ActivePet;
@@ -55,8 +56,24 @@ public class DefaultPetService implements PetService {
 
     @Override
     public Collection<PetSnapshot> getOwnedPets(UUID ownerId) {
+        Optional<PetSelection> selectionOpt = selectionRepository.findByOwner(ownerId);
+        UUID selectedPetId = selectionOpt.map(PetSelection::petId).orElse(null);
+
+        Optional<ActivePet> activeOpt = activePetRegistry.getByOwner(ownerId);
+        UUID spawnedPetId = activeOpt.map(ActivePet::getPetId).orElse(null);
+
         return repository.findByOwner(ownerId).stream()
-                .map(this::mapToSnapshot)
+                .map(p -> new PetSnapshot(
+                        p.petId(),
+                        p.ownerId(),
+                        p.definitionId(),
+                        p.customName(),
+                        p.level(),
+                        p.experience(),
+                        p.availabilityState(),
+                        p.petId().equals(selectedPetId),
+                        p.petId().equals(spawnedPetId)
+                ))
                 .collect(Collectors.toList());
     }
 

@@ -37,6 +37,10 @@ public final class DatabaseExecutor implements AutoCloseable {
         });
     }
 
+    public CompletableFuture<Void> executeAsync(Runnable runnable) {
+        return runAsync(runnable);
+    }
+
     @Override
     public void close() {
         executor.shutdown();

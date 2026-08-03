@@ -32,4 +32,8 @@ public class AuditLogger {
             logger.severe("Audit log kaydedilemedi: " + e.getMessage());
         }
     }
+
+    public void logAction(String action, String actorId, UUID ownerId, UUID petId, String details) {
+        log("ADMIN", actorId, action, ownerId, petId, details, true);
+    }
 }

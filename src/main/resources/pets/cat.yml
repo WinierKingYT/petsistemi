@@ -1,17 +1,13 @@
-id: cat
-
-display:
-  name: "<yellow>Kedi"
-  description:
-    - "<dark_gray>Uykucu ve mırıltılı bir dost."
-
-entity:
-  type: CAT
-  baby: false
-  glowing: false
-  invulnerable: true
-  silent: false
-  gravity: true
+schema-version: 1
+display-name: "<yellow>Kedi"
+description:
+  - "<dark_gray>Uykucu ve mırıltılı bir dost."
+entity-type: CAT
+baby: false
+glowing: false
+invulnerable: true
+silent: false
+gravity: true
 
 progression:
   enabled: true

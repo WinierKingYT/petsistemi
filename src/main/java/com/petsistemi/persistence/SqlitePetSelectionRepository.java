@@ -95,6 +95,22 @@ public class SqlitePetSelectionRepository implements PetSelectionRepository {
             autoCommit = conn.getAutoCommit();
             conn.setAutoCommit(false);
 
+            String checkSql = "SELECT availability_state FROM pets WHERE pet_id = ? AND owner_id = ?;";
+            try (PreparedStatement checkPs = conn.prepareStatement(checkSql)) {
+                checkPs.setString(1, newPetId.toString());
+                checkPs.setString(2, ownerId.toString());
+                try (ResultSet rs = checkPs.executeQuery()) {
+                    if (rs.next()) {
+                        String state = rs.getString("availability_state");
+                        if ("DISABLED".equalsIgnoreCase(state)) {
+                            throw new IllegalArgumentException("Devre dışı bırakılmış petler seçilemez.");
+                        }
+                    } else {
+                        throw new IllegalArgumentException("Pet bulunamadı veya oyuncuya ait değil.");
+                    }
+                }
+            }
+
             try (PreparedStatement ps = conn.prepareStatement("INSERT INTO player_selected_pets (owner_id, pet_id, selected_at) VALUES (?, ?, ?) " +
                     "ON CONFLICT(owner_id) DO UPDATE SET pet_id = excluded.pet_id, selected_at = excluded.selected_at;")) {
                 ps.setString(1, ownerId.toString());

@@ -55,6 +55,11 @@ public class PetRuntimeCoordinator {
         Optional<PetInstance> selectedOpt = repository.findActiveByOwner(owner.getUniqueId());
         if (selectedOpt.isPresent()) {
             PetInstance pet = selectedOpt.get();
+            if (pet.availabilityState() == com.petsistemi.domain.PetAvailabilityState.DISABLED) {
+                if (plugin != null) plugin.getLogger().warning("Çevrimiçi oyuncunun seçili peti DISABLED olduğu için restore edilmedi ve seçim temizlendi: " + pet.petId());
+                repository.clearActivePetAndSetAvailable(owner.getUniqueId(), pet.petId());
+                return;
+            }
             definitionRegistry.find(pet.definitionId()).ifPresent(def -> {
                 try {
                     spawnAndRegister(owner, pet, def);
@@ -67,13 +72,12 @@ public class PetRuntimeCoordinator {
         }
     }
 
-    /**
-     * Atomically spawns pet entity, initializes behavior, updates DB via single transaction, and registers runtime state.
-     * Performs complete rollback (restoring previous selection and physical entity) if any step fails.
-     */
     public synchronized Entity spawnAndRegister(Player owner, PetInstance pet, PetDefinition definition) throws Exception {
         if (owner == null) {
             throw new IllegalArgumentException("Oyuncu (owner) null olamaz.");
+        }
+        if (pet == null || pet.availabilityState() == com.petsistemi.domain.PetAvailabilityState.DISABLED) {
+            throw new IllegalArgumentException("Devre dışı bırakılmış petler (DISABLED) çağrılamaz.");
         }
         UUID ownerId = owner.getUniqueId();
         
