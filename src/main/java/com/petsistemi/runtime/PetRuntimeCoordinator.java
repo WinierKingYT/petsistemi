@@ -36,6 +36,7 @@ public class PetRuntimeCoordinator {
     private final ActivePetRegistry activeRegistry;
     private final PetEntityController entityController;
     private final PetBehaviorController behaviorController;
+    private final com.petsistemi.runtime.recovery.PetRecoveryQueue recoveryQueue = new com.petsistemi.runtime.recovery.PetRecoveryQueue();
 
     public PetRuntimeCoordinator(JavaPlugin plugin, PetRepository repository,
                                  PetDefinitionRegistry definitionRegistry,
@@ -110,7 +111,7 @@ public class PetRuntimeCoordinator {
             );
 
             // 2. Initialize behavior controller
-            ActivePet activePet = new ActivePet(pet.petId(), ownerId, spawnedEntity.getUniqueId(), spawnedEntity, PetRuntimeState.ACTIVE);
+            ActivePet activePet = new ActivePet(pet.petId(), ownerId, pet.definitionId(), pet.level(), spawnedEntity.getUniqueId(), spawnedEntity, PetRuntimeState.ACTIVE);
             if (spawnedEntity instanceof LivingEntity living) {
                 behaviorController.initialize(activePet, living, owner);
             }
@@ -172,7 +173,7 @@ public class PetRuntimeCoordinator {
                     "Eski pet geri yüklenirken entityController.spawn null döndü"
             );
 
-            ActivePet restoredActive = new ActivePet(previousPet.petId(), owner.getUniqueId(), restoredEntity.getUniqueId(), restoredEntity, PetRuntimeState.ACTIVE);
+            ActivePet restoredActive = new ActivePet(previousPet.petId(), owner.getUniqueId(), previousPet.definitionId(), previousPet.level(), restoredEntity.getUniqueId(), restoredEntity, PetRuntimeState.ACTIVE);
             if (restoredEntity instanceof LivingEntity living) {
                 behaviorController.initialize(restoredActive, living, owner);
             }
@@ -304,15 +305,31 @@ public class PetRuntimeCoordinator {
 
             // Entity disappeared (chunk unload, external plugin removal, server bug)
             if (entity == null || !entity.isValid() || entity.isDead()) {
-                if (plugin != null) plugin.getLogger().warning(
-                        "Watchdog: Pet entitysi kaybolmuş tespit edildi (" + active.getPetId()
-                        + "). Otomatik restore deneniyor...");
-                // Unregister the stale entry first
-                activeRegistry.unregister(ownerId);
-                // Attempt restore on the next tick (owner is online)
-                Bukkit.getScheduler().runTask(plugin, () -> {
-                    if (owner.isOnline()) restoreOnJoin(owner);
-                });
+                UUID petId = active.getPetId();
+                long currentTick = System.currentTimeMillis() / 50;
+
+                if (recoveryQueue.isExhausted(petId)) {
+                    if (plugin != null) plugin.getLogger().severe(
+                            "Watchdog: Pet entitysi (" + petId + ") 3 denemeden sonra restore edilemedi. Kurtarma pes edildi.");
+                    activeRegistry.unregister(ownerId);
+                    continue;
+                }
+
+                if (recoveryQueue.shouldAttemptRecovery(petId, currentTick)) {
+                    recoveryQueue.recordAttempt(ownerId, petId, currentTick);
+                    if (plugin != null) plugin.getLogger().warning(
+                            "Watchdog: Pet entitysi kaybolmuş tespit edildi (" + petId
+                            + "). Otomatik restore deneniyor...");
+                    activeRegistry.unregister(ownerId);
+                    Bukkit.getScheduler().runTask(plugin, () -> {
+                        if (owner.isOnline()) {
+                            restoreOnJoin(owner);
+                            if (activeRegistry.getByOwner(ownerId).isPresent()) {
+                                recoveryQueue.clear(petId);
+                            }
+                        }
+                    });
+                }
             }
         }
     }

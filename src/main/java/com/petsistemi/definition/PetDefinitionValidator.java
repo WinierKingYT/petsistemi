@@ -32,7 +32,14 @@ public final class PetDefinitionValidator {
             errors.add("Görünen isim (displayName) boş olamaz.");
         }
 
-        if (def.entityType() == null || !def.entityType().isSpawnable() || !LivingEntity.class.isAssignableFrom(def.entityType().getEntityClass())) {
+        EntityType type = null;
+        if (def.entityType() != null) {
+            try {
+                type = EntityType.valueOf(def.entityType().toUpperCase());
+            } catch (Exception ignored) {}
+        }
+
+        if (type == null || !type.isSpawnable() || !LivingEntity.class.isAssignableFrom(type.getEntityClass())) {
             errors.add("Geçersiz EntityType: " + def.entityType() + ". Canlı (LivingEntity) ve çağırılabilir varlık olmalıdır.");
         }
 

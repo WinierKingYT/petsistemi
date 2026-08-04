@@ -329,7 +329,7 @@ public class DefaultPetService implements PetService {
             if (targetWasSelected) {
                 selectionRepository.clear(ownerId);
             }
-            repository.update(updated);
+            repository.disablePetTransactional(targetWasSelected ? ownerId : null, updated);
         } catch (Exception e) {
             return new PetDisableResult(false, "Pet güncellenemedi: " + e.getMessage());
         }
@@ -384,7 +384,7 @@ public class DefaultPetService implements PetService {
             if (targetWasSelected) {
                 selectionRepository.clear(ownerId);
             }
-            repository.delete(petId);
+            repository.removePetTransactional(targetWasSelected ? ownerId : null, petId);
         } catch (Exception e) {
             return new PetRemoveResult(false, "Pet silinemedi: " + e.getMessage());
         }
@@ -427,8 +427,12 @@ public class DefaultPetService implements PetService {
             return null;
         }
 
-        // Enforce safe character set: letters, digits, spaces, hyphens, underscores, apostrophes
-        if (!clean.matches("[\\w\\s'\\-]+")) {
+        // Enforce safe character set: Unicode letters, digits, spaces, hyphens, underscores, apostrophes (and allowed color/formatting chars)
+        String allowedPattern = allowColors || allowFormatting
+                ? "[\\p{L}\\p{N}\\s'\\-_&§<>]+"
+                : "[\\p{L}\\p{N}\\s'\\-_]+";
+
+        if (!clean.matches(allowedPattern)) {
             return null;
         }
 

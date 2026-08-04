@@ -66,7 +66,6 @@ public class AtomicPetDefinitionRegistry implements PetDefinitionRegistry {
                     String displayName = yaml.getString("display-name", id);
                     List<String> description = yaml.getStringList("description");
                     String typeStr = yaml.getString("entity-type", "WOLF");
-                    EntityType entityType = EntityType.valueOf(typeStr.toUpperCase());
                     boolean baby = yaml.getBoolean("baby", false);
                     boolean glowing = yaml.getBoolean("glowing", false);
                     boolean invulnerable = yaml.getBoolean("invulnerable", true);
@@ -86,7 +85,7 @@ public class AtomicPetDefinitionRegistry implements PetDefinitionRegistry {
                             id,
                             displayName,
                             description,
-                            entityType,
+                            typeStr.toUpperCase(),
                             baby,
                             glowing,
                             invulnerable,

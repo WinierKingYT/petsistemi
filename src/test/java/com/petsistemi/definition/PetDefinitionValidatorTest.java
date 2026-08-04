@@ -17,7 +17,7 @@ class PetDefinitionValidatorTest {
                 "wolf",
                 "Kurt",
                 Collections.emptyList(),
-                EntityType.WOLF,
+                "WOLF",
                 false,
                 false,
                 true,
@@ -35,7 +35,7 @@ class PetDefinitionValidatorTest {
 
     @Test
     void testInvalidSchemaVersionFailsValidation() {
-        PetDefinition def = new PetDefinition("wolf", "Kurt", Collections.emptyList(), EntityType.WOLF, false, false, true, false, true, true, 100, true, Collections.emptyList());
+        PetDefinition def = new PetDefinition("wolf", "Kurt", Collections.emptyList(), "WOLF", false, false, true, false, true, true, 100, true, Collections.emptyList());
         List<String> errors = PetDefinitionValidator.validate(def, 99);
         assertFalse(errors.isEmpty());
         assertTrue(errors.stream().anyMatch(e -> e.contains("schema-version")));
@@ -43,7 +43,7 @@ class PetDefinitionValidatorTest {
 
     @Test
     void testInvalidIdFormatFailsValidation() {
-        PetDefinition def = new PetDefinition("Wolf System!!", "Kurt", Collections.emptyList(), EntityType.WOLF, false, false, true, false, true, true, 100, true, Collections.emptyList());
+        PetDefinition def = new PetDefinition("Wolf System!!", "Kurt", Collections.emptyList(), "WOLF", false, false, true, false, true, true, 100, true, Collections.emptyList());
         List<String> errors = PetDefinitionValidator.validate(def, 1);
         assertFalse(errors.isEmpty());
         assertTrue(errors.stream().anyMatch(e -> e.contains("format")));

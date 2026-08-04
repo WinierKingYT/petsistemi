@@ -1,13 +1,12 @@
 package com.petsistemi.domain;
 
-import org.bukkit.entity.EntityType;
 import java.util.List;
 
 public record PetDefinition(
         String id,
         String displayName,
         List<String> description,
-        EntityType entityType,
+        String entityType,
         boolean baby,
         boolean glowing,
         boolean invulnerable,

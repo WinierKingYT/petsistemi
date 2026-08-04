@@ -45,6 +45,14 @@ public final class ConfigurationValidator {
             }
         }
 
+        if (config.progression() == null) {
+            errors.add("progression yapılandırması eksik.");
+        } else {
+            if (config.progression().maximumLevel() <= 0) {
+                errors.add("progression.maximum-level 0'dan büyük olmalıdır.");
+            }
+        }
+
         if (config.locale() == null || config.locale().trim().isEmpty()) {
             errors.add("locale boş bırakılamaz.");
         }

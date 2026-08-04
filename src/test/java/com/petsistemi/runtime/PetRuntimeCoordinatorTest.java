@@ -188,7 +188,7 @@ class PetRuntimeCoordinatorTest {
         coordinator = new PetRuntimeCoordinator(null, mockRepository, mockDefRegistry, activeRegistry, mockEntityController, mockBehaviorController);
 
         PetInstance instanceB = new PetInstance(petB, ownerId, "cat", "PetB", 1, 0, PetAvailabilityState.AVAILABLE, 0, 0);
-        PetDefinition defB = new PetDefinition("wolf", "Wolf", Collections.emptyList(), EntityType.WOLF, false, false, true, false, true, true, 100, true, Collections.emptyList());
+        PetDefinition defB = new PetDefinition("wolf", "Wolf", Collections.emptyList(), "WOLF", false, false, true, false, true, true, 100, true, Collections.emptyList());
 
         assertThrows(RuntimeException.class, () -> coordinator.spawnAndRegister(mockPlayer, instanceB, defB));
 
@@ -219,7 +219,7 @@ class PetRuntimeCoordinatorTest {
                 if (!includeDefinition) {
                     return Optional.empty();
                 }
-                return Optional.of(new PetDefinition("wolf", "Wolf", Collections.emptyList(), EntityType.WOLF, false, false, true, false, true, true, 100, true, Collections.emptyList()));
+                return Optional.of(new PetDefinition("wolf", "Wolf", Collections.emptyList(), "WOLF", false, false, true, false, true, true, 100, true, Collections.emptyList()));
             }
             @Override public java.util.Collection<PetDefinition> getAll() { return Collections.emptyList(); }
             @Override public void reload() {}

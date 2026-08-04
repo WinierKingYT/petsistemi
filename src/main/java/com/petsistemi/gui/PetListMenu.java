@@ -101,9 +101,10 @@ public class PetListMenu {
             lore.add(Component.text("Tür: ", NamedTextColor.GRAY).append(Component.text(capitalize(pet.definitionId()), NamedTextColor.WHITE)));
             lore.add(Component.text("Seviye: ", NamedTextColor.GRAY).append(Component.text(pet.level(), NamedTextColor.YELLOW, TextDecoration.BOLD)));
 
-            // XP Progress Bar — uses 100 XP per level (LinearExperienceCurve default)
+            // XP Progress Bar — reads xp-per-level from config
             long currentXp = pet.experience();
-            long xpPerLevel = 100L;
+            long xpPerLevel = plugin != null ? plugin.getConfig().getLong("progression.xp-per-level", 100L) : 100L;
+            if (xpPerLevel <= 0) xpPerLevel = 100L;
             long xpThisLevel = currentXp - (long)(pet.level() - 1) * xpPerLevel;
             long xpToNext = xpPerLevel;
             xpThisLevel = Math.max(0, Math.min(xpThisLevel, xpToNext));

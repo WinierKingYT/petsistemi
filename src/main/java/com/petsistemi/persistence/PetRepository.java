@@ -29,4 +29,14 @@ public interface PetRepository {
     void clearActivePetAndSetAvailable(UUID ownerId, UUID petId);
 
     void restoreActivePet(UUID ownerId, UUID previousPetId, UUID failedPetId);
+
+    default void disablePetTransactional(UUID ownerId, PetInstance updatedPet) {
+        if (ownerId != null) clearActivePet(ownerId);
+        update(updatedPet);
+    }
+
+    default void removePetTransactional(UUID ownerId, UUID petId) {
+        if (ownerId != null) clearActivePet(ownerId);
+        delete(petId);
+    }
 }

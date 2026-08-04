@@ -236,6 +236,85 @@ public class SqlitePetRepository implements PetRepository {
         }
     }
 
+    @Override
+    public synchronized void disablePetTransactional(UUID ownerId, PetInstance updatedPet) {
+        Connection conn = connectionProvider.getConnection();
+        boolean autoCommit = true;
+        try {
+            autoCommit = conn.getAutoCommit();
+            conn.setAutoCommit(false);
+
+            if (ownerId != null) {
+                try (PreparedStatement ps = conn.prepareStatement("DELETE FROM player_selected_pets WHERE owner_id = ? AND pet_id = ?;")) {
+                    ps.setString(1, ownerId.toString());
+                    ps.setString(2, updatedPet.petId().toString());
+                    ps.executeUpdate();
+                }
+            }
+
+            String sql = "UPDATE pets SET custom_name = ?, level = ?, experience = ?, availability_state = ?, updated_at = ? WHERE pet_id = ?;";
+            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.setString(1, updatedPet.customName());
+                ps.setInt(2, updatedPet.level());
+                ps.setLong(3, updatedPet.experience());
+                ps.setString(4, updatedPet.availabilityState().name());
+                ps.setLong(5, updatedPet.updatedAt());
+                ps.setString(6, updatedPet.petId().toString());
+                int affected = ps.executeUpdate();
+                if (affected == 0) {
+                    throw new PetPersistenceException("Güncellenecek pet kaydı veritabanında bulunamadı.");
+                }
+            }
+
+            conn.commit();
+        } catch (Exception e) {
+            try {
+                conn.rollback();
+            } catch (SQLException ignored) {}
+            logger.severe("disablePetTransactional hatası: " + e.getMessage());
+            throw new PetPersistenceException("Pet devre dışı bırakma transaction işlemi başarısız.", e);
+        } finally {
+            try {
+                conn.setAutoCommit(autoCommit);
+            } catch (SQLException ignored) {}
+        }
+    }
+
+    @Override
+    public synchronized void removePetTransactional(UUID ownerId, UUID petId) {
+        Connection conn = connectionProvider.getConnection();
+        boolean autoCommit = true;
+        try {
+            autoCommit = conn.getAutoCommit();
+            conn.setAutoCommit(false);
+
+            if (ownerId != null) {
+                try (PreparedStatement ps = conn.prepareStatement("DELETE FROM player_selected_pets WHERE owner_id = ? AND pet_id = ?;")) {
+                    ps.setString(1, ownerId.toString());
+                    ps.setString(2, petId.toString());
+                    ps.executeUpdate();
+                }
+            }
+
+            try (PreparedStatement ps = conn.prepareStatement("DELETE FROM pets WHERE pet_id = ?;")) {
+                ps.setString(1, petId.toString());
+                ps.executeUpdate();
+            }
+
+            conn.commit();
+        } catch (Exception e) {
+            try {
+                conn.rollback();
+            } catch (SQLException ignored) {}
+            logger.severe("removePetTransactional hatası: " + e.getMessage());
+            throw new PetPersistenceException("Pet silme transaction işlemi başarısız.", e);
+        } finally {
+            try {
+                conn.setAutoCommit(autoCommit);
+            } catch (SQLException ignored) {}
+        }
+    }
+
     private PetInstance mapResultSetToPetInstance(ResultSet rs) throws SQLException {
         String rawState = rs.getString("availability_state");
         PetAvailabilityState availabilityState;

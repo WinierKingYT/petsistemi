@@ -9,10 +9,15 @@ public record PluginConfiguration(
         GuiConfiguration gui,
         DiagnosticsConfiguration diagnostics,
         DefinitionConfiguration definition,
+        FeaturesConfiguration features,
         String locale
 ) {
     public PluginConfiguration(String locale, LimitsConfiguration limits, NamingConfiguration naming, ProgressionConfiguration progression, RuntimeConfiguration runtime, DatabaseConfiguration database) {
-        this(limits, naming, progression, runtime, database, new GuiConfiguration("Pet Menüsü", 6), new DiagnosticsConfiguration(100L), new DefinitionConfiguration("KEEP_OLD_ON_ANY_ERROR"), locale);
+        this(limits, naming, progression, runtime, database, new GuiConfiguration("Pet Menüsü", 6), new DiagnosticsConfiguration(100L), new DefinitionConfiguration("KEEP_OLD_ON_ANY_ERROR"), new FeaturesConfiguration(false, false, false), locale);
+    }
+
+    public PluginConfiguration(LimitsConfiguration limits, NamingConfiguration naming, ProgressionConfiguration progression, RuntimeConfiguration runtime, DatabaseConfiguration database, GuiConfiguration gui, DiagnosticsConfiguration diagnostics, DefinitionConfiguration definition, String locale) {
+        this(limits, naming, progression, runtime, database, gui, diagnostics, definition, new FeaturesConfiguration(false, false, false), locale);
     }
 
     public record LimitsConfiguration(int maximumOwnedPets) {}
@@ -23,4 +28,5 @@ public record PluginConfiguration(
     public record GuiConfiguration(String title, int rows) {}
     public record DiagnosticsConfiguration(long slowQueryThresholdMs) {}
     public record DefinitionConfiguration(String reloadPolicy) {}
+    public record FeaturesConfiguration(boolean abilitiesEnabled, boolean particlesEnabled, boolean magnetEnabled) {}
 }

@@ -7,5 +7,6 @@ public enum ExperienceSource {
     COMMAND,
     EXTERNAL_PLUGIN,
     WALKING,
+    BLOCK_BREAK,
     ONLINE_TIME
 }

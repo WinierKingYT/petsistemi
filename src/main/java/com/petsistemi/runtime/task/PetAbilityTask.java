@@ -34,9 +34,7 @@ public class PetAbilityTask implements Runnable {
             if (entity == null || !entity.isValid() || !entity.getWorld().equals(owner.getWorld())) continue;
             if (entity.getLocation().distanceSquared(owner.getLocation()) > MAX_DISTANCE_SQUARED) continue;
 
-            String defId = petRepository.findById(activePet.getPetId())
-                    .map(p -> p.definitionId().toLowerCase())
-                    .orElse("");
+            String defId = activePet.getDefinitionId() != null ? activePet.getDefinitionId().toLowerCase() : "";
 
             applyBuffs(owner, defId);
         }
@@ -55,9 +53,7 @@ public class PetAbilityTask implements Runnable {
                 owner.addPotionEffect(new PotionEffect(PotionEffectType.REGENERATION, BUFF_DURATION, 0, true, false, true));
                 owner.addPotionEffect(new PotionEffect(PotionEffectType.FAST_DIGGING, BUFF_DURATION, 0, true, false, true));
             }
-            default -> {
-                owner.addPotionEffect(new PotionEffect(PotionEffectType.SPEED, BUFF_DURATION, 0, true, false, true));
-            }
+            default -> {}
         }
     }
 }

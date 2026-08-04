@@ -32,7 +32,13 @@ public class PaperPetEntityController implements PetEntityController {
 
     @Override
     public Entity spawn(PetInstance pet, PetDefinition definition, Player owner) {
-        Entity entity = owner.getWorld().spawnEntity(owner.getLocation(), definition.entityType());
+        EntityType type;
+        try {
+            type = EntityType.valueOf(definition.entityType().toUpperCase());
+        } catch (Exception e) {
+            type = EntityType.WOLF;
+        }
+        Entity entity = owner.getWorld().spawnEntity(owner.getLocation(), type);
 
         // Vanilla settings from definition
         entity.setInvulnerable(definition.invulnerable());

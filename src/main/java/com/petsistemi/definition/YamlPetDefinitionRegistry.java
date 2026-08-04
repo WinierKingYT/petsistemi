@@ -121,7 +121,7 @@ public class YamlPetDefinitionRegistry implements PetDefinitionRegistry {
                         id,
                         displayName,
                         description,
-                        entityType,
+                        entityTypeStr.toUpperCase(),
                         baby,
                         glowing,
                         invulnerable,

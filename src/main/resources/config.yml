@@ -38,3 +38,12 @@ database:
     enabled: true
     fail-startup-on-backup-error: true
     maximum-backups: 5
+
+features:
+  abilities:
+    enabled: false
+  particles:
+    enabled: false
+  magnet:
+    enabled: false
+

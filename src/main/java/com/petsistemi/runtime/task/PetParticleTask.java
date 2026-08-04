@@ -32,9 +32,7 @@ public class PetParticleTask implements Runnable {
             World world = entity.getWorld();
             if (!world.equals(owner.getWorld())) continue;
 
-            String defId = petRepository.findById(activePet.getPetId())
-                    .map(p -> p.definitionId().toLowerCase())
-                    .orElse("");
+            String defId = activePet.getDefinitionId() != null ? activePet.getDefinitionId().toLowerCase() : "";
 
             Particle particle;
             try {

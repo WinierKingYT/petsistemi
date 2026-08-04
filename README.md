@@ -13,7 +13,7 @@ Advanced, modular Paper 1.20.4 Minecraft Pet System plugin written in Java 17.
 
 ## 🛠️ Derleme & Test
 ```powershell
-$env:JAVA_HOME="C:\Program Files\Eclipse Adoptium\jdk-25.0.4.7-hotspot"; ./gradlew clean test shadowJar
+$env:JAVA_HOME="C:\Program Files\Eclipse Adoptium\jdk-17"; ./gradlew clean test shadowJar
 ```
 
 ## 📖 Dokümantasyon

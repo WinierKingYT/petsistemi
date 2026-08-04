@@ -29,13 +29,21 @@ public final class PluginConfigurationLoader {
         boolean failOnBackupError = config.getBoolean("database.migration-backup.fail-startup-on-backup-error", true);
         int maxBackups = config.getInt("database.migration-backup.maximum-backups", 5);
 
+        boolean abilitiesEnabled = config.getBoolean("features.abilities.enabled", false);
+        boolean particlesEnabled = config.getBoolean("features.particles.enabled", false);
+        boolean magnetEnabled = config.getBoolean("features.magnet.enabled", false);
+
         PluginConfiguration pluginConfig = new PluginConfiguration(
-                locale,
                 new PluginConfiguration.LimitsConfiguration(maxPets),
                 new PluginConfiguration.NamingConfiguration(minLen, maxLen, allowColors, allowFormatting),
                 new PluginConfiguration.ProgressionConfiguration(progressionEnabled, maxLevel),
                 new PluginConfiguration.RuntimeConfiguration(tickInterval, startDist, stopDist, teleportDist, followSpeed),
-                new PluginConfiguration.DatabaseConfiguration(backupEnabled, failOnBackupError, maxBackups)
+                new PluginConfiguration.DatabaseConfiguration(backupEnabled, failOnBackupError, maxBackups),
+                new PluginConfiguration.GuiConfiguration("Pet Menüsü", 6),
+                new PluginConfiguration.DiagnosticsConfiguration(100L),
+                new PluginConfiguration.DefinitionConfiguration("KEEP_OLD_ON_ANY_ERROR"),
+                new PluginConfiguration.FeaturesConfiguration(abilitiesEnabled, particlesEnabled, magnetEnabled),
+                locale
         );
 
         List<String> errors = ConfigurationValidator.validate(pluginConfig);

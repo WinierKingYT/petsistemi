@@ -12,12 +12,33 @@ public final class ActivePet {
     private Entity spawnedEntity;
     private PetRuntimeState runtimeState;
 
-    public ActivePet(UUID petId, UUID ownerId, UUID entityId, Entity spawnedEntity, PetRuntimeState runtimeState) {
+    private final String definitionId;
+    private int level;
+
+    public ActivePet(UUID petId, UUID ownerId, String definitionId, int level, UUID entityId, Entity spawnedEntity, PetRuntimeState runtimeState) {
         this.petId = petId;
         this.ownerId = ownerId;
+        this.definitionId = definitionId;
+        this.level = level;
         this.entityId = entityId;
         this.spawnedEntity = spawnedEntity;
         this.runtimeState = runtimeState;
+    }
+
+    public ActivePet(UUID petId, UUID ownerId, UUID entityId, Entity spawnedEntity, PetRuntimeState runtimeState) {
+        this(petId, ownerId, "", 1, entityId, spawnedEntity, runtimeState);
+    }
+
+    public String getDefinitionId() {
+        return definitionId;
+    }
+
+    public int getLevel() {
+        return level;
+    }
+
+    public void setLevel(int level) {
+        this.level = level;
     }
 
     public UUID getPetId() {

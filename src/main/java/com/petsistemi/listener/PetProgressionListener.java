@@ -97,7 +97,7 @@ public class PetProgressionListener implements Listener {
 
         experienceService.addExperience(activeOpt.get().getPetId(),
                 Math.max(BLOCK_XP_MIN, blockBreakXpBase),
-                ExperienceSource.WALKING); // No dedicated BLOCK_BREAK source yet — reuse WALKING
+                ExperienceSource.BLOCK_BREAK);
     }
 
     // ── Walking ─────────────────────────────────────────────────────────────────

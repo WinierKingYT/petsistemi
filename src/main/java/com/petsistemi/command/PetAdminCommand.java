@@ -103,7 +103,7 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
         this.messageService = messageService;
         this.taskRegistry = taskRegistry;
 
-        this.petIdKey = new NamespacedKey(plugin, "pet_id");
+        this.petIdKey = plugin != null ? new NamespacedKey(plugin, "pet_id") : null;
     }
 
     @Override
@@ -124,27 +124,42 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
                 if (!checkPerm(sender, "companionpets.admin.remove")) return true;
                 handleRemove(sender, args);
             }
-            case "list" -> handleList(sender, args);
-            case "info" -> handleInfo(sender, args);
+            case "list" -> {
+                if (!checkPerm(sender, "companionpets.admin.list")) return true;
+                handleList(sender, args);
+            }
+            case "info" -> {
+                if (!checkPerm(sender, "companionpets.admin.info")) return true;
+                handleInfo(sender, args);
+            }
             case "addxp" -> {
-                if (!checkPerm(sender, "companionpets.admin.give")) return true;
+                if (!checkPerm(sender, "companionpets.admin.addxp")) return true;
                 handleAddXp(sender, args);
             }
             case "setxp" -> {
-                if (!checkPerm(sender, "companionpets.admin.give")) return true;
+                if (!checkPerm(sender, "companionpets.admin.setxp")) return true;
                 handleSetXp(sender, args);
             }
             case "setlevel" -> {
-                if (!checkPerm(sender, "companionpets.admin.give")) return true;
+                if (!checkPerm(sender, "companionpets.admin.setlevel")) return true;
                 handleSetLevel(sender, args);
             }
-            case "summon" -> handleSummon(sender, args);
-            case "dismiss" -> handleDismiss(sender, args);
+            case "summon" -> {
+                if (!checkPerm(sender, "companionpets.admin.summon")) return true;
+                handleSummon(sender, args);
+            }
+            case "dismiss" -> {
+                if (!checkPerm(sender, "companionpets.admin.dismiss")) return true;
+                handleDismiss(sender, args);
+            }
             case "reload" -> {
                 if (!checkPerm(sender, "companionpets.admin.reload")) return true;
                 handleReload(sender);
             }
-            case "inspect" -> handleInspect(sender);
+            case "inspect" -> {
+                if (!checkPerm(sender, "companionpets.admin.inspect")) return true;
+                handleInspect(sender);
+            }
             case "health" -> {
                 if (!checkPerm(sender, "companionpets.admin.health")) return true;
                 handleHealth(sender);
@@ -685,12 +700,18 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
 
     @Override
     public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String alias, @NotNull String[] args) {
-        if (!sender.hasPermission("companionpets.admin")) {
+        List<String> allSubs = Arrays.asList("give", "remove", "list", "info", "addxp", "setxp", "setlevel", "summon", "dismiss", "reload", "inspect", "health", "backup", "reconcile", "disable", "enable");
+
+        List<String> allowedSubs = allSubs.stream()
+                .filter(sub -> sender.hasPermission("companionpets.admin") || sender.hasPermission("companionpets.admin." + sub))
+                .collect(Collectors.toList());
+
+        if (allowedSubs.isEmpty()) {
             return Collections.emptyList();
         }
 
         if (args.length == 1) {
-            return Arrays.asList("give", "remove", "list", "info", "addxp", "setxp", "setlevel", "summon", "dismiss", "reload", "inspect", "health", "backup", "reconcile", "disable", "enable").stream()
+            return allowedSubs.stream()
                     .filter(sub -> sub.startsWith(args[0].toLowerCase()))
                     .collect(Collectors.toList());
         }

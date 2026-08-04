@@ -133,11 +133,21 @@ public class PetMenuListener implements Listener {
         boolean isSpawned = spawned.map(s -> s.petId().equals(petId)).orElse(false);
 
         if (isSpawned) {
-            player.playSound(player.getLocation(), Sound.ENTITY_ENDERMAN_TELEPORT, 0.8f, 1.1f);
-            petService.dismiss(player);
+            com.petsistemi.api.result.PetDismissResult dismissResult = petService.dismiss(player);
+            if (dismissResult.success()) {
+                player.playSound(player.getLocation(), Sound.ENTITY_ENDERMAN_TELEPORT, 0.8f, 1.1f);
+            } else {
+                player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 0.8f, 1.0f);
+                player.sendMessage(Component.text("Peti kaldırma başarısız: " + dismissResult.message(), NamedTextColor.RED));
+            }
         } else {
-            player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, 1.2f);
-            petService.summon(player, petId);
+            com.petsistemi.api.result.PetSummonResult summonResult = petService.summon(player, petId);
+            if (summonResult.success()) {
+                player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, 1.2f);
+            } else {
+                player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 0.8f, 1.0f);
+                player.sendMessage(Component.text("Peti çağırma başarısız: " + summonResult.message(), NamedTextColor.RED));
+            }
         }
         // Refresh menu on next tick to reflect updated state
         plugin.getServer().getScheduler().runTask(plugin,
@@ -148,6 +158,21 @@ public class PetMenuListener implements Listener {
     public void onInventoryDrag(InventoryDragEvent event) {
         if (event.getInventory().getHolder() instanceof PetMenuHolder) {
             event.setCancelled(true);
+        }
+    }
+
+    @EventHandler
+    public void onQuit(org.bukkit.event.player.PlayerQuitEvent event) {
+        UUID uuid = event.getPlayer().getUniqueId();
+        lastClickTime.remove(uuid);
+        processingPlayers.remove(uuid);
+    }
+
+    @EventHandler
+    public void onClose(org.bukkit.event.inventory.InventoryCloseEvent event) {
+        if (event.getInventory().getHolder() instanceof PetMenuHolder) {
+            UUID uuid = event.getPlayer().getUniqueId();
+            processingPlayers.remove(uuid);
         }
     }
 }
