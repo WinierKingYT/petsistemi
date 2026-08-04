@@ -28,5 +28,6 @@ public record PetPluginContext(
         PetService petService,
         PetExperienceService experienceService,
         PlayerInputSessionManager sessionManager,
-        TaskRegistry taskRegistry
+        TaskRegistry taskRegistry,
+        java.util.concurrent.atomic.AtomicReference<com.petsistemi.config.RuntimeConfigurationSnapshot> configSnapshot
 ) {}

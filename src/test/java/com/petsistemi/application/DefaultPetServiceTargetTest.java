@@ -31,8 +31,8 @@ class DefaultPetServiceTargetTest {
 
     @BeforeEach
     void setUp() {
-        petRepository = new TestPetRepository();
         selectionRepository = new TestSelectionRepository();
+        petRepository = new TestPetRepository(selectionRepository);
         activePetRegistry = new ActivePetRegistry();
         coordinator = new TestCoordinator();
 
@@ -97,7 +97,12 @@ class DefaultPetServiceTargetTest {
 
     private static class TestPetRepository implements PetRepository {
         private final Map<UUID, PetInstance> map = new HashMap<>();
+        private final TestSelectionRepository selectionRepo;
         boolean shouldFailUpdate = false;
+
+        public TestPetRepository(TestSelectionRepository selectionRepo) {
+            this.selectionRepo = selectionRepo;
+        }
 
         @Override public Optional<PetInstance> findById(UUID petId) { return Optional.ofNullable(map.get(petId)); }
         @Override public List<PetInstance> findByOwner(UUID ownerId) { return map.values().stream().filter(p -> p.ownerId().equals(ownerId)).toList(); }
@@ -113,6 +118,20 @@ class DefaultPetServiceTargetTest {
         @Override public void switchActivePet(UUID ownerId, UUID previousPetId, UUID newPetId) {}
         @Override public void clearActivePetAndSetAvailable(UUID ownerId, UUID petId) {}
         @Override public void restoreActivePet(UUID ownerId, UUID previousPetId, UUID failedPetId) {}
+        @Override public void disablePetTransactional(UUID clearSelectionOwnerId, PetInstance updatedPet) {
+            if (shouldFailUpdate) throw new RuntimeException("DB update simulated failure");
+            if (clearSelectionOwnerId != null) {
+                selectionRepo.clear(clearSelectionOwnerId);
+            }
+            update(updatedPet);
+        }
+        @Override public void removePetTransactional(UUID clearSelectionOwnerId, UUID petId) {
+            if (shouldFailUpdate) throw new RuntimeException("DB update simulated failure");
+            if (clearSelectionOwnerId != null) {
+                selectionRepo.clear(clearSelectionOwnerId);
+            }
+            delete(petId);
+        }
     }
 
     private static class TestSelectionRepository implements PetSelectionRepository {
@@ -129,6 +148,11 @@ class DefaultPetServiceTargetTest {
 
         public TestCoordinator() {
             super(null, null, null, null, null, null);
+        }
+
+        @Override
+        public synchronized void despawnActiveEntity(UUID ownerId) {
+            dismissCalledForOwner = true;
         }
 
         @Override

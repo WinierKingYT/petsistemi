@@ -326,9 +326,6 @@ public class DefaultPetService implements PetService {
 
         PetInstance updated = new PetInstance(pet.petId(), pet.ownerId(), pet.definitionId(), pet.customName(), pet.level(), pet.experience(), PetAvailabilityState.DISABLED, pet.createdAt(), System.currentTimeMillis());
         try {
-            if (targetWasSelected) {
-                selectionRepository.clear(ownerId);
-            }
             repository.disablePetTransactional(targetWasSelected ? ownerId : null, updated);
         } catch (Exception e) {
             return new PetDisableResult(false, "Pet güncellenemedi: " + e.getMessage());
@@ -336,7 +333,7 @@ public class DefaultPetService implements PetService {
 
         // Perform runtime cleanup and cache invalidation ONLY AFTER DB persistence succeeds
         if (targetWasActive) {
-            coordinator.dismissAndClear(ownerId);
+            coordinator.despawnActiveEntity(ownerId);
         }
         if (profileCache != null) {
             profileCache.invalidate(ownerId);
@@ -381,9 +378,6 @@ public class DefaultPetService implements PetService {
         boolean targetWasSelected = selectionOpt.isPresent() && selectionOpt.get().petId().equals(petId);
 
         try {
-            if (targetWasSelected) {
-                selectionRepository.clear(ownerId);
-            }
             repository.removePetTransactional(targetWasSelected ? ownerId : null, petId);
         } catch (Exception e) {
             return new PetRemoveResult(false, "Pet silinemedi: " + e.getMessage());
@@ -391,7 +385,7 @@ public class DefaultPetService implements PetService {
 
         // Perform runtime cleanup and cache invalidation ONLY AFTER DB deletion succeeds
         if (targetWasActive) {
-            coordinator.dismissAndClear(ownerId);
+            coordinator.despawnActiveEntity(ownerId);
         }
         if (profileCache != null) {
             profileCache.invalidate(ownerId);

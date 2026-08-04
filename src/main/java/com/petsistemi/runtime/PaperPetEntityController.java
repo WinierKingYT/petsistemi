@@ -36,7 +36,7 @@ public class PaperPetEntityController implements PetEntityController {
         try {
             type = EntityType.valueOf(definition.entityType().toUpperCase());
         } catch (Exception e) {
-            type = EntityType.WOLF;
+            throw new IllegalArgumentException("Geçersiz veya desteklenmeyen EntityType '" + definition.entityType() + "' pet tanımında (" + definition.id() + ") tanımlanmış!");
         }
         Entity entity = owner.getWorld().spawnEntity(owner.getLocation(), type);
 

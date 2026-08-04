@@ -56,25 +56,33 @@ public final class SchedulerRegistrar {
         );
         context.taskRegistry().register(passiveXpTask);
 
-        BukkitTask abilityTask = Bukkit.getScheduler().runTaskTimer(
-                context.plugin(),
-                new com.petsistemi.runtime.task.PetAbilityTask(context.activePetRegistry(), context.petRepository(), context.definitionRegistry()),
-                40L, 40L
-        );
-        context.taskRegistry().register(abilityTask);
+        var features = context.config() != null ? context.config().features() : null;
 
-        BukkitTask magnetTask = Bukkit.getScheduler().runTaskTimer(
-                context.plugin(),
-                new com.petsistemi.runtime.task.PetMagnetTask(context.activePetRegistry()),
-                20L, 20L
-        );
-        context.taskRegistry().register(magnetTask);
+        if (features != null && features.abilitiesEnabled()) {
+            BukkitTask abilityTask = Bukkit.getScheduler().runTaskTimer(
+                    context.plugin(),
+                    new com.petsistemi.runtime.task.PetAbilityTask(context.activePetRegistry(), context.petRepository(), context.definitionRegistry()),
+                    40L, 40L
+            );
+            context.taskRegistry().register(abilityTask);
+        }
 
-        BukkitTask particleTask = Bukkit.getScheduler().runTaskTimer(
-                context.plugin(),
-                new com.petsistemi.runtime.task.PetParticleTask(context.activePetRegistry(), context.petRepository()),
-                10L, 10L
-        );
-        context.taskRegistry().register(particleTask);
+        if (features != null && features.magnetEnabled()) {
+            BukkitTask magnetTask = Bukkit.getScheduler().runTaskTimer(
+                    context.plugin(),
+                    new com.petsistemi.runtime.task.PetMagnetTask(context.activePetRegistry()),
+                    20L, 20L
+            );
+            context.taskRegistry().register(magnetTask);
+        }
+
+        if (features != null && features.particlesEnabled()) {
+            BukkitTask particleTask = Bukkit.getScheduler().runTaskTimer(
+                    context.plugin(),
+                    new com.petsistemi.runtime.task.PetParticleTask(context.activePetRegistry(), context.petRepository()),
+                    10L, 10L
+            );
+            context.taskRegistry().register(particleTask);
+        }
     }
 }

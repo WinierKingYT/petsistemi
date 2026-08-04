@@ -475,6 +475,12 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
                 messageService.reload();
             }
             definitionRegistry.reload();
+            com.petsistemi.config.RuntimeConfigurationSnapshot newSnapshot = new com.petsistemi.config.RuntimeConfigurationSnapshot(
+                    newConfig,
+                    messageService,
+                    definitionRegistry,
+                    System.currentTimeMillis()
+            );
             sender.sendMessage(Component.text("Konfigürasyon ve pet tanımları atomik olarak başarıyla yenilendi!", NamedTextColor.GREEN));
             if (auditLogger != null) {
                 auditLogger.logAction("RELOAD", sender.getName(), null, null, "Atomik reload başarıyla tamamlandı");

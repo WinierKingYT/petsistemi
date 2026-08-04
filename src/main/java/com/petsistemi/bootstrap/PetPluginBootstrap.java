@@ -70,8 +70,15 @@ public final class PetPluginBootstrap {
             long xpPerLevel = plugin.getConfig().getLong("progression.xp-per-level", 100L);
             DefaultPetExperienceService experienceService = new DefaultPetExperienceService(plugin, petRepository, definitionRegistry, activePetRegistry, entityController, new LinearExperienceCurve(xpPerLevel));
 
-            // 8. Task Registry
+            // 8. Task Registry & Atomic Config Snapshot
             TaskRegistry taskRegistry = new TaskRegistry();
+            com.petsistemi.config.RuntimeConfigurationSnapshot initialSnapshot = new com.petsistemi.config.RuntimeConfigurationSnapshot(
+                    config,
+                    messageService,
+                    definitionRegistry,
+                    System.currentTimeMillis()
+            );
+            java.util.concurrent.atomic.AtomicReference<com.petsistemi.config.RuntimeConfigurationSnapshot> configSnapshot = new java.util.concurrent.atomic.AtomicReference<>(initialSnapshot);
 
             plugin.getLogger().info("PetSistemi önyükleme başarıyla tamamlandı.");
 
@@ -93,7 +100,8 @@ public final class PetPluginBootstrap {
                     petService,
                     experienceService,
                     sessionManager,
-                    taskRegistry
+                    taskRegistry,
+                    configSnapshot
             );
         } catch (Throwable t) {
             plugin.getLogger().severe("PetSistemi önyüklemesi sırasında kritik hata oluştu! Kaynaklar temizleniyor: " + t.getMessage());

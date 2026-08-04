@@ -306,31 +306,44 @@ public class PetRuntimeCoordinator {
             // Entity disappeared (chunk unload, external plugin removal, server bug)
             if (entity == null || !entity.isValid() || entity.isDead()) {
                 UUID petId = active.getPetId();
-                long currentTick = System.currentTimeMillis() / 50;
 
                 if (recoveryQueue.isExhausted(petId)) {
-                    if (plugin != null) plugin.getLogger().severe(
-                            "Watchdog: Pet entitysi (" + petId + ") 3 denemeden sonra restore edilemedi. Kurtarma pes edildi.");
-                    activeRegistry.unregister(ownerId);
                     continue;
                 }
 
-                if (recoveryQueue.shouldAttemptRecovery(petId, currentTick)) {
-                    recoveryQueue.recordAttempt(ownerId, petId, currentTick);
-                    if (plugin != null) plugin.getLogger().warning(
-                            "Watchdog: Pet entitysi kaybolmuş tespit edildi (" + petId
-                            + "). Otomatik restore deneniyor...");
-                    activeRegistry.unregister(ownerId);
-                    Bukkit.getScheduler().runTask(plugin, () -> {
-                        if (owner.isOnline()) {
-                            restoreOnJoin(owner);
-                            if (activeRegistry.getByOwner(ownerId).isPresent()) {
-                                recoveryQueue.clear(petId);
-                            }
-                        }
-                    });
-                }
+                if (plugin != null) plugin.getLogger().warning(
+                        "Watchdog: Pet entitysi kaybolmuş tespit edildi (" + petId
+                        + "). Otomatik kurtarma başlatılıyor...");
+                activeRegistry.unregister(ownerId);
+                attemptWatchdogRecovery(ownerId, petId, 1);
             }
         }
+    }
+
+    private void attemptWatchdogRecovery(UUID ownerId, UUID petId, int attempt) {
+        if (attempt > 3) {
+            recoveryQueue.clear(petId);
+            if (plugin != null) {
+                plugin.getLogger().severe("Watchdog: Pet entitysi (" + petId + ") 3 denemeden sonra restore edilemedi! PetRecoveryFailedEvent çağırılıyor.");
+            }
+            Bukkit.getPluginManager().callEvent(new com.petsistemi.api.event.PetRecoveryFailedEvent(ownerId, petId, com.petsistemi.runtime.RecoveryOutcome.RETRIES_EXHAUSTED));
+            return;
+        }
+
+        long[] delays = {20L, 60L, 200L};
+        long delay = delays[attempt - 1];
+
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            Player owner = Bukkit.getPlayer(ownerId);
+            if (owner != null && owner.isOnline()) {
+                restoreOnJoin(owner);
+                if (activeRegistry.getByOwner(ownerId).isPresent()) {
+                    recoveryQueue.clear(petId);
+                    if (plugin != null) plugin.getLogger().info("Watchdog: Pet (" + petId + ") " + attempt + ". denemede başarıyla restore edildi.");
+                    return;
+                }
+            }
+            attemptWatchdogRecovery(ownerId, petId, attempt + 1);
+        }, delay);
     }
 }
