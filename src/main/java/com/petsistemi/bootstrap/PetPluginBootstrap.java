@@ -48,9 +48,17 @@ public final class PetPluginBootstrap {
 
             SchemaMigrator.migrate(connection, dbFile, backupDir, backupEnabled, failOnBackupError, maxBackups);
 
-            // 4. Definition Registry
+            // 4. Definition Registry & Atomic Config Snapshot
             PetDefinitionRegistry definitionRegistry = new AtomicPetDefinitionRegistry(plugin);
             definitionRegistry.reload();
+
+            com.petsistemi.config.RuntimeConfigurationSnapshot initialSnapshot = new com.petsistemi.config.RuntimeConfigurationSnapshot(
+                    config,
+                    messageService,
+                    definitionRegistry,
+                    System.currentTimeMillis()
+            );
+            java.util.concurrent.atomic.AtomicReference<com.petsistemi.config.RuntimeConfigurationSnapshot> configSnapshot = new java.util.concurrent.atomic.AtomicReference<>(initialSnapshot);
 
             // 5. Repositories, Cache & Audit
             PetRepository petRepository = new SqlitePetRepository(databaseManager, plugin.getLogger());
@@ -60,7 +68,7 @@ public final class PetPluginBootstrap {
 
             // 6. Runtime Components & Sessions
             PetEntityController entityController = new PaperPetEntityController(plugin);
-            PetBehaviorController behaviorController = new BasicPetBehaviorController(plugin.getConfig());
+            PetBehaviorController behaviorController = new BasicPetBehaviorController(configSnapshot);
             ActivePetRegistry activePetRegistry = new ActivePetRegistry();
             PetRuntimeCoordinator coordinator = new PetRuntimeCoordinator(plugin, petRepository, definitionRegistry, activePetRegistry, entityController, behaviorController);
             PlayerInputSessionManager sessionManager = new PlayerInputSessionManager();
@@ -70,15 +78,8 @@ public final class PetPluginBootstrap {
             long xpPerLevel = plugin.getConfig().getLong("progression.xp-per-level", 100L);
             DefaultPetExperienceService experienceService = new DefaultPetExperienceService(plugin, petRepository, definitionRegistry, activePetRegistry, entityController, new LinearExperienceCurve(xpPerLevel));
 
-            // 8. Task Registry & Atomic Config Snapshot
+            // 8. Task Registry
             TaskRegistry taskRegistry = new TaskRegistry();
-            com.petsistemi.config.RuntimeConfigurationSnapshot initialSnapshot = new com.petsistemi.config.RuntimeConfigurationSnapshot(
-                    config,
-                    messageService,
-                    definitionRegistry,
-                    System.currentTimeMillis()
-            );
-            java.util.concurrent.atomic.AtomicReference<com.petsistemi.config.RuntimeConfigurationSnapshot> configSnapshot = new java.util.concurrent.atomic.AtomicReference<>(initialSnapshot);
 
             plugin.getLogger().info("PetSistemi önyükleme başarıyla tamamlandı.");
 

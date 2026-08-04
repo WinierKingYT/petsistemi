@@ -506,22 +506,35 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
     private void handleReload(CommandSender sender) {
         sender.sendMessage(Component.text("PetSistemi konfigürasyon ve tanımları yenileniyor...", NamedTextColor.YELLOW));
         try {
-            plugin.reloadConfig();
-            PluginConfiguration newConfig = PluginConfigurationLoader.load(plugin.getConfig());
+            // 1. Load candidate YAML from disk without mutating live Bukkit config
+            java.io.File configFile = new java.io.File(plugin.getDataFolder(), "config.yml");
+            org.bukkit.configuration.file.YamlConfiguration candidateYaml = new org.bukkit.configuration.file.YamlConfiguration();
+            if (configFile.exists()) {
+                candidateYaml.load(configFile);
+            }
+
+            // 2. Validate candidate PluginConfiguration
+            PluginConfiguration candidateConfig = PluginConfigurationLoader.load(candidateYaml);
+
+            // 3. Reload candidate message and definition registries
             if (messageService != null) {
                 messageService.reload();
             }
             definitionRegistry.reload();
 
-            com.petsistemi.config.RuntimeConfigurationSnapshot newSnapshot = new com.petsistemi.config.RuntimeConfigurationSnapshot(
-                    newConfig,
+            // 4. Create candidate RuntimeConfigurationSnapshot
+            com.petsistemi.config.RuntimeConfigurationSnapshot candidateSnapshot = new com.petsistemi.config.RuntimeConfigurationSnapshot(
+                    candidateConfig,
                     messageService,
                     definitionRegistry,
                     System.currentTimeMillis()
             );
 
+            // 5. Validation passed → apply to live Bukkit config and publish snapshot atomically
+            plugin.reloadConfig();
+
             if (context != null && context.configSnapshot() != null) {
-                context.configSnapshot().set(newSnapshot);
+                context.configSnapshot().set(candidateSnapshot);
             }
 
             if (context != null) {
@@ -533,7 +546,7 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
                 auditLogger.logAction("RELOAD", sender.getName(), null, null, "Atomik reload başarıyla tamamlandı");
             }
         } catch (Exception e) {
-            sender.sendMessage(Component.text("Yenileme sırasında hata oluştu: " + e.getMessage(), NamedTextColor.RED));
+            sender.sendMessage(Component.text("Yenileme sırasında hata oluştu (eski canlı konfigürasyon korundu): " + e.getMessage(), NamedTextColor.RED));
         }
     }
 

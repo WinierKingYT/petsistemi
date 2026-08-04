@@ -349,6 +349,15 @@ public class PetRuntimeCoordinator {
                 return;
             }
 
+            if (repository != null) {
+                Optional<PetInstance> activeInDb = repository.findActiveByOwner(ownerId);
+                if (activeInDb.isPresent() && !activeInDb.get().petId().equals(petId)) {
+                    recoveryQueue.clear(petId);
+                    if (plugin != null) plugin.getLogger().info("Watchdog: Veritabanında seçili pet değişmiş. Eski pet (" + petId + ") kurtarması iptal edildi.");
+                    return;
+                }
+            }
+
             restoreOnJoin(owner);
 
             Optional<ActivePet> restoredOpt = activeRegistry.getByOwner(ownerId);
