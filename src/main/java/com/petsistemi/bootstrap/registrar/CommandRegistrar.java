@@ -13,21 +13,7 @@ public final class CommandRegistrar {
             context.plugin().getCommand("pet").setTabCompleter(petCommand);
         }
 
-        PetAdminCommand adminCommand = new PetAdminCommand(
-                context.plugin(),
-                context.petService(),
-                context.experienceService(),
-                context.definitionRegistry(),
-                context.activePetRegistry(),
-                context.petRepository(),
-                context.selectionRepository(),
-                context.connectionProvider(),
-                context.auditLogger(),
-                context.coordinator(),
-                context.profileCache(),
-                context.messageService(),
-                context.taskRegistry()
-        );
+        PetAdminCommand adminCommand = new PetAdminCommand(context);
 
         if (context.plugin().getCommand("petadmin") != null) {
             context.plugin().getCommand("petadmin").setExecutor(adminCommand);

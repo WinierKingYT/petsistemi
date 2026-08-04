@@ -48,7 +48,7 @@ public final class SchedulerRegistrar {
             }
         }, 20L);
 
-        // Milestone 2 Tasks: Passive XP, Ability Buffs, Magnet, Particles
+        // Milestone 2 Tasks: Passive XP
         BukkitTask passiveXpTask = Bukkit.getScheduler().runTaskTimer(
                 context.plugin(),
                 new com.petsistemi.progression.PetPassiveXpTask(context.activePetRegistry(), context.experienceService(), context.plugin().getConfig()),
@@ -56,7 +56,18 @@ public final class SchedulerRegistrar {
         );
         context.taskRegistry().register(passiveXpTask);
 
-        var features = context.config() != null ? context.config().features() : null;
+        // Register initial feature flag tasks
+        reevaluateFeatureTasks(context);
+    }
+
+    public static void reevaluateFeatureTasks(PetPluginContext context) {
+        var snapshot = context.configSnapshot() != null ? context.configSnapshot().get() : null;
+        var features = snapshot != null && snapshot.configuration() != null ? snapshot.configuration().features() : null;
+
+        // Cancel existing feature tasks
+        context.taskRegistry().cancelNamed("abilityTask");
+        context.taskRegistry().cancelNamed("magnetTask");
+        context.taskRegistry().cancelNamed("particleTask");
 
         if (features != null && features.abilitiesEnabled()) {
             BukkitTask abilityTask = Bukkit.getScheduler().runTaskTimer(
@@ -64,7 +75,7 @@ public final class SchedulerRegistrar {
                     new com.petsistemi.runtime.task.PetAbilityTask(context.activePetRegistry(), context.petRepository(), context.definitionRegistry()),
                     40L, 40L
             );
-            context.taskRegistry().register(abilityTask);
+            context.taskRegistry().registerNamed("abilityTask", abilityTask);
         }
 
         if (features != null && features.magnetEnabled()) {
@@ -73,7 +84,7 @@ public final class SchedulerRegistrar {
                     new com.petsistemi.runtime.task.PetMagnetTask(context.activePetRegistry()),
                     20L, 20L
             );
-            context.taskRegistry().register(magnetTask);
+            context.taskRegistry().registerNamed("magnetTask", magnetTask);
         }
 
         if (features != null && features.particlesEnabled()) {
@@ -82,7 +93,7 @@ public final class SchedulerRegistrar {
                     new com.petsistemi.runtime.task.PetParticleTask(context.activePetRegistry(), context.petRepository()),
                     10L, 10L
             );
-            context.taskRegistry().register(particleTask);
+            context.taskRegistry().registerNamed("particleTask", particleTask);
         }
     }
 }

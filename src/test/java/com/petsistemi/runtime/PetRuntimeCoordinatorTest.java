@@ -264,35 +264,19 @@ class PetRuntimeCoordinatorTest {
     }
 
     private LivingEntity createFakeLivingEntity(UUID entityId) {
-        return (LivingEntity) Proxy.newProxyInstance(
-                LivingEntity.class.getClassLoader(),
-                new Class<?>[]{LivingEntity.class},
-                (proxy, method, args) -> switch (method.getName()) {
-                    case "getUniqueId" -> entityId;
-                    case "isValid" -> true;
-                    case "isDead" -> false;
-                    case "getType" -> EntityType.WOLF;
-                    default -> null;
-                }
-        );
+        LivingEntity living = org.mockito.Mockito.mock(LivingEntity.class);
+        org.mockito.Mockito.when(living.getUniqueId()).thenReturn(entityId);
+        org.mockito.Mockito.when(living.isValid()).thenReturn(true);
+        org.mockito.Mockito.when(living.isDead()).thenReturn(false);
+        org.mockito.Mockito.when(living.getType()).thenReturn(EntityType.WOLF);
+        return living;
     }
 
     private Player createMockPlayer(UUID ownerId) {
-        return (Player) Proxy.newProxyInstance(
-                Player.class.getClassLoader(),
-                new Class<?>[]{Player.class},
-                (proxy, method, args) -> {
-                    if (method.getName().equals("getUniqueId")) {
-                        return ownerId;
-                    }
-                    if (method.getName().equals("isOnline")) {
-                        return true;
-                    }
-                    if (method.getName().equals("getName")) {
-                        return "MockPlayer";
-                    }
-                    return null;
-                }
-        );
+        Player player = org.mockito.Mockito.mock(Player.class);
+        org.mockito.Mockito.when(player.getUniqueId()).thenReturn(ownerId);
+        org.mockito.Mockito.when(player.isOnline()).thenReturn(true);
+        org.mockito.Mockito.when(player.getName()).thenReturn("MockPlayer");
+        return player;
     }
 }

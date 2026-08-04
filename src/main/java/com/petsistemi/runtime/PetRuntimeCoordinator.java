@@ -307,10 +307,11 @@ public class PetRuntimeCoordinator {
             if (entity == null || !entity.isValid() || entity.isDead()) {
                 UUID petId = active.getPetId();
 
-                if (recoveryQueue.isExhausted(petId)) {
+                if (recoveryQueue.isPending(petId) || recoveryQueue.isExhausted(petId)) {
                     continue;
                 }
 
+                recoveryQueue.recordAttempt(ownerId, petId, System.currentTimeMillis() / 50);
                 if (plugin != null) plugin.getLogger().warning(
                         "Watchdog: Pet entitysi kaybolmuş tespit edildi (" + petId
                         + "). Otomatik kurtarma başlatılıyor...");
@@ -321,6 +322,13 @@ public class PetRuntimeCoordinator {
     }
 
     private void attemptWatchdogRecovery(UUID ownerId, UUID petId, int attempt) {
+        Player ownerCheck = Bukkit.getPlayer(ownerId);
+        if (ownerCheck == null || !ownerCheck.isOnline()) {
+            recoveryQueue.clear(petId);
+            if (plugin != null) plugin.getLogger().info("Watchdog: Oyuncu çevrimdışı olduğu için kurtarma iptal edildi (" + petId + ").");
+            return;
+        }
+
         if (attempt > 3) {
             recoveryQueue.clear(petId);
             if (plugin != null) {
@@ -335,14 +343,27 @@ public class PetRuntimeCoordinator {
 
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
             Player owner = Bukkit.getPlayer(ownerId);
-            if (owner != null && owner.isOnline()) {
-                restoreOnJoin(owner);
-                if (activeRegistry.getByOwner(ownerId).isPresent()) {
-                    recoveryQueue.clear(petId);
-                    if (plugin != null) plugin.getLogger().info("Watchdog: Pet (" + petId + ") " + attempt + ". denemede başarıyla restore edildi.");
-                    return;
-                }
+            if (owner == null || !owner.isOnline()) {
+                recoveryQueue.clear(petId);
+                if (plugin != null) plugin.getLogger().info("Watchdog: Oyuncu çevrimdışı olduğu için kurtarma iptal edildi (" + petId + ").");
+                return;
             }
+
+            restoreOnJoin(owner);
+
+            Optional<ActivePet> restoredOpt = activeRegistry.getByOwner(ownerId);
+            if (restoredOpt.isPresent() && restoredOpt.get().getPetId().equals(petId)) {
+                recoveryQueue.clear(petId);
+                if (plugin != null) plugin.getLogger().info("Watchdog: Pet (" + petId + ") " + attempt + ". denemede başarıyla restore edildi.");
+                return;
+            }
+
+            if (restoredOpt.isPresent() && !restoredOpt.get().getPetId().equals(petId)) {
+                recoveryQueue.clear(petId);
+                if (plugin != null) plugin.getLogger().info("Watchdog: Oyuncunun seçili peti değiştiği için eski pet (" + petId + ") kurtarması iptal edildi.");
+                return;
+            }
+
             attemptWatchdogRecovery(ownerId, petId, attempt + 1);
         }, delay);
     }

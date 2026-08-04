@@ -1,7 +1,5 @@
 package com.petsistemi.runtime.recovery;
 
-import org.bukkit.entity.Player;
-
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -14,6 +12,18 @@ public class PetRecoveryQueue {
     private final Map<UUID, RecoveryAttempt> pendingRecoveries = new ConcurrentHashMap<>();
 
     public record RecoveryAttempt(UUID ownerId, UUID petId, int attemptCount, long nextScheduledTick) {}
+
+    public boolean tryStart(UUID ownerId, UUID petId) {
+        if (pendingRecoveries.containsKey(petId)) {
+            return false;
+        }
+        recordAttempt(ownerId, petId, System.currentTimeMillis() / 50);
+        return true;
+    }
+
+    public boolean isPending(UUID petId) {
+        return pendingRecoveries.containsKey(petId);
+    }
 
     public boolean shouldAttemptRecovery(UUID petId, long currentTick) {
         RecoveryAttempt attempt = pendingRecoveries.get(petId);

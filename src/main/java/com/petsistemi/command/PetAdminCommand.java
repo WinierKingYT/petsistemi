@@ -60,8 +60,28 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
     private final PlayerPetProfileCache profileCache;
     private final MessageService messageService;
     private final com.petsistemi.bootstrap.TaskRegistry taskRegistry;
+    private final com.petsistemi.bootstrap.PetPluginContext context;
 
     private final NamespacedKey petIdKey;
+
+    public PetAdminCommand(com.petsistemi.bootstrap.PetPluginContext context) {
+        this(
+                context.plugin(),
+                context.petService(),
+                context.experienceService(),
+                context.definitionRegistry(),
+                context.activePetRegistry(),
+                context.petRepository(),
+                context.selectionRepository(),
+                context.connectionProvider(),
+                context.auditLogger(),
+                context.coordinator(),
+                context.profileCache(),
+                context.messageService(),
+                context.taskRegistry(),
+                context
+        );
+    }
 
     public PetAdminCommand(JavaPlugin plugin, PetService petService,
                            PetExperienceService experienceService,
@@ -74,7 +94,7 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
                            PetRuntimeCoordinator coordinator,
                            PlayerPetProfileCache profileCache,
                            MessageService messageService) {
-        this(plugin, petService, experienceService, definitionRegistry, activeRegistry, repository, selectionRepository, connectionProvider, auditLogger, coordinator, profileCache, messageService, null);
+        this(plugin, petService, experienceService, definitionRegistry, activeRegistry, repository, selectionRepository, connectionProvider, auditLogger, coordinator, profileCache, messageService, null, null);
     }
 
     public PetAdminCommand(JavaPlugin plugin, PetService petService,
@@ -89,6 +109,22 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
                            PlayerPetProfileCache profileCache,
                            MessageService messageService,
                            com.petsistemi.bootstrap.TaskRegistry taskRegistry) {
+        this(plugin, petService, experienceService, definitionRegistry, activeRegistry, repository, selectionRepository, connectionProvider, auditLogger, coordinator, profileCache, messageService, taskRegistry, null);
+    }
+
+    public PetAdminCommand(JavaPlugin plugin, PetService petService,
+                           PetExperienceService experienceService,
+                           PetDefinitionRegistry definitionRegistry,
+                           ActivePetRegistry activeRegistry,
+                           PetRepository repository,
+                           PetSelectionRepository selectionRepository,
+                           ConnectionProvider connectionProvider,
+                           AuditLogger auditLogger,
+                           PetRuntimeCoordinator coordinator,
+                           PlayerPetProfileCache profileCache,
+                           MessageService messageService,
+                           com.petsistemi.bootstrap.TaskRegistry taskRegistry,
+                           com.petsistemi.bootstrap.PetPluginContext context) {
         this.plugin = plugin;
         this.petService = petService;
         this.experienceService = experienceService;
@@ -102,6 +138,7 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
         this.profileCache = profileCache;
         this.messageService = messageService;
         this.taskRegistry = taskRegistry;
+        this.context = context;
 
         this.petIdKey = plugin != null ? new NamespacedKey(plugin, "pet_id") : null;
     }
@@ -475,12 +512,22 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
                 messageService.reload();
             }
             definitionRegistry.reload();
+
             com.petsistemi.config.RuntimeConfigurationSnapshot newSnapshot = new com.petsistemi.config.RuntimeConfigurationSnapshot(
                     newConfig,
                     messageService,
                     definitionRegistry,
                     System.currentTimeMillis()
             );
+
+            if (context != null && context.configSnapshot() != null) {
+                context.configSnapshot().set(newSnapshot);
+            }
+
+            if (context != null) {
+                com.petsistemi.bootstrap.registrar.SchedulerRegistrar.reevaluateFeatureTasks(context);
+            }
+
             sender.sendMessage(Component.text("Konfigürasyon ve pet tanımları atomik olarak başarıyla yenilendi!", NamedTextColor.GREEN));
             if (auditLogger != null) {
                 auditLogger.logAction("RELOAD", sender.getName(), null, null, "Atomik reload başarıyla tamamlandı");
