@@ -1,9 +1,10 @@
 package com.petsistemi.listener;
 
+import com.petsistemi.application.PetRuntimeOperationService;
+import com.petsistemi.bootstrap.MainThreadDispatcher;
 import com.petsistemi.persistence.DatabaseExecutor;
 import com.petsistemi.persistence.PlayerPetProfileCache;
 import com.petsistemi.runtime.PetRuntimeCoordinator;
-import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -18,14 +19,27 @@ public class PlayerConnectionListener implements Listener {
 
     private final JavaPlugin plugin;
     private final PetRuntimeCoordinator coordinator;
+    private final PetRuntimeOperationService operationService;
     private final PlayerPetProfileCache profileCache;
     private final DatabaseExecutor dbExecutor;
+    private final MainThreadDispatcher mainThreadDispatcher;
 
-    public PlayerConnectionListener(JavaPlugin plugin, PetRuntimeCoordinator coordinator, PlayerPetProfileCache profileCache, DatabaseExecutor dbExecutor) {
+    public PlayerConnectionListener(JavaPlugin plugin,
+                                    PetRuntimeCoordinator coordinator,
+                                    PetRuntimeOperationService operationService,
+                                    PlayerPetProfileCache profileCache,
+                                    DatabaseExecutor dbExecutor,
+                                    MainThreadDispatcher mainThreadDispatcher) {
         this.plugin = plugin;
         this.coordinator = coordinator;
+        this.operationService = operationService;
         this.profileCache = profileCache;
         this.dbExecutor = dbExecutor;
+        this.mainThreadDispatcher = mainThreadDispatcher;
+    }
+
+    public PlayerConnectionListener(JavaPlugin plugin, PetRuntimeCoordinator coordinator, PlayerPetProfileCache profileCache, DatabaseExecutor dbExecutor) {
+        this(plugin, coordinator, null, profileCache, dbExecutor, null);
     }
 
     @EventHandler
@@ -41,16 +55,19 @@ public class PlayerConnectionListener implements Listener {
                     }
                     return;
                 }
-                Bukkit.getScheduler().runTask(plugin, () -> {
-                    if (player.isOnline()) {
-                        coordinator.restoreOnJoin(player);
+
+                Runnable restoreTask = () -> {
+                    if (player.isOnline() && profileCache.getProfile(ownerId).isPresent()) {
+                        if (operationService != null) {
+                            operationService.restoreSelectedPetAsync(player);
+                        }
                     }
-                });
-            });
-        } else {
-            Bukkit.getScheduler().runTask(plugin, () -> {
-                if (player.isOnline()) {
-                    coordinator.restoreOnJoin(player);
+                };
+
+                if (mainThreadDispatcher != null) {
+                    mainThreadDispatcher.run(restoreTask);
+                } else if (plugin != null) {
+                    org.bukkit.Bukkit.getScheduler().runTask(plugin, restoreTask);
                 }
             });
         }
@@ -59,9 +76,11 @@ public class PlayerConnectionListener implements Listener {
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
         UUID ownerId = event.getPlayer().getUniqueId();
-        coordinator.despawnOnQuit(ownerId);
         if (profileCache != null) {
             profileCache.invalidate(ownerId);
+        }
+        if (coordinator != null) {
+            coordinator.despawnRuntime(ownerId);
         }
     }
 }

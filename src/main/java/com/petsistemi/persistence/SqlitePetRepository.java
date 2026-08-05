@@ -25,6 +25,7 @@ public class SqlitePetRepository implements PetRepository {
 
     @Override
     public synchronized Optional<PetInstance> findById(UUID petId) {
+        DatabaseThreadGuard.requireDatabaseThread();
         String sql = "SELECT * FROM pets WHERE pet_id = ?;";
         try (PreparedStatement ps = connectionProvider.getConnection().prepareStatement(sql)) {
             ps.setString(1, petId.toString());
@@ -42,6 +43,7 @@ public class SqlitePetRepository implements PetRepository {
 
     @Override
     public synchronized List<PetInstance> findByOwner(UUID ownerId) {
+        DatabaseThreadGuard.requireDatabaseThread();
         List<PetInstance> list = new ArrayList<>();
         String sql = "SELECT * FROM pets WHERE owner_id = ?;";
         try (PreparedStatement ps = connectionProvider.getConnection().prepareStatement(sql)) {
@@ -60,6 +62,7 @@ public class SqlitePetRepository implements PetRepository {
 
     @Override
     public synchronized Optional<PetInstance> findActiveByOwner(UUID ownerId) {
+        DatabaseThreadGuard.requireDatabaseThread();
         String sql = "SELECT p.* FROM pets p JOIN player_selected_pets s ON p.pet_id = s.pet_id AND p.owner_id = s.owner_id WHERE s.owner_id = ?;";
         try (PreparedStatement ps = connectionProvider.getConnection().prepareStatement(sql)) {
             ps.setString(1, ownerId.toString());
@@ -77,6 +80,7 @@ public class SqlitePetRepository implements PetRepository {
 
     @Override
     public synchronized void insert(PetInstance pet) {
+        DatabaseThreadGuard.requireDatabaseThread();
         String sql = "INSERT INTO pets (pet_id, owner_id, definition_id, custom_name, level, experience, availability_state, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);";
         try (PreparedStatement ps = connectionProvider.getConnection().prepareStatement(sql)) {
             ps.setString(1, pet.petId().toString());
@@ -97,6 +101,7 @@ public class SqlitePetRepository implements PetRepository {
 
     @Override
     public synchronized void update(PetInstance pet) {
+        DatabaseThreadGuard.requireDatabaseThread();
         String sql = "UPDATE pets SET custom_name = ?, level = ?, experience = ?, availability_state = ?, updated_at = ? WHERE pet_id = ?;";
         try (PreparedStatement ps = connectionProvider.getConnection().prepareStatement(sql)) {
             ps.setString(1, pet.customName());

@@ -2,88 +2,76 @@ package com.petsistemi.progression;
 
 import com.petsistemi.api.AsyncPetExperienceService;
 import com.petsistemi.api.PetExperienceService;
-import com.petsistemi.config.RuntimeConfigurationSnapshot;
 import com.petsistemi.domain.ExperienceSource;
 import com.petsistemi.runtime.ActivePet;
 import com.petsistemi.runtime.ActivePetRegistry;
 import org.bukkit.Bukkit;
-import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.entity.Player;
 
+import java.util.List;
+import java.util.Collection;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class PetPassiveXpTask implements Runnable {
 
+    private static final Logger LOGGER = Logger.getLogger(PetPassiveXpTask.class.getName());
+
     private final ActivePetRegistry activePetRegistry;
-    private final PetExperienceService experienceService;
-    private final AtomicReference<RuntimeConfigurationSnapshot> configSnapshot;
-    private final long fallbackXp;
+    private final AsyncPetExperienceService asyncExperienceService;
     private final Set<UUID> inFlightXpPets = ConcurrentHashMap.newKeySet();
 
-    /** Production constructor using atomic config snapshot. */
-    public PetPassiveXpTask(ActivePetRegistry activePetRegistry, PetExperienceService experienceService, AtomicReference<RuntimeConfigurationSnapshot> configSnapshot) {
-        this.activePetRegistry = activePetRegistry;
-        this.experienceService = experienceService;
-        this.configSnapshot = configSnapshot;
-        this.fallbackXp = 10L;
-    }
-
-    /** Backward-compatible / test constructor using Bukkit FileConfiguration. */
-    public PetPassiveXpTask(ActivePetRegistry activePetRegistry, PetExperienceService experienceService, FileConfiguration config) {
-        this.activePetRegistry = activePetRegistry;
-        this.experienceService = experienceService;
-        this.configSnapshot = null;
-        this.fallbackXp = config != null ? config.getLong("progression.passive-xp-per-minute", 10L) : 10L;
-    }
-
-    /** Backward-compatible constructor with default fallback XP. */
     public PetPassiveXpTask(ActivePetRegistry activePetRegistry, PetExperienceService experienceService) {
-        this(activePetRegistry, experienceService, (FileConfiguration) null);
+        this.activePetRegistry = Objects.requireNonNull(activePetRegistry, "activePetRegistry null olamaz.");
+        this.asyncExperienceService = experienceService instanceof AsyncPetExperienceService async ? async : null;
+    }
+
+    public PetPassiveXpTask(ActivePetRegistry activePetRegistry, PetExperienceService experienceService, java.util.concurrent.atomic.AtomicReference<com.petsistemi.config.RuntimeConfigurationSnapshot> configSnapshot) {
+        this(activePetRegistry, experienceService);
     }
 
     @Override
     public void run() {
-        RuntimeConfigurationSnapshot snapshot = (configSnapshot != null) ? configSnapshot.get() : null;
-        long xp = (snapshot != null && snapshot.configuration() != null && snapshot.configuration().progression() != null)
-                ? snapshot.configuration().progression().passiveXpPerMinute()
-                : fallbackXp;
+        if (asyncExperienceService == null) return;
 
-        if (xp <= 0) return;
+        Collection<ActivePet> activePets = activePetRegistry.getAllActive();
+        for (ActivePet active : activePets) {
+            UUID ownerId = active.getOwnerId();
 
-        for (ActivePet activePet : activePetRegistry.getAllActive()) {
-            if (activePet == null) continue;
-            UUID petId = activePet.getPetId();
-            if (petId == null) continue;
-
-            Player owner = Bukkit.getServer() != null ? Bukkit.getPlayer(activePet.getOwnerId()) : null;
-            if (owner != null && !owner.isOnline()) continue;
-
-            if (!inFlightXpPets.add(petId)) {
-                continue; // Skip duplicate pending operation
+            if (Bukkit.getServer() != null) {
+                Player owner = Bukkit.getPlayer(ownerId);
+                if (owner != null && !owner.isOnline()) {
+                    continue;
+                }
             }
 
-            if (experienceService instanceof AsyncPetExperienceService asyncService) {
-                asyncService.addExperienceAsync(petId, xp, ExperienceSource.ONLINE_TIME)
-                        .whenComplete((res, ex) -> {
-                            inFlightXpPets.remove(petId);
-                            if (ex != null && Bukkit.getLogger() != null) {
-                                Bukkit.getLogger().log(Level.SEVERE, "Pasif XP ekleme hatası [Pet: " + petId + "]: " + ex.getMessage(), ex);
-                            }
-                        });
-            } else {
-                try {
-                    experienceService.addExperience(petId, xp, ExperienceSource.ONLINE_TIME);
-                } catch (Exception e) {
-                    if (Bukkit.getLogger() != null) {
-                        Bukkit.getLogger().log(Level.SEVERE, "Pasif XP ekleme hatası [Pet: " + petId + "]: " + e.getMessage(), e);
-                    }
-                } finally {
+            UUID petId = active.getPetId();
+            if (!inFlightXpPets.add(petId)) {
+                continue;
+            }
+
+            try {
+                CompletableFuture<?> future = asyncExperienceService.addExperienceAsync(petId, 1L, ExperienceSource.ONLINE_TIME);
+                if (future == null) {
                     inFlightXpPets.remove(petId);
+                    LOGGER.warning("Pasif XP görevi null future döndürdü: " + petId);
+                    continue;
                 }
+
+                future.whenComplete((res, ex) -> {
+                    inFlightXpPets.remove(petId);
+                    if (ex != null) {
+                        LOGGER.log(Level.WARNING, "Pasif XP verilirken hata oluştu [PetId: " + petId + "]: " + ex.getMessage(), ex);
+                    }
+                });
+            } catch (Throwable t) {
+                inFlightXpPets.remove(petId);
+                LOGGER.log(Level.WARNING, "Pasif XP senkron istisnai hata [PetId: " + petId + "]: " + t.getMessage(), t);
             }
         }
     }

@@ -1,7 +1,7 @@
 package com.petsistemi.gui;
 
+import com.petsistemi.api.AsyncPetService;
 import com.petsistemi.api.PetService;
-import com.petsistemi.api.result.PetRenameResult;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.entity.Player;
@@ -13,6 +13,7 @@ import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 public class RenameInputSessionListener implements Listener {
 
@@ -45,19 +46,30 @@ public class RenameInputSessionListener implements Listener {
 
         String input = event.getMessage().trim();
         if ("iptal".equalsIgnoreCase(input) || "cancel".equalsIgnoreCase(input)) {
-            player.sendMessage(Component.text("İsim değiştirme işlemi iptal edildi.", NamedTextColor.YELLOW));
-            plugin.getServer().getScheduler().runTask(plugin, () -> PetListMenu.open(player, petService, 0, plugin, definitionRegistry));
+            plugin.getServer().getScheduler().runTask(plugin, () -> {
+                if (player.isOnline()) {
+                    player.sendMessage(Component.text("İsim değiştirme işlemi iptal edildi.", NamedTextColor.YELLOW));
+                    PetListMenu.open(player, petService, 0, plugin, definitionRegistry);
+                }
+            });
             return;
         }
 
-        plugin.getServer().getScheduler().runTask(plugin, () -> {
-            PetRenameResult result = petService.rename(player, petId, input);
-            if (result.success()) {
-                player.sendMessage(Component.text("Pet ismi başarıyla değiştirildi: " + input, NamedTextColor.GREEN));
-            } else {
-                player.sendMessage(Component.text("İsim değiştirilemedi: " + result.message(), NamedTextColor.RED));
-            }
-            PetListMenu.open(player, petService, 0, plugin, definitionRegistry);
+        CompletableFuture<?> renameFuture = petService instanceof AsyncPetService async ? async.renameAsync(player.getUniqueId(), petId, input) : CompletableFuture.completedFuture(petService.rename(player.getUniqueId(), petId, input));
+
+        renameFuture.whenComplete((res, ex) -> {
+            plugin.getServer().getScheduler().runTask(plugin, () -> {
+                if (player.isOnline()) {
+                    boolean success = res instanceof com.petsistemi.api.result.PetRenameResult r && r.success();
+                    String msg = res instanceof com.petsistemi.api.result.PetRenameResult r ? r.message() : (ex != null ? ex.getMessage() : "İşlem başarısız.");
+                    if (success) {
+                        player.sendMessage(Component.text("Pet ismi başarıyla değiştirildi: " + input, NamedTextColor.GREEN));
+                    } else {
+                        player.sendMessage(Component.text("İsim değiştirilemedi: " + msg, NamedTextColor.RED));
+                    }
+                    PetListMenu.open(player, petService, 0, plugin, definitionRegistry);
+                }
+            });
         });
     }
 

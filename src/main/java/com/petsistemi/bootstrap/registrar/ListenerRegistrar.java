@@ -12,9 +12,9 @@ import org.bukkit.Bukkit;
 public final class ListenerRegistrar {
 
     public static void register(PetPluginContext context) {
-        Bukkit.getPluginManager().registerEvents(new PetMenuListener(context.plugin(), context.petService(), context.sessionManager(), context.definitionRegistry()), context.plugin());
+        Bukkit.getPluginManager().registerEvents(new PetMenuListener(context.plugin(), context.operationService(), context.petService(), context.sessionManager(), context.definitionRegistry(), context.mainThreadDispatcher()), context.plugin());
         Bukkit.getPluginManager().registerEvents(new RenameInputSessionListener(context.plugin(), context.petService(), context.sessionManager(), context.definitionRegistry()), context.plugin());
-        Bukkit.getPluginManager().registerEvents(new PlayerConnectionListener(context.plugin(), context.coordinator(), context.profileCache(), context.dbExecutor()), context.plugin());
+        Bukkit.getPluginManager().registerEvents(new PlayerConnectionListener(context.plugin(), context.coordinator(), context.operationService(), context.profileCache(), context.dbExecutor(), context.mainThreadDispatcher()), context.plugin());
         Bukkit.getPluginManager().registerEvents(new PetEntityListener(context.activePetRegistry(), context.coordinator()), context.plugin());
         Bukkit.getPluginManager().registerEvents(new PetProtectionListener(context.activePetRegistry()), context.plugin());
         Bukkit.getPluginManager().registerEvents(new WorldChangeListener(context.plugin(), context.activePetRegistry(), context.coordinator()), context.plugin());

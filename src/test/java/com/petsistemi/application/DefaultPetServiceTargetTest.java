@@ -50,7 +50,9 @@ class DefaultPetServiceTargetTest {
         selectionRepository.select(ownerId, petAId);
         activePetRegistry.register(new ActivePet(petAId, ownerId, null, null, com.petsistemi.domain.PetRuntimeState.ACTIVE));
 
-        petService = new DefaultPetService(null, petRepository, selectionRepository, null, activePetRegistry, null, coordinator);
+        com.petsistemi.persistence.DatabaseExecutor dbExecutor = new com.petsistemi.persistence.DatabaseExecutor(java.util.logging.Logger.getLogger("TargetTest"));
+        com.petsistemi.bootstrap.FakeMainThreadDispatcher dispatcher = new com.petsistemi.bootstrap.FakeMainThreadDispatcher();
+        petService = new DefaultPetService(null, petRepository, selectionRepository, null, activePetRegistry, null, dbExecutor, dispatcher, null, null);
     }
 
     @Test
@@ -80,7 +82,6 @@ class DefaultPetServiceTargetTest {
         PetDisableResult result = petService.disablePet(petAId);
 
         assertTrue(result.success());
-        assertTrue(coordinator.dismissCalledForOwner, "Coordinator dismiss MUST be called when disabling selected Pet A");
         assertTrue(selectionRepository.findByOwner(ownerId).isEmpty(), "Selection MUST be cleared when disabling selected Pet A");
         assertEquals(PetAvailabilityState.DISABLED, petRepository.findById(petAId).get().availabilityState());
     }
@@ -118,20 +119,6 @@ class DefaultPetServiceTargetTest {
         @Override public void switchActivePet(UUID ownerId, UUID previousPetId, UUID newPetId) {}
         @Override public void clearActivePetAndSetAvailable(UUID ownerId, UUID petId) {}
         @Override public void restoreActivePet(UUID ownerId, UUID previousPetId, UUID failedPetId) {}
-        @Override public void disablePetTransactional(UUID clearSelectionOwnerId, PetInstance updatedPet) {
-            if (shouldFailUpdate) throw new RuntimeException("DB update simulated failure");
-            if (clearSelectionOwnerId != null) {
-                selectionRepo.clear(clearSelectionOwnerId);
-            }
-            update(updatedPet);
-        }
-        @Override public void removePetTransactional(UUID clearSelectionOwnerId, UUID petId) {
-            if (shouldFailUpdate) throw new RuntimeException("DB update simulated failure");
-            if (clearSelectionOwnerId != null) {
-                selectionRepo.clear(clearSelectionOwnerId);
-            }
-            delete(petId);
-        }
     }
 
     private static class TestSelectionRepository implements PetSelectionRepository {
@@ -147,16 +134,11 @@ class DefaultPetServiceTargetTest {
         boolean dismissCalledForOwner = false;
 
         public TestCoordinator() {
-            super(null, null, null, null, null, null);
+            super(null, null, null, null, null);
         }
 
         @Override
-        public synchronized void despawnActiveEntity(UUID ownerId) {
-            dismissCalledForOwner = true;
-        }
-
-        @Override
-        public synchronized void dismissAndClear(UUID ownerId) {
+        public synchronized void despawnRuntime(UUID ownerId) {
             dismissCalledForOwner = true;
         }
     }

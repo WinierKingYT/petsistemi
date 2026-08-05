@@ -24,6 +24,14 @@ public class PetRenameEvent extends Event implements Cancellable {
         this.newName = newName;
     }
 
+    public PetRenameEvent(PetSnapshot pet, String oldName, String newName) {
+        this(null, pet, oldName, newName);
+    }
+
+    public PetRenameEvent(PetSnapshot pet, String newName) {
+        this(null, pet, pet != null ? pet.customName() : null, newName);
+    }
+
     public Player getPlayer() {
         return player;
     }

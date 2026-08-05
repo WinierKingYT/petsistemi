@@ -1,5 +1,6 @@
 package com.petsistemi.listener;
 
+import com.petsistemi.api.AsyncPetExperienceService;
 import com.petsistemi.api.PetExperienceService;
 import com.petsistemi.config.PluginConfiguration;
 import com.petsistemi.config.RuntimeConfigurationSnapshot;
@@ -25,6 +26,8 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class PetProgressionListener implements Listener {
 
@@ -32,7 +35,7 @@ public class PetProgressionListener implements Listener {
     private static final long BLOCK_XP_MIN = 1L;
 
     private final ActivePetRegistry activePetRegistry;
-    private final PetExperienceService experienceService;
+    private final AsyncPetExperienceService asyncExperienceService;
     private final AtomicReference<RuntimeConfigurationSnapshot> configSnapshot;
 
     private final double fallbackWalkXpThreshold;
@@ -42,12 +45,11 @@ public class PetProgressionListener implements Listener {
 
     private final Map<UUID, Double> distanceAccumulator = new ConcurrentHashMap<>();
 
-    /** Production constructor using atomic configuration snapshot. */
     public PetProgressionListener(ActivePetRegistry activePetRegistry,
-                                  PetExperienceService experienceService,
+                                  AsyncPetExperienceService asyncExperienceService,
                                   AtomicReference<RuntimeConfigurationSnapshot> configSnapshot) {
         this.activePetRegistry = activePetRegistry;
-        this.experienceService = experienceService;
+        this.asyncExperienceService = asyncExperienceService;
         this.configSnapshot = configSnapshot;
         this.fallbackWalkXpThreshold = 50.0;
         this.fallbackWalkXpAmount = 5L;
@@ -55,12 +57,17 @@ public class PetProgressionListener implements Listener {
         this.fallbackKillXpMultiplier = 0.5;
     }
 
-    /** Config-aware legacy constructor using Bukkit FileConfiguration. */
+    public PetProgressionListener(ActivePetRegistry activePetRegistry,
+                                  PetExperienceService experienceService,
+                                  AtomicReference<RuntimeConfigurationSnapshot> configSnapshot) {
+        this(activePetRegistry, experienceService instanceof AsyncPetExperienceService async ? async : null, configSnapshot);
+    }
+
     public PetProgressionListener(ActivePetRegistry activePetRegistry,
                                   PetExperienceService experienceService,
                                   FileConfiguration config) {
         this.activePetRegistry = activePetRegistry;
-        this.experienceService = experienceService;
+        this.asyncExperienceService = experienceService instanceof AsyncPetExperienceService async ? async : null;
         this.configSnapshot = null;
         if (config != null) {
             this.fallbackWalkXpThreshold  = config.getDouble("progression.walk-xp-threshold",  50.0);
@@ -75,7 +82,6 @@ public class PetProgressionListener implements Listener {
         }
     }
 
-    /** Backward-compatible constructor. */
     public PetProgressionListener(ActivePetRegistry activePetRegistry, PetExperienceService experienceService) {
         this(activePetRegistry, experienceService, (FileConfiguration) null);
     }
@@ -85,7 +91,15 @@ public class PetProgressionListener implements Listener {
         return (snapshot != null && snapshot.configuration() != null) ? snapshot.configuration().progression() : null;
     }
 
-    // ── Mob Kill ────────────────────────────────────────────────────────────────
+    private void dispatchXpAsync(UUID petId, long amount, ExperienceSource source) {
+        if (asyncExperienceService == null || petId == null || amount <= 0) return;
+        asyncExperienceService.addExperienceAsync(petId, amount, source)
+                .exceptionally(ex -> {
+                    Logger.getLogger("PetProgressionListener").log(Level.WARNING,
+                            "XP verme asenkron hatası [PetId: " + petId + ", Source: " + source + "]: " + ex.getMessage());
+                    return null;
+                });
+    }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onEntityDeath(EntityDeathEvent event) {
@@ -104,28 +118,22 @@ public class PetProgressionListener implements Listener {
         if (attr != null) maxHealth = attr.getValue();
 
         long xp = Math.max(KILL_XP_MIN, (long) Math.ceil(maxHealth * killXpMultiplier));
-        experienceService.addExperience(activeOpt.get().getPetId(), xp, ExperienceSource.MOB_KILL);
+        dispatchXpAsync(activeOpt.get().getPetId(), xp, ExperienceSource.MOB_KILL);
     }
-
-    // ── Block Break ─────────────────────────────────────────────────────────────
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onBlockBreak(BlockBreakEvent event) {
         PluginConfiguration.ProgressionConfiguration prog = getProgressionConfig();
         long blockBreakXp = (prog != null) ? prog.blockBreakXp() : fallbackBlockBreakXpBase;
 
-        if (blockBreakXp <= 0) return; // disabled by config
+        if (blockBreakXp <= 0) return;
 
         Player player = event.getPlayer();
         Optional<ActivePet> activeOpt = activePetRegistry.getByOwner(player.getUniqueId());
         if (activeOpt.isEmpty()) return;
 
-        experienceService.addExperience(activeOpt.get().getPetId(),
-                Math.max(BLOCK_XP_MIN, blockBreakXp),
-                ExperienceSource.BLOCK_BREAK);
+        dispatchXpAsync(activeOpt.get().getPetId(), Math.max(BLOCK_XP_MIN, blockBreakXp), ExperienceSource.BLOCK_BREAK);
     }
-
-    // ── Walking ─────────────────────────────────────────────────────────────────
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onPlayerMove(PlayerMoveEvent event) {
@@ -159,13 +167,11 @@ public class PetProgressionListener implements Listener {
         double accumulated = distanceAccumulator.getOrDefault(uuid, 0.0) + distance;
         if (accumulated >= walkXpThreshold) {
             distanceAccumulator.put(uuid, accumulated - walkXpThreshold);
-            experienceService.addExperience(activeOpt.get().getPetId(), walkXpAmount, ExperienceSource.WALKING);
+            dispatchXpAsync(activeOpt.get().getPetId(), walkXpAmount, ExperienceSource.WALKING);
         } else {
             distanceAccumulator.put(uuid, accumulated);
         }
     }
-
-    // ── Cleanup ──────────────────────────────────────────────────────────────────
 
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {

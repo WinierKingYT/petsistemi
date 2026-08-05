@@ -12,16 +12,12 @@ public class BukkitMainThreadDispatcher implements MainThreadDispatcher {
     private final JavaPlugin plugin;
 
     public BukkitMainThreadDispatcher(JavaPlugin plugin) {
-        this.plugin = plugin;
+        this.plugin = Objects.requireNonNull(plugin, "plugin null olamaz.");
     }
 
     @Override
     public boolean isMainThread() {
-        try {
-            return Bukkit.isPrimaryThread();
-        } catch (Exception e) {
-            return true; // Fallback for testing environments
-        }
+        return Bukkit.isPrimaryThread();
     }
 
     @Override
@@ -29,8 +25,8 @@ public class BukkitMainThreadDispatcher implements MainThreadDispatcher {
         Objects.requireNonNull(action, "action null olamaz.");
         CompletableFuture<Void> future = new CompletableFuture<>();
 
-        if (plugin != null && !plugin.isEnabled()) {
-            future.completeExceptionally(new IllegalStateException("Plugin devre dışı bırakıldığı için işlem iptal edildi."));
+        if (!plugin.isEnabled()) {
+            future.completeExceptionally(new IllegalStateException("Plugin devre dışı bırakıldığı için main-thread işlemi iptal edildi."));
             return future;
         }
 
@@ -42,14 +38,7 @@ public class BukkitMainThreadDispatcher implements MainThreadDispatcher {
                 future.completeExceptionally(t);
             }
         } else {
-            if (plugin == null) {
-                try {
-                    action.run();
-                    future.complete(null);
-                } catch (Throwable t) {
-                    future.completeExceptionally(t);
-                }
-            } else {
+            try {
                 Bukkit.getScheduler().runTask(plugin, () -> {
                     try {
                         action.run();
@@ -58,6 +47,8 @@ public class BukkitMainThreadDispatcher implements MainThreadDispatcher {
                         future.completeExceptionally(t);
                     }
                 });
+            } catch (Throwable t) {
+                future.completeExceptionally(t);
             }
         }
         return future;
@@ -68,8 +59,8 @@ public class BukkitMainThreadDispatcher implements MainThreadDispatcher {
         Objects.requireNonNull(supplier, "supplier null olamaz.");
         CompletableFuture<T> future = new CompletableFuture<>();
 
-        if (plugin != null && !plugin.isEnabled()) {
-            future.completeExceptionally(new IllegalStateException("Plugin devre dışı bırakıldığı için işlem iptal edildi."));
+        if (!plugin.isEnabled()) {
+            future.completeExceptionally(new IllegalStateException("Plugin devre dışı bırakıldığı için main-thread işlemi iptal edildi."));
             return future;
         }
 
@@ -80,13 +71,7 @@ public class BukkitMainThreadDispatcher implements MainThreadDispatcher {
                 future.completeExceptionally(t);
             }
         } else {
-            if (plugin == null) {
-                try {
-                    future.complete(supplier.get());
-                } catch (Throwable t) {
-                    future.completeExceptionally(t);
-                }
-            } else {
+            try {
                 Bukkit.getScheduler().runTask(plugin, () -> {
                     try {
                         future.complete(supplier.get());
@@ -94,6 +79,8 @@ public class BukkitMainThreadDispatcher implements MainThreadDispatcher {
                         future.completeExceptionally(t);
                     }
                 });
+            } catch (Throwable t) {
+                future.completeExceptionally(t);
             }
         }
         return future;

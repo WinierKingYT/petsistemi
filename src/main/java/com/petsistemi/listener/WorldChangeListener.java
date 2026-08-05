@@ -1,5 +1,6 @@
 package com.petsistemi.listener;
 
+import com.petsistemi.application.PetRuntimeOperationService;
 import com.petsistemi.runtime.ActivePet;
 import com.petsistemi.runtime.ActivePetRegistry;
 import com.petsistemi.runtime.PetRuntimeCoordinator;
@@ -22,22 +23,23 @@ public class WorldChangeListener implements Listener {
     private final JavaPlugin plugin;
     private final ActivePetRegistry activeRegistry;
     private final PetRuntimeCoordinator coordinator;
+    private final PetRuntimeOperationService operationService;
+
+    public WorldChangeListener(JavaPlugin plugin, ActivePetRegistry activeRegistry, PetRuntimeCoordinator coordinator, PetRuntimeOperationService operationService) {
+        this.plugin = plugin;
+        this.activeRegistry = activeRegistry;
+        this.coordinator = coordinator;
+        this.operationService = operationService;
+    }
 
     public WorldChangeListener(JavaPlugin plugin, ActivePetRegistry activeRegistry, PetRuntimeCoordinator coordinator) {
-        this.plugin        = plugin;
-        this.activeRegistry = activeRegistry;
-        this.coordinator   = coordinator;
+        this(plugin, activeRegistry, coordinator, null);
     }
 
-    /** Backward-compatible constructor for registrars that don't pass coordinator yet. */
     public WorldChangeListener(JavaPlugin plugin, ActivePetRegistry activeRegistry) {
-        this(plugin, activeRegistry, null);
+        this(plugin, activeRegistry, null, null);
     }
 
-    /**
-     * Handles cross-world travel. The pet entity is invalid in the new world so we
-     * despawn the old entity and restore via coordinator (which respawns in new world).
-     */
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onWorldChange(PlayerChangedWorldEvent event) {
         Player player = event.getPlayer();
@@ -46,34 +48,21 @@ public class WorldChangeListener implements Listener {
             Optional<ActivePet> activeOpt = activeRegistry.getByOwner(player.getUniqueId());
             if (activeOpt.isEmpty()) return;
 
-            ActivePet active = activeOpt.get();
-            Entity entity = active.getSpawnedEntity();
-
-            // Entity from previous world is now invalid — remove it
-            if (entity != null && entity.isValid()) entity.remove();
-
-            // Restore pet in new world via coordinator if available
             if (coordinator != null) {
-                coordinator.restoreOnJoin(player);
-            } else {
-                // Fallback: teleport (only works intra-world, but safe guard)
-                if (entity != null && !entity.isDead()) {
-                    entity.teleport(SafePetLocationFinder.findSafeLocation(player.getLocation()));
-                }
+                coordinator.despawnRuntime(player.getUniqueId());
+            }
+
+            if (operationService != null) {
+                operationService.restoreSelectedPetAsync(player);
             }
         });
     }
 
-    /**
-     * Handles intra-world teleports (portals, /tp, etc.).
-     * The entity is still valid — just move it to the target location.
-     */
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onTeleport(PlayerTeleportEvent event) {
         Location to = event.getTo();
         if (to == null) return;
 
-        // Cross-world teleports are handled by onWorldChange
         if (event.getFrom().getWorld() != null
                 && to.getWorld() != null
                 && !event.getFrom().getWorld().equals(to.getWorld())) {

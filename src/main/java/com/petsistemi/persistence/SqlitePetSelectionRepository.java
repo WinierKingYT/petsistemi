@@ -22,6 +22,7 @@ public class SqlitePetSelectionRepository implements PetSelectionRepository {
 
     @Override
     public synchronized Optional<PetSelection> findByOwner(UUID ownerId) {
+        DatabaseThreadGuard.requireDatabaseThread();
         String sql = "SELECT * FROM player_selected_pets WHERE owner_id = ?;";
         try (PreparedStatement ps = connectionProvider.getConnection().prepareStatement(sql)) {
             ps.setString(1, ownerId.toString());
@@ -43,6 +44,7 @@ public class SqlitePetSelectionRepository implements PetSelectionRepository {
 
     @Override
     public synchronized void select(UUID ownerId, UUID petId) {
+        DatabaseThreadGuard.requireDatabaseThread();
         String checkSql = "SELECT availability_state FROM pets WHERE pet_id = ? AND owner_id = ?;";
         try (PreparedStatement checkPs = connectionProvider.getConnection().prepareStatement(checkSql)) {
             checkPs.setString(1, petId.toString());
@@ -77,6 +79,7 @@ public class SqlitePetSelectionRepository implements PetSelectionRepository {
 
     @Override
     public synchronized void clear(UUID ownerId) {
+        DatabaseThreadGuard.requireDatabaseThread();
         String sql = "DELETE FROM player_selected_pets WHERE owner_id = ?;";
         try (PreparedStatement ps = connectionProvider.getConnection().prepareStatement(sql)) {
             ps.setString(1, ownerId.toString());
@@ -89,6 +92,7 @@ public class SqlitePetSelectionRepository implements PetSelectionRepository {
 
     @Override
     public synchronized void switchSelection(UUID ownerId, UUID previousPetId, UUID newPetId) {
+        DatabaseThreadGuard.requireDatabaseThread();
         Connection conn = connectionProvider.getConnection();
         boolean autoCommit = true;
         try {

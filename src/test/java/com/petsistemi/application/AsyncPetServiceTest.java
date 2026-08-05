@@ -2,6 +2,7 @@ package com.petsistemi.application;
 
 import com.petsistemi.api.PetSnapshot;
 import com.petsistemi.api.result.PetRenameResult;
+import com.petsistemi.bootstrap.FakeMainThreadDispatcher;
 import com.petsistemi.definition.PetDefinitionRegistry;
 import com.petsistemi.domain.PetAvailabilityState;
 import com.petsistemi.domain.PetDefinition;
@@ -31,6 +32,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class AsyncPetServiceTest {
 
     private DatabaseExecutor dbExecutor;
+    private FakeMainThreadDispatcher mainThreadDispatcher;
     private PlayerPetProfileCache profileCache;
     private DefaultPetService petService;
     private UUID ownerId;
@@ -39,6 +41,7 @@ class AsyncPetServiceTest {
     @BeforeEach
     void setUp() {
         dbExecutor = new DatabaseExecutor(Logger.getLogger("TestAsyncPetService"));
+        mainThreadDispatcher = new FakeMainThreadDispatcher();
         ownerId = UUID.randomUUID();
         petId = UUID.randomUUID();
 
@@ -82,9 +85,10 @@ class AsyncPetServiceTest {
                 definitionRegistry,
                 activePetRegistry,
                 null,
-                null,
+                dbExecutor,
+                mainThreadDispatcher,
                 profileCache,
-                dbExecutor
+                null
         );
     }
 
@@ -114,7 +118,7 @@ class AsyncPetServiceTest {
         PlayerPetProfile profile = new PlayerPetProfile(ownerId, Map.of(petId, snapshot), null, System.currentTimeMillis(), 1L);
         profileCache.putLoadedProfile(profile);
 
-        CompletableFuture<PetRenameResult> renameFuture = petService.renameAsync(ownerId, petId, "Fırtına");
+        CompletableFuture<PetRenameResult> renameFuture = petService.renameAsync(petId, "Fırtına");
         PetRenameResult result = renameFuture.get(5, TimeUnit.SECONDS);
 
         assertTrue(result.success());

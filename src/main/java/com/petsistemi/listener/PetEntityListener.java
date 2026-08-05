@@ -3,7 +3,6 @@ package com.petsistemi.listener;
 import com.petsistemi.runtime.ActivePet;
 import com.petsistemi.runtime.ActivePetRegistry;
 import com.petsistemi.runtime.PetRuntimeCoordinator;
-import com.petsistemi.runtime.PetRuntimeCoordinator.PetRemovalCause;
 import org.bukkit.entity.Entity;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -31,23 +30,19 @@ public class PetEntityListener implements Listener {
         Optional<ActivePet> activeOpt = activeRegistry.getByEntity(entity.getUniqueId());
         if (activeOpt.isPresent()) {
             ActivePet activePet = activeOpt.get();
-            // Clear drops and XP
             event.getDrops().clear();
             event.setDroppedExp(0);
-
-            // Delegate centralized loss handling to coordinator
-            coordinator.handleRemoval(activePet.getOwnerId(), PetRemovalCause.ENTITY_DEATH);
+            coordinator.despawnRuntime(activePet.getOwnerId());
         }
     }
 
     @EventHandler
     public void onChunkUnload(ChunkUnloadEvent event) {
-        // If our pet is in this chunk, handle unload via coordinator to prevent chunk save pollution
         for (Entity entity : event.getChunk().getEntities()) {
             Optional<ActivePet> activeOpt = activeRegistry.getByEntity(entity.getUniqueId());
             if (activeOpt.isPresent()) {
                 ActivePet active = activeOpt.get();
-                coordinator.handleRemoval(active.getOwnerId(), PetRemovalCause.CHUNK_UNLOAD);
+                coordinator.despawnRuntime(active.getOwnerId());
             }
         }
     }

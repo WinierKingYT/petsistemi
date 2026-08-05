@@ -104,10 +104,10 @@ class DefaultPetServiceTransactionTest {
             @Override public boolean isValid(org.bukkit.entity.Entity entity) { return false; }
         };
 
-        mockCoordinator = new PetRuntimeCoordinator(null, mockPetRepository, mockDefRegistry, activePetRegistry, mockEntityController, null);
-        profileCache = new PlayerPetProfileCache(mockPetRepository, mockSelectionRepository);
-
-        service = new DefaultPetService(null, mockPetRepository, mockSelectionRepository, mockDefRegistry, activePetRegistry, mockEntityController, mockCoordinator, profileCache);
+        mockCoordinator = new PetRuntimeCoordinator(null, mockDefRegistry, activePetRegistry, mockEntityController, null);
+        com.petsistemi.persistence.DatabaseExecutor dbExecutor = new com.petsistemi.persistence.DatabaseExecutor(java.util.logging.Logger.getLogger("TxTest"));
+        com.petsistemi.bootstrap.FakeMainThreadDispatcher dispatcher = new com.petsistemi.bootstrap.FakeMainThreadDispatcher();
+        service = new DefaultPetService(null, mockPetRepository, mockSelectionRepository, mockDefRegistry, activePetRegistry, mockEntityController, dbExecutor, dispatcher, profileCache, null);
     }
 
     @Test

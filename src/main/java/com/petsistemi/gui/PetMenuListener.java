@@ -1,7 +1,10 @@
 package com.petsistemi.gui;
 
+import com.petsistemi.api.AsyncPetService;
 import com.petsistemi.api.PetService;
 import com.petsistemi.api.PetSnapshot;
+import com.petsistemi.application.PetRuntimeOperationService;
+import com.petsistemi.bootstrap.MainThreadDispatcher;
 import com.petsistemi.definition.PetDefinitionRegistry;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
@@ -21,34 +24,43 @@ import org.bukkit.plugin.java.JavaPlugin;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class PetMenuListener implements Listener {
 
-    /** Cooldown in milliseconds between successive clicks for the same player. */
     private static final long CLICK_COOLDOWN_MS = 500L;
 
     private final JavaPlugin plugin;
+    private final PetRuntimeOperationService operationService;
     private final PetService petService;
     private final PlayerInputSessionManager sessionManager;
     private final PetDefinitionRegistry definitionRegistry;
+    private final MainThreadDispatcher dispatcher;
 
-    /** Debounce set: tracks players currently inside an action to prevent double-clicks. */
     private final Set<UUID> processingPlayers = ConcurrentHashMap.newKeySet();
-    /** Last-click timestamp per player for cooldown enforcement. */
     private final ConcurrentHashMap<UUID, Long> lastClickTime = new ConcurrentHashMap<>();
 
-    public PetMenuListener(JavaPlugin plugin, PetService petService, PlayerInputSessionManager sessionManager) {
-        this(plugin, petService, sessionManager, null);
-    }
-
-    public PetMenuListener(JavaPlugin plugin, PetService petService,
+    public PetMenuListener(JavaPlugin plugin,
+                           PetRuntimeOperationService operationService,
+                           PetService petService,
                            PlayerInputSessionManager sessionManager,
-                           PetDefinitionRegistry definitionRegistry) {
+                           PetDefinitionRegistry definitionRegistry,
+                           MainThreadDispatcher dispatcher) {
         this.plugin = plugin;
+        this.operationService = operationService;
         this.petService = petService;
         this.sessionManager = sessionManager;
         this.definitionRegistry = definitionRegistry;
+        this.dispatcher = dispatcher;
+    }
+
+    public PetMenuListener(JavaPlugin plugin, PetService petService, PlayerInputSessionManager sessionManager, PetDefinitionRegistry definitionRegistry) {
+        this(plugin, null, petService, sessionManager, definitionRegistry, null);
+    }
+
+    public PetMenuListener(JavaPlugin plugin, PetService petService, PlayerInputSessionManager sessionManager) {
+        this(plugin, null, petService, sessionManager, null, null);
     }
 
     @EventHandler(priority = EventPriority.HIGH)
@@ -60,62 +72,68 @@ public class PetMenuListener implements Listener {
 
         UUID uuid = player.getUniqueId();
 
-        // ── Debounce guard ──────────────────────────────────────────────────────
         long now = System.currentTimeMillis();
         Long last = lastClickTime.get(uuid);
         if (last != null && (now - last) < CLICK_COOLDOWN_MS) return;
-        if (!processingPlayers.add(uuid)) return; // already handling a click
+        if (!processingPlayers.add(uuid)) return;
         lastClickTime.put(uuid, now);
 
-        try {
-            handleClick(player, holder, event);
-        } finally {
-            processingPlayers.remove(uuid);
-        }
+        handleClick(player, holder, event);
     }
 
     private void handleClick(Player player, PetMenuHolder holder, InventoryClickEvent event) {
+        UUID uuid = player.getUniqueId();
         int slot = event.getRawSlot();
 
-        // Navigation: Previous page
         if (slot == 45 && holder.page() > 0) {
             player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 0.7f, 1.2f);
-            PetListMenu.open(player, petService, holder.page() - 1, plugin, definitionRegistry);
+            PetListMenu.openAsync(player, petService, holder.page() - 1, plugin, definitionRegistry, dispatcher);
+            processingPlayers.remove(uuid);
             return;
         }
-        // Navigation: Next page
+
         if (slot == 53) {
             player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 0.7f, 1.2f);
-            PetListMenu.open(player, petService, holder.page() + 1, plugin, definitionRegistry);
+            PetListMenu.openAsync(player, petService, holder.page() + 1, plugin, definitionRegistry, dispatcher);
+            processingPlayers.remove(uuid);
             return;
         }
-        // Close button
+
         if (slot == 49) {
             player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 0.7f, 0.8f);
             player.closeInventory();
+            processingPlayers.remove(uuid);
             return;
         }
 
-        // ── Pet item click ───────────────────────────────────────────────────────
         ItemStack clicked = event.getCurrentItem();
-        if (clicked == null || !clicked.hasItemMeta()) return;
+        if (clicked == null || !clicked.hasItemMeta()) {
+            processingPlayers.remove(uuid);
+            return;
+        }
 
         ItemMeta meta = clicked.getItemMeta();
         NamespacedKey key = new NamespacedKey(plugin, "pet_id");
-        if (!meta.getPersistentDataContainer().has(key, PersistentDataType.STRING)) return;
+        if (!meta.getPersistentDataContainer().has(key, PersistentDataType.STRING)) {
+            processingPlayers.remove(uuid);
+            return;
+        }
 
         String petIdStr = meta.getPersistentDataContainer().get(key, PersistentDataType.STRING);
-        if (petIdStr == null) return;
+        if (petIdStr == null) {
+            processingPlayers.remove(uuid);
+            return;
+        }
 
         UUID petId;
         try {
             petId = UUID.fromString(petIdStr);
         } catch (IllegalArgumentException e) {
             player.sendMessage(Component.text("Geçersiz pet verisi.", NamedTextColor.RED));
+            processingPlayers.remove(uuid);
             return;
         }
 
-        // Shift-click → rename
         if (event.isShiftClick()) {
             player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 0.8f, 1.4f);
             player.closeInventory();
@@ -125,33 +143,49 @@ public class PetMenuListener implements Listener {
                         "Lütfen chat ekranına yeni pet ismini yazın ('iptal' yazarak iptal edebilirsiniz):",
                         NamedTextColor.YELLOW));
             }
+            processingPlayers.remove(uuid);
             return;
         }
 
-        // Left-click → summon / dismiss
-        Optional<PetSnapshot> spawned = petService.getSpawnedPet(player.getUniqueId());
-        boolean isSpawned = spawned.map(s -> s.petId().equals(petId)).orElse(false);
+        CompletableFuture<Optional<PetSnapshot>> selectedFuture = petService instanceof AsyncPetService async ? async.getSelectedPetAsync(uuid) : CompletableFuture.completedFuture(petService.getSelectedPet(uuid));
 
-        if (isSpawned) {
-            com.petsistemi.api.result.PetDismissResult dismissResult = petService.dismiss(player);
-            if (dismissResult.success()) {
-                player.playSound(player.getLocation(), Sound.ENTITY_ENDERMAN_TELEPORT, 0.8f, 1.1f);
+        selectedFuture.thenAccept(selectedOpt -> {
+            boolean isSpawned = selectedOpt.isPresent() && selectedOpt.get().petId().equals(petId) && selectedOpt.get().spawned();
+
+            if (isSpawned) {
+                CompletableFuture<?> opFuture = operationService != null ? operationService.dismissAsync(player) : CompletableFuture.completedFuture(petService.dismiss(player));
+                opFuture.whenComplete((res, ex) -> {
+                    Runnable refreshAction = () -> {
+                        try {
+                            if (player.isOnline()) {
+                                player.playSound(player.getLocation(), Sound.ENTITY_ENDERMAN_TELEPORT, 0.8f, 1.1f);
+                                PetListMenu.openAsync(player, petService, holder.page(), plugin, definitionRegistry, dispatcher);
+                            }
+                        } finally {
+                            processingPlayers.remove(uuid);
+                        }
+                    };
+                    if (dispatcher != null) dispatcher.run(refreshAction);
+                    else refreshAction.run();
+                });
             } else {
-                player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 0.8f, 1.0f);
-                player.sendMessage(Component.text("Peti kaldırma başarısız: " + dismissResult.message(), NamedTextColor.RED));
+                CompletableFuture<?> opFuture = operationService != null ? operationService.summonAsync(player, petId) : CompletableFuture.completedFuture(petService.summon(player, petId));
+                opFuture.whenComplete((res, ex) -> {
+                    Runnable refreshAction = () -> {
+                        try {
+                            if (player.isOnline()) {
+                                player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, 1.2f);
+                                PetListMenu.openAsync(player, petService, holder.page(), plugin, definitionRegistry, dispatcher);
+                            }
+                        } finally {
+                            processingPlayers.remove(uuid);
+                        }
+                    };
+                    if (dispatcher != null) dispatcher.run(refreshAction);
+                    else refreshAction.run();
+                });
             }
-        } else {
-            com.petsistemi.api.result.PetSummonResult summonResult = petService.summon(player, petId);
-            if (summonResult.success()) {
-                player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, 1.2f);
-            } else {
-                player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 0.8f, 1.0f);
-                player.sendMessage(Component.text("Peti çağırma başarısız: " + summonResult.message(), NamedTextColor.RED));
-            }
-        }
-        // Refresh menu on next tick to reflect updated state
-        plugin.getServer().getScheduler().runTask(plugin,
-                () -> PetListMenu.open(player, petService, holder.page(), plugin, definitionRegistry));
+        });
     }
 
     @EventHandler(priority = EventPriority.HIGH)

@@ -2,6 +2,7 @@ package com.petsistemi.bootstrap;
 
 import com.petsistemi.application.DefaultPetExperienceService;
 import com.petsistemi.application.DefaultPetService;
+import com.petsistemi.application.PetRuntimeOperationService;
 import com.petsistemi.config.PluginConfiguration;
 import com.petsistemi.config.PluginConfigurationLoader;
 import com.petsistemi.definition.AtomicPetDefinitionRegistry;
@@ -9,7 +10,6 @@ import com.petsistemi.definition.PetDefinitionRegistry;
 import com.petsistemi.gui.PlayerInputSessionManager;
 import com.petsistemi.message.MessageService;
 import com.petsistemi.persistence.*;
-import com.petsistemi.progression.LinearExperienceCurve;
 import com.petsistemi.runtime.*;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -32,13 +32,14 @@ public final class PetPluginBootstrap {
         DatabaseExecutor dbExecutor = null;
 
         try {
-            // 2. Database Connection & Executor
+            // 2. Database Connection, Executor & Main Thread Dispatcher
             databaseManager = new DatabaseManager(plugin);
             databaseManager.initialize();
 
             Connection connection = databaseManager.getConnection();
             File dbFile = databaseManager.getDbFile();
             dbExecutor = new DatabaseExecutor(plugin.getLogger());
+            MainThreadDispatcher mainThreadDispatcher = new BukkitMainThreadDispatcher(plugin);
 
             // 3. Database Backup & Migrations
             File backupDir = new File(plugin.getDataFolder(), "database-backups");
@@ -66,16 +67,26 @@ public final class PetPluginBootstrap {
             PlayerPetProfileCache profileCache = new PlayerPetProfileCache(petRepository, selectionRepository);
             AuditLogger auditLogger = new AuditLogger(databaseManager, plugin.getLogger());
 
-            // 6. Runtime Components & Sessions
+            // 6. Runtime Components & Operations
             PetEntityController entityController = new PaperPetEntityController(plugin);
             PetBehaviorController behaviorController = new BasicPetBehaviorController(configSnapshot);
             ActivePetRegistry activePetRegistry = new ActivePetRegistry();
-            PetRuntimeCoordinator coordinator = new PetRuntimeCoordinator(plugin, petRepository, definitionRegistry, activePetRegistry, entityController, behaviorController);
+            PetRuntimeCoordinator coordinator = new PetRuntimeCoordinator(plugin, definitionRegistry, activePetRegistry, entityController, behaviorController);
+
+            PetRuntimeOperationService operationService = new PetRuntimeOperationService(
+                    plugin, petRepository, selectionRepository, definitionRegistry, coordinator, profileCache, dbExecutor, mainThreadDispatcher
+            );
+
             PlayerInputSessionManager sessionManager = new PlayerInputSessionManager();
 
             // 7. Application Services
-            DefaultPetService petService = new DefaultPetService(plugin, petRepository, selectionRepository, definitionRegistry, activePetRegistry, entityController, coordinator, profileCache, dbExecutor);
-            DefaultPetExperienceService experienceService = new DefaultPetExperienceService(plugin, petRepository, definitionRegistry, activePetRegistry, entityController, new com.petsistemi.progression.ConfigBackedLinearExperienceCurve(configSnapshot), dbExecutor);
+            DefaultPetService petService = new DefaultPetService(
+                    plugin, petRepository, selectionRepository, definitionRegistry, activePetRegistry, entityController, dbExecutor, mainThreadDispatcher, profileCache, configSnapshot
+            );
+
+            DefaultPetExperienceService experienceService = new DefaultPetExperienceService(
+                    plugin, petRepository, definitionRegistry, activePetRegistry, entityController, new com.petsistemi.progression.ConfigBackedLinearExperienceCurve(configSnapshot), dbExecutor, mainThreadDispatcher, profileCache, configSnapshot
+            );
 
             // 8. Task Registry
             TaskRegistry taskRegistry = new TaskRegistry();
@@ -88,6 +99,7 @@ public final class PetPluginBootstrap {
                     messageService,
                     databaseManager,
                     dbExecutor,
+                    mainThreadDispatcher,
                     petRepository,
                     selectionRepository,
                     profileCache,
@@ -97,6 +109,7 @@ public final class PetPluginBootstrap {
                     entityController,
                     behaviorController,
                     coordinator,
+                    operationService,
                     petService,
                     experienceService,
                     sessionManager,

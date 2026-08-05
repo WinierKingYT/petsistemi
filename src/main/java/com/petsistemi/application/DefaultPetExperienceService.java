@@ -1,27 +1,33 @@
 package com.petsistemi.application;
 
+import com.petsistemi.api.AsyncPetExperienceService;
 import com.petsistemi.api.PetExperienceService;
 import com.petsistemi.api.PetSnapshot;
 import com.petsistemi.api.event.PetGainExperienceEvent;
 import com.petsistemi.api.event.PetLevelUpEvent;
 import com.petsistemi.api.result.ExperienceResult;
 import com.petsistemi.api.result.LevelResult;
+import com.petsistemi.bootstrap.MainThreadDispatcher;
+import com.petsistemi.config.RuntimeConfigurationSnapshot;
 import com.petsistemi.definition.PetDefinitionRegistry;
+import com.petsistemi.progression.ExperienceCurve;
 import com.petsistemi.domain.ExperienceSource;
 import com.petsistemi.domain.PetDefinition;
 import com.petsistemi.domain.PetInstance;
+import com.petsistemi.persistence.DatabaseExecutor;
 import com.petsistemi.persistence.PetRepository;
-import com.petsistemi.progression.ExperienceCurve;
+import com.petsistemi.persistence.PlayerPetProfileCache;
 import com.petsistemi.runtime.ActivePet;
 import com.petsistemi.runtime.ActivePetRegistry;
 import com.petsistemi.runtime.PetEntityController;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
-
-import com.petsistemi.api.AsyncPetExperienceService;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class DefaultPetExperienceService implements PetExperienceService, AsyncPetExperienceService {
 
@@ -30,31 +36,22 @@ public class DefaultPetExperienceService implements PetExperienceService, AsyncP
     private final PetDefinitionRegistry definitionRegistry;
     private final ActivePetRegistry activePetRegistry;
     private final PetEntityController entityController;
-
     private final ExperienceCurve experienceCurve;
-    private final com.petsistemi.persistence.DatabaseExecutor dbExecutor;
+    private final DatabaseExecutor dbExecutor;
+    private final MainThreadDispatcher mainThreadDispatcher;
+    private final PlayerPetProfileCache profileCache;
+    private final AtomicReference<RuntimeConfigurationSnapshot> configSnapshot;
 
-    public DefaultPetExperienceService(JavaPlugin plugin, PetRepository repository,
+    public DefaultPetExperienceService(JavaPlugin plugin,
+                                       PetRepository repository,
                                        PetDefinitionRegistry definitionRegistry,
                                        ActivePetRegistry activePetRegistry,
-                                       PetEntityController entityController) {
-        this(plugin, repository, definitionRegistry, activePetRegistry, entityController, new com.petsistemi.progression.LinearExperienceCurve(100), null);
-    }
-
-    public DefaultPetExperienceService(JavaPlugin plugin, PetRepository repository,
-                                      PetDefinitionRegistry definitionRegistry,
-                                      ActivePetRegistry activePetRegistry,
-                                      PetEntityController entityController,
-                                      ExperienceCurve experienceCurve) {
-        this(plugin, repository, definitionRegistry, activePetRegistry, entityController, experienceCurve, null);
-    }
-
-    public DefaultPetExperienceService(JavaPlugin plugin, PetRepository repository,
-                                      PetDefinitionRegistry definitionRegistry,
-                                      ActivePetRegistry activePetRegistry,
-                                      PetEntityController entityController,
-                                      ExperienceCurve experienceCurve,
-                                      com.petsistemi.persistence.DatabaseExecutor dbExecutor) {
+                                       PetEntityController entityController,
+                                       ExperienceCurve experienceCurve,
+                                       DatabaseExecutor dbExecutor,
+                                       MainThreadDispatcher mainThreadDispatcher,
+                                       PlayerPetProfileCache profileCache,
+                                       AtomicReference<RuntimeConfigurationSnapshot> configSnapshot) {
         this.plugin = plugin;
         this.repository = repository;
         this.definitionRegistry = definitionRegistry;
@@ -62,48 +59,138 @@ public class DefaultPetExperienceService implements PetExperienceService, AsyncP
         this.entityController = entityController;
         this.experienceCurve = experienceCurve != null ? experienceCurve : new com.petsistemi.progression.LinearExperienceCurve(100);
         this.dbExecutor = dbExecutor;
+        this.mainThreadDispatcher = mainThreadDispatcher;
+        this.profileCache = profileCache;
+        this.configSnapshot = configSnapshot;
+    }
+
+    public DefaultPetExperienceService(JavaPlugin plugin,
+                                       PetRepository repository,
+                                       PetDefinitionRegistry definitionRegistry,
+                                       ActivePetRegistry activePetRegistry,
+                                       PetEntityController entityController,
+                                       ExperienceCurve experienceCurve,
+                                       DatabaseExecutor dbExecutor) {
+        this(plugin, repository, definitionRegistry, activePetRegistry, entityController, experienceCurve, dbExecutor, null, null, null);
+    }
+
+    public DefaultPetExperienceService(JavaPlugin plugin,
+                                       PetRepository repository,
+                                       PetDefinitionRegistry definitionRegistry,
+                                       ActivePetRegistry activePetRegistry,
+                                       PetEntityController entityController,
+                                       ExperienceCurve experienceCurve) {
+        this(plugin, repository, definitionRegistry, activePetRegistry, entityController, experienceCurve, null, null, null, null);
+    }
+
+    // --- ASYNC API ---
+
+    @Override
+    public CompletableFuture<ExperienceResult> addExperienceAsync(UUID petId, long amount, ExperienceSource source) {
+        Objects.requireNonNull(petId, "petId null olamaz.");
+        Objects.requireNonNull(source, "source null olamaz.");
+
+        if (amount <= 0) {
+            return CompletableFuture.completedFuture(new ExperienceResult(false, "Deneyim miktarı pozitif olmalıdır.", 0, false));
+        }
+
+        return dbExecutor.submit(() -> repository.findById(petId)).thenCompose(petOpt -> {
+            if (petOpt.isEmpty()) {
+                return CompletableFuture.completedFuture(new ExperienceResult(false, "Pet veritabanında bulunamadı.", 0, false));
+            }
+
+            PetInstance pet = petOpt.get();
+            PetDefinition definition = definitionRegistry != null ? definitionRegistry.find(pet.definitionId()).orElse(null) : null;
+            if (definition != null && !definition.progressionEnabled()) {
+                return CompletableFuture.completedFuture(new ExperienceResult(false, "Bu pet türü için gelişim sistemi kapalı.", pet.experience(), false));
+            }
+
+            PetSnapshot snapshot = mapToSnapshot(pet);
+
+            // Main Thread Event
+            CompletableFuture<Long> eventFuture = mainThreadDispatcher != null ? mainThreadDispatcher.supply(() -> {
+                if (Bukkit.getServer() != null) {
+                    PetGainExperienceEvent event = new PetGainExperienceEvent(snapshot, amount, source);
+                    Bukkit.getPluginManager().callEvent(event);
+                    if (event.isCancelled()) return -1L;
+                    return event.getAmount();
+                }
+                return amount;
+            }) : CompletableFuture.completedFuture(amount);
+
+            return eventFuture.thenCompose(actualAmount -> {
+                if (actualAmount <= 0) {
+                    return CompletableFuture.completedFuture(new ExperienceResult(false, "Deneyim kazanma işlemi iptal edildi veya miktar sıfır kaldı.", pet.experience(), false));
+                }
+
+                // DB Executor Write
+                return dbExecutor.submit(() -> computeAndPersistExperienceDb(pet, actualAmount, definition)).thenCompose(resState -> {
+                    if (!resState.success()) {
+                        return CompletableFuture.completedFuture(new ExperienceResult(false, resState.message(), pet.experience(), false));
+                    }
+
+                    if (profileCache != null) {
+                        profileCache.updateExperience(pet.ownerId(), petId, resState.newLevel(), resState.newXp());
+                    }
+
+                    // Main Thread Nameplate & LevelUp Event
+                    Runnable mainAction = () -> {
+                        Optional<ActivePet> activeOpt = activePetRegistry != null ? activePetRegistry.getByOwner(pet.ownerId()) : Optional.empty();
+                        if (activeOpt.isPresent()) {
+                            ActivePet active = activeOpt.get();
+                            if (active.getPetId().equals(petId) && entityController != null && definition != null) {
+                                entityController.updateName(active.getSpawnedEntity(), resState.updatedPet(), definition);
+                            }
+                        }
+
+                        if (resState.leveledUp() && Bukkit.getServer() != null) {
+                            PetLevelUpEvent levelUpEvent = new PetLevelUpEvent(mapToSnapshot(resState.updatedPet()), pet.level(), resState.newLevel());
+                            Bukkit.getPluginManager().callEvent(levelUpEvent);
+                        }
+                    };
+
+                    CompletableFuture<Void> mainFuture = mainThreadDispatcher != null ? mainThreadDispatcher.run(mainAction) : CompletableFuture.runAsync(mainAction);
+                    return mainFuture.thenApply(v -> new ExperienceResult(true, "Deneyim başarıyla eklendi.", resState.newXp(), resState.leveledUp()));
+                });
+            });
+        });
     }
 
     @Override
-    public ExperienceResult addExperience(UUID petId, long amount, ExperienceSource source) {
-        if (plugin != null && plugin.getConfig() != null && !plugin.getConfig().getBoolean("progression.enabled", true)) {
-            return new ExperienceResult(false, "Sistem genelinde tecrübe sistemi devre dışı.", 0, false);
-        }
+    public CompletableFuture<ExperienceResult> removeExperienceAsync(UUID petId, long amount) {
+        return setExperienceAsync(petId, 0, ExperienceSource.COMMAND);
+    }
 
-        if (amount <= 0) {
-            return new ExperienceResult(false, "Deneyim miktarı pozitif olmalıdır.", 0, false);
-        }
+    @Override
+    public CompletableFuture<ExperienceResult> setExperienceAsync(UUID petId, long amount, ExperienceSource source) {
+        Objects.requireNonNull(petId, "petId null olamaz.");
+        return dbExecutor.submit(() -> repository.findById(petId)).thenCompose(petOpt -> {
+            if (petOpt.isEmpty()) return CompletableFuture.completedFuture(new ExperienceResult(false, "Pet bulunamadı.", 0, false));
+            PetInstance pet = petOpt.get();
+            long delta = amount - pet.experience();
+            if (delta <= 0) return CompletableFuture.completedFuture(new ExperienceResult(true, "Deneyim güncellendi.", pet.experience(), false));
+            return addExperienceAsync(petId, delta, source);
+        });
+    }
 
-        Optional<PetInstance> petOpt = repository.findById(petId);
-        if (petOpt.isEmpty()) {
-            return new ExperienceResult(false, "Pet bulunamadı.", 0, false);
-        }
+    @Override
+    public CompletableFuture<LevelResult> setLevelAsync(UUID petId, int level) {
+        Objects.requireNonNull(petId, "petId null olamaz.");
+        long targetXp = requiredExperienceForLevel(level);
+        return setExperienceAsync(petId, targetXp, ExperienceSource.ADMIN).thenApply(res ->
+                new LevelResult(res.success(), res.message(), level)
+        );
+    }
 
-        PetInstance pet = petOpt.get();
-        PetDefinition definition = definitionRegistry.find(pet.definitionId()).orElse(null);
-        if (definition != null && !definition.progressionEnabled()) {
-            return new ExperienceResult(false, "Bu pet türü için gelişim sistemi kapalı.", pet.experience(), false);
-        }
+    @Override
+    public long requiredExperienceForLevel(int level) {
+        return experienceCurve.getRequiredExperience(level);
+    }
 
-        int maxLevel = definition != null ? definition.maxLevel() : (plugin != null && plugin.getConfig() != null ? plugin.getConfig().getInt("progression.maximum-level", 100) : 100);
+    // --- PRIVATE DB-ONLY COMPUTATION (NO BUKKIT API) ---
 
-        PetSnapshot snapshot = mapToSnapshot(pet);
-
-        // Trigger Event
-        long actualAmount = amount;
-        if (Bukkit.getServer() != null) {
-            PetGainExperienceEvent event = new PetGainExperienceEvent(snapshot, amount, source);
-            Bukkit.getPluginManager().callEvent(event);
-            if (event.isCancelled()) {
-                return new ExperienceResult(false, "Deneyim kazanma işlemi iptal edildi.", pet.experience(), false);
-            }
-            actualAmount = event.getAmount();
-        }
-
-        if (actualAmount <= 0) {
-            return new ExperienceResult(false, "Etkinlik sonrası geçerli tecrübe miktarı sıfır veya negatif kaldı.", pet.experience(), false);
-        }
-
+    private DbXpState computeAndPersistExperienceDb(PetInstance pet, long actualAmount, PetDefinition definition) {
+        int maxLevel = definition != null ? definition.maxLevel() : 100;
         long newXp;
         try {
             newXp = Math.addExact(pet.experience(), actualAmount);
@@ -112,219 +199,36 @@ public class DefaultPetExperienceService implements PetExperienceService, AsyncP
         }
 
         int newLevel = calculateLevelFromXp(newXp);
-
         if (newLevel > maxLevel) {
             newLevel = maxLevel;
             newXp = requiredExperienceForLevel(maxLevel);
         }
 
         boolean leveledUp = newLevel > pet.level();
-        int oldLevel = pet.level();
-
         PetInstance updatedPet = pet.withLevelAndExperience(newLevel, newXp);
+
         try {
             repository.update(updatedPet);
+            return new DbXpState(true, null, updatedPet, newLevel, newXp, leveledUp);
         } catch (Exception e) {
-            return new ExperienceResult(false, "Deneyim veritabanına kaydedilemedi: " + e.getMessage(), pet.experience(), false);
+            return new DbXpState(false, "Deneyim veritabanına kaydedilemedi: " + e.getMessage(), pet, pet.level(), pet.experience(), false);
         }
-
-        // If active, update nameplate
-        Optional<ActivePet> activeOpt = activePetRegistry.getByOwner(pet.ownerId());
-        if (activeOpt.isPresent()) {
-            ActivePet activePet = activeOpt.get();
-            if (activePet.getPetId().equals(pet.petId()) && definition != null) {
-                entityController.updateName(activePet.getSpawnedEntity(), updatedPet, definition);
-            }
-        }
-
-        if (leveledUp && Bukkit.getServer() != null) {
-            PetLevelUpEvent levelUpEvent = new PetLevelUpEvent(mapToSnapshot(updatedPet), oldLevel, newLevel);
-            Bukkit.getPluginManager().callEvent(levelUpEvent);
-        }
-
-        return new ExperienceResult(true, "Deneyim başarıyla eklendi.", newXp, leveledUp);
     }
 
-    @Override
-    public ExperienceResult removeExperience(UUID petId, long amount) {
-        if (amount < 0) {
-            return new ExperienceResult(false, "Deneyim miktarı negatif olamaz.", 0, false);
-        }
-
-        Optional<PetInstance> petOpt = repository.findById(petId);
-        if (petOpt.isEmpty()) {
-            return new ExperienceResult(false, "Pet bulunamadı.", 0, false);
-        }
-
-        PetInstance pet = petOpt.get();
-        long newXp = Math.max(0, pet.experience() - amount);
-        int newLevel = calculateLevelFromXp(newXp);
-
-        PetInstance updatedPet = pet.withLevelAndExperience(newLevel, newXp);
-        try {
-            repository.update(updatedPet);
-        } catch (Exception e) {
-            return new ExperienceResult(false, "Deneyim güncellenemedi: " + e.getMessage(), pet.experience(), false);
-        }
-
-        // If active, update nameplate
-        Optional<ActivePet> activeOpt = activePetRegistry.getByOwner(pet.ownerId());
-        if (activeOpt.isPresent()) {
-            ActivePet activePet = activeOpt.get();
-            if (activePet.getPetId().equals(pet.petId())) {
-                definitionRegistry.find(pet.definitionId()).ifPresent(def -> 
-                    entityController.updateName(activePet.getSpawnedEntity(), updatedPet, def)
-                );
-            }
-        }
-
-        return new ExperienceResult(true, "Deneyim başarıyla silindi.", newXp, false);
+    public int calculateLevelFromXp(long xp) {
+        return experienceCurve.getLevelForExperience(xp);
     }
 
-    @Override
-    public ExperienceResult setExperience(UUID petId, long amount, ExperienceSource source) {
-        if (!plugin.getConfig().getBoolean("progression.enabled", true)) {
-            return new ExperienceResult(false, "Sistem genelinde tecrübe sistemi devre dışı.", 0, false);
-        }
-
-        if (amount < 0) {
-            return new ExperienceResult(false, "Deneyim miktarı negatif olamaz.", 0, false);
-        }
-
-        Optional<PetInstance> petOpt = repository.findById(petId);
-        if (petOpt.isEmpty()) {
-            return new ExperienceResult(false, "Pet bulunamadı.", 0, false);
-        }
-
-        PetInstance pet = petOpt.get();
-        PetDefinition definition = definitionRegistry.find(pet.definitionId()).orElse(null);
-        if (definition != null && !definition.progressionEnabled() && source != ExperienceSource.ADMIN) {
-            return new ExperienceResult(false, "Bu pet türü için gelişim sistemi kapalı.", pet.experience(), false);
-        }
-
-        int maxLevel = definition != null ? definition.maxLevel() : plugin.getConfig().getInt("progression.maximum-level", 100);
-
-        long newXp = amount;
-        int newLevel = calculateLevelFromXp(newXp);
-
-        if (newLevel > maxLevel) {
-            newLevel = maxLevel;
-            newXp = requiredExperienceForLevel(maxLevel);
-        }
-
-        boolean leveledUp = newLevel > pet.level();
-        int oldLevel = pet.level();
-
-        PetInstance updatedPet = pet.withLevelAndExperience(newLevel, newXp);
-        try {
-            repository.update(updatedPet);
-        } catch (Exception e) {
-            return new ExperienceResult(false, "Deneyim veritabanında güncellenemedi: " + e.getMessage(), pet.experience(), false);
-        }
-
-        // If active, update nameplate
-        Optional<ActivePet> activeOpt = activePetRegistry.getByOwner(pet.ownerId());
-        if (activeOpt.isPresent()) {
-            ActivePet activePet = activeOpt.get();
-            if (activePet.getPetId().equals(pet.petId()) && definition != null) {
-                entityController.updateName(activePet.getSpawnedEntity(), updatedPet, definition);
-            }
-        }
-
-        if (leveledUp) {
-            PetLevelUpEvent levelUpEvent = new PetLevelUpEvent(mapToSnapshot(updatedPet), oldLevel, newLevel);
-            Bukkit.getPluginManager().callEvent(levelUpEvent);
-        }
-
-        return new ExperienceResult(true, "Deneyim başarıyla ayarlandı.", newXp, leveledUp);
+    private PetSnapshot mapToSnapshot(PetInstance pet) {
+        return new PetSnapshot(pet.petId(), pet.ownerId(), pet.definitionId(), pet.customName(), pet.level(), pet.experience(), pet.availabilityState(), false, false);
     }
 
-    @Override
-    public LevelResult setLevel(UUID petId, int level) {
-        Optional<PetInstance> petOpt = repository.findById(petId);
-        if (petOpt.isEmpty()) {
-            return new LevelResult(false, "Pet bulunamadı.", 0);
-        }
+    // --- DEPRECATED SYNCHRONOUS METHODS ---
 
-        PetInstance pet = petOpt.get();
-        PetDefinition definition = definitionRegistry.find(pet.definitionId()).orElse(null);
-        int maxLevel = definition != null ? definition.maxLevel() : plugin.getConfig().getInt("progression.maximum-level", 100);
+    @Deprecated @Override public ExperienceResult addExperience(UUID petId, long amount, ExperienceSource source) { return addExperienceAsync(petId, amount, source).join(); }
+    @Deprecated @Override public ExperienceResult removeExperience(UUID petId, long amount) { return removeExperienceAsync(petId, amount).join(); }
+    @Deprecated @Override public ExperienceResult setExperience(UUID petId, long amount, ExperienceSource source) { return setExperienceAsync(petId, amount, source).join(); }
+    @Deprecated @Override public LevelResult setLevel(UUID petId, int level) { return setLevelAsync(petId, level).join(); }
 
-        if (level < 1 || level > maxLevel) {
-            return new LevelResult(false, "Geçersiz seviye değeri (1 ile " + maxLevel + " arasında olmalı).", pet.level());
-        }
-
-        long newXp = requiredExperienceForLevel(level);
-        PetInstance updatedPet = pet.withLevelAndExperience(level, newXp);
-        try {
-            repository.update(updatedPet);
-        } catch (Exception e) {
-            return new LevelResult(false, "Seviye veritabanına kaydedilemedi: " + e.getMessage(), pet.level());
-        }
-
-        // If active, update nameplate
-        Optional<ActivePet> activeOpt = activePetRegistry.getByOwner(pet.ownerId());
-        if (activeOpt.isPresent()) {
-            ActivePet activePet = activeOpt.get();
-            if (activePet.getPetId().equals(pet.petId()) && definition != null) {
-                entityController.updateName(activePet.getSpawnedEntity(), updatedPet, definition);
-            }
-        }
-
-        return new LevelResult(true, "Seviye başarıyla ayarlandı.", level);
-    }
-
-    @Override
-    public long requiredExperienceForLevel(int level) {
-        return experienceCurve.getRequiredExperience(level);
-    }
-
-    public int calculateLevelFromXp(long totalXp) {
-        return experienceCurve.getLevelForExperience(totalXp);
-    }
-
-    private PetSnapshot mapToSnapshot(PetInstance p) {
-        boolean selected = repository.findActiveByOwner(p.ownerId())
-                .map(s -> s.petId().equals(p.petId()))
-                .orElse(false);
-        boolean spawned = activePetRegistry.getByOwner(p.ownerId())
-                .map(a -> a.getPetId().equals(p.petId()))
-                .orElse(false);
-
-        return new PetSnapshot(
-                p.petId(),
-                p.ownerId(),
-                p.definitionId(),
-                p.customName(),
-                p.level(),
-                p.experience(),
-                p.availabilityState(),
-                selected,
-                spawned
-        );
-    }
-
-    @Override
-    public java.util.concurrent.CompletableFuture<ExperienceResult> addExperienceAsync(UUID petId, long amount, ExperienceSource source) {
-        if (dbExecutor == null) return java.util.concurrent.CompletableFuture.completedFuture(addExperience(petId, amount, source));
-        return dbExecutor.submit(() -> addExperience(petId, amount, source));
-    }
-
-    @Override
-    public java.util.concurrent.CompletableFuture<ExperienceResult> removeExperienceAsync(UUID petId, long amount) {
-        if (dbExecutor == null) return java.util.concurrent.CompletableFuture.completedFuture(removeExperience(petId, amount));
-        return dbExecutor.submit(() -> removeExperience(petId, amount));
-    }
-
-    @Override
-    public java.util.concurrent.CompletableFuture<ExperienceResult> setExperienceAsync(UUID petId, long amount, ExperienceSource source) {
-        if (dbExecutor == null) return java.util.concurrent.CompletableFuture.completedFuture(setExperience(petId, amount, source));
-        return dbExecutor.submit(() -> setExperience(petId, amount, source));
-    }
-
-    @Override
-    public java.util.concurrent.CompletableFuture<LevelResult> setLevelAsync(UUID petId, int level) {
-        if (dbExecutor == null) return java.util.concurrent.CompletableFuture.completedFuture(setLevel(petId, level));
-        return dbExecutor.submit(() -> setLevel(petId, level));
-    }
+    private record DbXpState(boolean success, String message, PetInstance updatedPet, int newLevel, long newXp, boolean leveledUp) {}
 }

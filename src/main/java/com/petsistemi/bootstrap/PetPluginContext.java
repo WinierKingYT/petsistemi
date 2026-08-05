@@ -2,6 +2,7 @@ package com.petsistemi.bootstrap;
 
 import com.petsistemi.api.PetExperienceService;
 import com.petsistemi.api.PetService;
+import com.petsistemi.application.PetRuntimeOperationService;
 import com.petsistemi.config.PluginConfiguration;
 import com.petsistemi.definition.PetDefinitionRegistry;
 import com.petsistemi.gui.PlayerInputSessionManager;
@@ -16,6 +17,7 @@ public record PetPluginContext(
         MessageService messageService,
         ConnectionProvider connectionProvider,
         DatabaseExecutor dbExecutor,
+        MainThreadDispatcher mainThreadDispatcher,
         PetRepository petRepository,
         PetSelectionRepository selectionRepository,
         PlayerPetProfileCache profileCache,
@@ -25,6 +27,7 @@ public record PetPluginContext(
         PetEntityController entityController,
         PetBehaviorController behaviorController,
         PetRuntimeCoordinator coordinator,
+        PetRuntimeOperationService operationService,
         PetService petService,
         PetExperienceService experienceService,
         PlayerInputSessionManager sessionManager,

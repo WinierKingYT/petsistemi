@@ -2,6 +2,7 @@ package com.petsistemi.application;
 
 import com.petsistemi.api.PetSnapshot;
 import com.petsistemi.api.result.ExperienceResult;
+import com.petsistemi.bootstrap.FakeMainThreadDispatcher;
 import com.petsistemi.definition.PetDefinitionRegistry;
 import com.petsistemi.domain.ExperienceSource;
 import com.petsistemi.domain.PetAvailabilityState;
@@ -33,6 +34,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class AsyncPetExperienceServiceTest {
 
     private DatabaseExecutor dbExecutor;
+    private FakeMainThreadDispatcher mainThreadDispatcher;
     private PlayerPetProfileCache profileCache;
     private DefaultPetExperienceService experienceService;
     private UUID ownerId;
@@ -42,6 +44,7 @@ class AsyncPetExperienceServiceTest {
     @BeforeEach
     void setUp() {
         dbExecutor = new DatabaseExecutor(Logger.getLogger("TestAsyncPetExperienceService"));
+        mainThreadDispatcher = new FakeMainThreadDispatcher();
         ownerId = UUID.randomUUID();
         petId = UUID.randomUUID();
 
@@ -62,8 +65,8 @@ class AsyncPetExperienceServiceTest {
             @Override public Optional<PetInstance> findActiveByOwner(UUID ownerId) { return Optional.empty(); }
             @Override public void setActivePet(UUID ownerId, UUID petId) {}
             @Override public void clearActivePet(UUID ownerId) {}
-            @Override public void switchActivePet(UUID ownerId, UUID oldPetId, UUID newPetId) {}
-            @Override public void restoreActivePet(UUID ownerId, UUID oldPetId, UUID newPetId) {}
+            @Override public void switchActivePet(UUID ownerId, UUID previousPetId, UUID newPetId) {}
+            @Override public void restoreActivePet(UUID ownerId, UUID previousPetId, UUID newPetId) {}
             @Override public void clearActivePetAndSetAvailable(UUID ownerId, UUID petId) {}
         };
 
@@ -94,7 +97,10 @@ class AsyncPetExperienceServiceTest {
                 activePetRegistry,
                 null,
                 new LinearExperienceCurve(100),
-                dbExecutor
+                dbExecutor,
+                mainThreadDispatcher,
+                profileCache,
+                null
         );
     }
 

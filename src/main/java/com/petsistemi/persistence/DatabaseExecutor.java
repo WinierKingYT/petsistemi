@@ -3,7 +3,6 @@ package com.petsistemi.persistence;
 import java.util.Objects;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -14,7 +13,6 @@ import java.util.logging.Logger;
 public final class DatabaseExecutor implements AutoCloseable {
 
     private final ThreadPoolExecutor poolExecutor;
-    private final ExecutorService executor;
     private final Logger logger;
     private final Thread dbThread;
     private volatile boolean closed = false;
@@ -37,11 +35,13 @@ public final class DatabaseExecutor implements AutoCloseable {
                     return t;
                 }
         );
-        this.executor = poolExecutor;
         try {
-            this.executor.submit(() -> {}).get();
-        } catch (Exception ignored) {}
-        this.dbThread = threadHolder[0];
+            this.poolExecutor.submit(() -> {}).get(5, TimeUnit.SECONDS);
+        } catch (Exception e) {
+            throw new IllegalStateException("DatabaseExecutor başlatılamadı: Database thread oluşturma hatası", e);
+        }
+        this.dbThread = Objects.requireNonNull(threadHolder[0], "Database thread null olamaz.");
+        DatabaseThreadGuard.setDatabaseExecutor(this);
     }
 
     public boolean isDatabaseThread() {
@@ -97,6 +97,7 @@ public final class DatabaseExecutor implements AutoCloseable {
     @Override
     public void close() {
         this.closed = true;
+        DatabaseThreadGuard.clearDatabaseExecutor(this);
         poolExecutor.shutdown();
         try {
             if (!poolExecutor.awaitTermination(5, TimeUnit.SECONDS)) {

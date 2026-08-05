@@ -1,10 +1,11 @@
 package com.petsistemi.gui;
 
+import com.petsistemi.api.AsyncPetService;
 import com.petsistemi.api.PetService;
 import com.petsistemi.api.PetSnapshot;
+import com.petsistemi.bootstrap.MainThreadDispatcher;
 import com.petsistemi.definition.PetDefinitionRegistry;
 import com.petsistemi.domain.PetAvailabilityState;
-import com.petsistemi.domain.PetDefinition;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
@@ -22,6 +23,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 public class PetListMenu {
 
@@ -36,12 +38,46 @@ public class PetListMenu {
     }
 
     public static void open(Player player, PetService petService, int page, JavaPlugin plugin, PetDefinitionRegistry definitionRegistry) {
-        List<PetSnapshot> ownedPets = new ArrayList<>(petService.getOwnedPets(player.getUniqueId()));
-        Optional<PetSnapshot> spawnedPet = petService.getSpawnedPet(player.getUniqueId());
+        openAsync(player, petService, page, plugin, definitionRegistry, null);
+    }
+
+    public static void openAsync(Player player, PetService petService, int page, JavaPlugin plugin, PetDefinitionRegistry definitionRegistry, MainThreadDispatcher dispatcher) {
+        if (player == null || !player.isOnline()) return;
+        UUID ownerId = player.getUniqueId();
+
+        CompletableFuture<List<PetSnapshot>> petsFuture;
+        if (petService instanceof AsyncPetService asyncPetService) {
+            petsFuture = asyncPetService.getOwnedPetsAsync(ownerId).thenApply(ArrayList::new);
+        } else {
+            petsFuture = CompletableFuture.completedFuture(new ArrayList<>(petService.getOwnedPets(ownerId)));
+        }
+
+        petsFuture.thenAccept(ownedPets -> {
+            Runnable renderAction = () -> {
+                if (player.isOnline()) {
+                    renderAndOpen(player, ownedPets, page, plugin, definitionRegistry);
+                }
+            };
+
+            if (dispatcher != null) {
+                dispatcher.run(renderAction);
+            } else if (plugin != null) {
+                Bukkit.getScheduler().runTask(plugin, renderAction);
+            } else {
+                renderAction.run();
+            }
+        });
+    }
+
+    public static void renderAndOpen(Player player, List<PetSnapshot> ownedPets, int page, JavaPlugin plugin, PetDefinitionRegistry definitionRegistry) {
+        if (player == null || !player.isOnline()) return;
+
+        List<PetSnapshot> safeList = ownedPets != null ? ownedPets : List.of();
+        Optional<PetSnapshot> spawnedPet = safeList.stream().filter(PetSnapshot::spawned).findFirst();
         UUID spawnedPetId = spawnedPet.map(PetSnapshot::petId).orElse(null);
 
         int pageSize = PET_SLOTS.length;
-        int totalPages = Math.max(1, (int) Math.ceil((double) ownedPets.size() / pageSize));
+        int totalPages = Math.max(1, (int) Math.ceil((double) safeList.size() / pageSize));
         int currentPage = Math.max(0, Math.min(page, totalPages - 1));
 
         Inventory inv = Bukkit.createInventory(
@@ -50,7 +86,6 @@ public class PetListMenu {
                 Component.text("Petleriniz (Sayfa " + (currentPage + 1) + "/" + totalPages + ")", NamedTextColor.GOLD, TextDecoration.BOLD)
         );
 
-        // Fill glass pane borders
         ItemStack border = createBorderItem();
         for (int i = 0; i < 9; i++) inv.setItem(i, border);
         for (int i = 45; i < 54; i++) inv.setItem(i, border);
@@ -60,15 +95,14 @@ public class PetListMenu {
         inv.setItem(36, border); inv.setItem(44, border);
 
         int startIndex = currentPage * pageSize;
-        int endIndex = Math.min(startIndex + pageSize, ownedPets.size());
+        int endIndex = Math.min(startIndex + pageSize, safeList.size());
 
         for (int i = startIndex; i < endIndex; i++) {
-            PetSnapshot pet = ownedPets.get(i);
+            PetSnapshot pet = safeList.get(i);
             int slot = PET_SLOTS[i - startIndex];
             inv.setItem(slot, createPetItem(pet, spawnedPetId, plugin, definitionRegistry));
         }
 
-        // Navigation
         if (currentPage > 0) {
             inv.setItem(45, createNavItem(Material.ARROW, "◀ Önceki Sayfa (" + currentPage + ")", NamedTextColor.YELLOW));
         }
@@ -76,8 +110,7 @@ public class PetListMenu {
             inv.setItem(53, createNavItem(Material.ARROW, "Sonraki Sayfa ▶ (" + (currentPage + 2) + ")", NamedTextColor.YELLOW));
         }
 
-        // Info / Stats Item
-        inv.setItem(48, createInfoItem(ownedPets.size(), spawnedPet.isPresent()));
+        inv.setItem(48, createInfoItem(safeList.size(), spawnedPet.isPresent()));
         inv.setItem(49, createNavItem(Material.BARRIER, "Menüyü Kapat", NamedTextColor.RED));
 
         player.openInventory(inv);
@@ -101,7 +134,6 @@ public class PetListMenu {
             lore.add(Component.text("Tür: ", NamedTextColor.GRAY).append(Component.text(capitalize(pet.definitionId()), NamedTextColor.WHITE)));
             lore.add(Component.text("Seviye: ", NamedTextColor.GRAY).append(Component.text(pet.level(), NamedTextColor.YELLOW, TextDecoration.BOLD)));
 
-            // XP Progress Bar — reads xp-per-level from config
             long currentXp = pet.experience();
             long xpPerLevel = plugin != null ? plugin.getConfig().getLong("progression.xp-per-level", 100L) : 100L;
             if (xpPerLevel <= 0) xpPerLevel = 100L;

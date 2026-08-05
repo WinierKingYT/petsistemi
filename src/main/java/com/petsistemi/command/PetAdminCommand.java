@@ -1,19 +1,18 @@
 package com.petsistemi.command;
 
+import com.petsistemi.api.AsyncPetExperienceService;
+import com.petsistemi.api.AsyncPetService;
 import com.petsistemi.api.PetExperienceService;
 import com.petsistemi.api.PetService;
 import com.petsistemi.api.PetSnapshot;
-import com.petsistemi.api.result.ExperienceResult;
-import com.petsistemi.api.result.LevelResult;
-import com.petsistemi.api.result.PetGiveResult;
-import com.petsistemi.api.result.PetSummonResult;
+import com.petsistemi.api.result.*;
+import com.petsistemi.application.PetRuntimeOperationService;
 import com.petsistemi.config.PluginConfiguration;
 import com.petsistemi.config.PluginConfigurationLoader;
 import com.petsistemi.definition.PetDefinitionRegistry;
 import com.petsistemi.domain.ExperienceSource;
 import com.petsistemi.domain.PetAvailabilityState;
 import com.petsistemi.domain.PetDefinition;
-import com.petsistemi.domain.PetInstance;
 import com.petsistemi.message.MessageService;
 import com.petsistemi.persistence.*;
 import com.petsistemi.persistence.migration.MigrationBackupManager;
@@ -43,6 +42,7 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 public class PetAdminCommand implements CommandExecutor, TabCompleter {
@@ -255,9 +255,9 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
 
     private void sendHelpLine(CommandSender sender, String cmd, String desc) {
         sender.sendMessage(
-            Component.text("  ", NamedTextColor.DARK_GRAY)
-                .append(Component.text(cmd, NamedTextColor.YELLOW))
-                .append(Component.text(" — " + desc, NamedTextColor.GRAY))
+                Component.text("  ", NamedTextColor.DARK_GRAY)
+                        .append(Component.text(cmd, NamedTextColor.YELLOW))
+                        .append(Component.text(" — " + desc, NamedTextColor.GRAY))
         );
     }
 
@@ -270,22 +270,25 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
         String defId = args[2].toLowerCase();
         String targetName = target.getName() != null ? target.getName() : target.getUniqueId().toString().substring(0, 8);
 
-        PetGiveResult result = petService.givePet(target.getUniqueId(), defId);
-        if (result.success() && result.petSnapshot() != null) {
-            UUID petId = result.petSnapshot().petId();
-            sender.sendMessage(Component.text("-----------------------------------------", NamedTextColor.DARK_GRAY));
-            sender.sendMessage(Component.text("✔ Pet başarıyla verildi!", NamedTextColor.GREEN, TextDecoration.BOLD));
-            sender.sendMessage(Component.text("  Oyuncu: ", NamedTextColor.GRAY).append(Component.text(targetName, NamedTextColor.AQUA)));
-            sender.sendMessage(Component.text("  Tür: ", NamedTextColor.GRAY).append(Component.text(defId.toUpperCase(), NamedTextColor.GOLD)));
-            sender.sendMessage(Component.text("  Pet ID: ", NamedTextColor.GRAY).append(Component.text(petId.toString(), NamedTextColor.YELLOW)));
-            sender.sendMessage(Component.text("-----------------------------------------", NamedTextColor.DARK_GRAY));
-            if (auditLogger != null) {
-                auditLogger.logAction("GIVE_PET", sender.getName(), target.getUniqueId(), petId, "Tür: " + defId);
+        CompletableFuture<PetGiveResult> future = petService instanceof AsyncPetService async ? async.givePetAsync(target.getUniqueId(), defId) : CompletableFuture.completedFuture(petService.givePet(target.getUniqueId(), defId));
+
+        future.thenAccept(result -> sendMessageOnMain(sender, () -> {
+            if (result.success() && result.petSnapshot() != null) {
+                UUID petId = result.petSnapshot().petId();
+                sender.sendMessage(Component.text("-----------------------------------------", NamedTextColor.DARK_GRAY));
+                sender.sendMessage(Component.text("✔ Pet başarıyla verildi!", NamedTextColor.GREEN, TextDecoration.BOLD));
+                sender.sendMessage(Component.text("  Oyuncu: ", NamedTextColor.GRAY).append(Component.text(targetName, NamedTextColor.AQUA)));
+                sender.sendMessage(Component.text("  Tür: ", NamedTextColor.GRAY).append(Component.text(defId.toUpperCase(), NamedTextColor.GOLD)));
+                sender.sendMessage(Component.text("  Pet ID: ", NamedTextColor.GRAY).append(Component.text(petId.toString(), NamedTextColor.YELLOW)));
+                sender.sendMessage(Component.text("-----------------------------------------", NamedTextColor.DARK_GRAY));
+                if (auditLogger != null) {
+                    auditLogger.logAction("GIVE_PET", sender.getName(), target.getUniqueId(), petId, "Tür: " + defId);
+                }
+            } else {
+                sender.sendMessage(Component.text("✖ Pet verilemedi: ", NamedTextColor.RED)
+                        .append(Component.text(result.message(), NamedTextColor.DARK_RED)));
             }
-        } else {
-            sender.sendMessage(Component.text("✖ Pet verilemedi: ", NamedTextColor.RED)
-                    .append(Component.text(result.message(), NamedTextColor.DARK_RED)));
-        }
+        }));
     }
 
     private void handleRemove(CommandSender sender, String[] args) {
@@ -294,25 +297,30 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
             return;
         }
         OfflinePlayer target = Bukkit.getOfflinePlayer(args[1]);
-        SearchResult search = findPetByShortId(target.getUniqueId(), args[2]);
-        if (search.status() == SearchStatus.NOT_FOUND) {
-            sender.sendMessage(Component.text("Pet bulunamadı.", NamedTextColor.RED));
-            return;
-        } else if (search.status() == SearchStatus.AMBIGUOUS) {
-            sender.sendMessage(Component.text("Birden fazla pet eşleşti! Lütfen tam UUID yazın.", NamedTextColor.RED));
-            return;
-        }
-
-        UUID petId = search.pet().petId();
-        com.petsistemi.api.result.PetRemoveResult result = petService.removePet(petId);
-        if (result.success()) {
-            if (auditLogger != null) {
-                auditLogger.logAction("REMOVE_PET", sender.getName(), target.getUniqueId(), petId, "Pet silindi");
+        findPetByShortId(target.getUniqueId(), args[2]).thenAccept(search -> sendMessageOnMain(sender, () -> {
+            if (search.status() == SearchStatus.NOT_FOUND) {
+                sender.sendMessage(Component.text("Pet bulunamadı.", NamedTextColor.RED));
+                return;
+            } else if (search.status() == SearchStatus.AMBIGUOUS) {
+                sender.sendMessage(Component.text("Birden fazla pet eşleşti! Lütfen tam UUID yazın.", NamedTextColor.RED));
+                return;
             }
-            sender.sendMessage(Component.text("Pet başarıyla silindi.", NamedTextColor.GREEN));
-        } else {
-            sender.sendMessage(Component.text("Pet silinemedi: " + result.message(), NamedTextColor.RED));
-        }
+
+            UUID petId = search.pet().petId();
+            CompletableFuture<?> future = petService instanceof AsyncPetService async ? async.removePetAsync(petId) : CompletableFuture.completedFuture(petService.removePet(petId));
+            future.thenAccept(res -> sendMessageOnMain(sender, () -> {
+                boolean success = res instanceof PetRemoveResult r && r.success();
+                String msg = res instanceof PetRemoveResult r ? r.message() : "Silme başarısız.";
+                if (success) {
+                    if (auditLogger != null) {
+                        auditLogger.logAction("REMOVE_PET", sender.getName(), target.getUniqueId(), petId, "Pet silindi");
+                    }
+                    sender.sendMessage(Component.text("Pet başarıyla silindi.", NamedTextColor.GREEN));
+                } else {
+                    sender.sendMessage(Component.text("Pet silinemedi: " + msg, NamedTextColor.RED));
+                }
+            }));
+        }));
     }
 
     private void handleList(CommandSender sender, String[] args) {
@@ -322,33 +330,36 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
         }
         OfflinePlayer target = Bukkit.getOfflinePlayer(args[1]);
         String targetName = target.getName() != null ? target.getName() : target.getUniqueId().toString().substring(0, 8);
-        Collection<PetSnapshot> pets = petService.getOwnedPets(target.getUniqueId());
 
-        sender.sendMessage(Component.text("-----------------------------------------", NamedTextColor.DARK_GRAY));
-        sender.sendMessage(Component.text("=== " + targetName + " — Pet Listesi (", NamedTextColor.GOLD, TextDecoration.BOLD)
-                .append(Component.text(pets.size(), NamedTextColor.YELLOW))
-                .append(Component.text(" pet) ===", NamedTextColor.GOLD, TextDecoration.BOLD)));
+        CompletableFuture<List<PetSnapshot>> future = petService instanceof AsyncPetService async ? async.getOwnedPetsAsync(target.getUniqueId()).thenApply(ArrayList::new) : CompletableFuture.completedFuture(new ArrayList<>(petService.getOwnedPets(target.getUniqueId())));
 
-        if (pets.isEmpty()) {
-            sender.sendMessage(Component.text("  Bu oyuncunun hiç peti yok.", NamedTextColor.GRAY));
-        } else {
-            for (PetSnapshot pet : pets) {
-                String name = pet.customName() != null ? pet.customName() : pet.definitionId();
-                NamedTextColor stateColor = pet.availabilityState() == PetAvailabilityState.DISABLED
-                        ? NamedTextColor.RED : NamedTextColor.GREEN;
-                String stateLabel = pet.availabilityState() == PetAvailabilityState.DISABLED
-                        ? "KAPALI" : (pet.spawned() ? "AKTIF" : "HAZIR");
-                sender.sendMessage(
-                    Component.text("  ● ", NamedTextColor.GOLD)
-                        .append(Component.text("[" + pet.definitionId().toUpperCase() + "] ", NamedTextColor.LIGHT_PURPLE))
-                        .append(Component.text(name, NamedTextColor.WHITE))
-                        .append(Component.text(" Lv." + pet.level(), NamedTextColor.YELLOW))
-                        .append(Component.text(" [" + stateLabel + "]", stateColor))
-                        .append(Component.text(" #" + pet.petId().toString().substring(0, 8), NamedTextColor.DARK_GRAY))
-                );
+        future.thenAccept(pets -> sendMessageOnMain(sender, () -> {
+            sender.sendMessage(Component.text("-----------------------------------------", NamedTextColor.DARK_GRAY));
+            sender.sendMessage(Component.text("=== " + targetName + " — Pet Listesi (", NamedTextColor.GOLD, TextDecoration.BOLD)
+                    .append(Component.text(pets.size(), NamedTextColor.YELLOW))
+                    .append(Component.text(" pet) ===", NamedTextColor.GOLD, TextDecoration.BOLD)));
+
+            if (pets.isEmpty()) {
+                sender.sendMessage(Component.text("  Bu oyuncunun hiç peti yok.", NamedTextColor.GRAY));
+            } else {
+                for (PetSnapshot pet : pets) {
+                    String name = pet.customName() != null ? pet.customName() : pet.definitionId();
+                    NamedTextColor stateColor = pet.availabilityState() == PetAvailabilityState.DISABLED
+                            ? NamedTextColor.RED : NamedTextColor.GREEN;
+                    String stateLabel = pet.availabilityState() == PetAvailabilityState.DISABLED
+                            ? "KAPALI" : (pet.spawned() ? "AKTIF" : "HAZIR");
+                    sender.sendMessage(
+                            Component.text("  ● ", NamedTextColor.GOLD)
+                                    .append(Component.text("[" + pet.definitionId().toUpperCase() + "] ", NamedTextColor.LIGHT_PURPLE))
+                                    .append(Component.text(name, NamedTextColor.WHITE))
+                                    .append(Component.text(" Lv." + pet.level(), NamedTextColor.YELLOW))
+                                    .append(Component.text(" [" + stateLabel + "]", stateColor))
+                                    .append(Component.text(" #" + pet.petId().toString().substring(0, 8), NamedTextColor.DARK_GRAY))
+                    );
+                }
             }
-        }
-        sender.sendMessage(Component.text("-----------------------------------------", NamedTextColor.DARK_GRAY));
+            sender.sendMessage(Component.text("-----------------------------------------", NamedTextColor.DARK_GRAY));
+        }));
     }
 
     private void handleInfo(CommandSender sender, String[] args) {
@@ -357,26 +368,33 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
             return;
         }
         OfflinePlayer target = Bukkit.getOfflinePlayer(args[1]);
-        Collection<PetSnapshot> owned = petService.getOwnedPets(target.getUniqueId());
-        Optional<PetSnapshot> selected = petService.getSelectedPet(target.getUniqueId());
-        Optional<PetSnapshot> spawned = petService.getSpawnedPet(target.getUniqueId());
 
-        sender.sendMessage(Component.text("-----------------------------------------", NamedTextColor.DARK_GRAY));
-        sender.sendMessage(Component.text("=== Oyuncu Pet Raporu: " + (target.getName() != null ? target.getName() : target.getUniqueId()) + " ===", NamedTextColor.GOLD, TextDecoration.BOLD));
-        sender.sendMessage(Component.text("Oyuncu UUID: ", NamedTextColor.GRAY).append(Component.text(target.getUniqueId().toString(), NamedTextColor.WHITE)));
-        sender.sendMessage(Component.text("Toplam Pet Sayısı: ", NamedTextColor.GRAY).append(Component.text(owned.size(), NamedTextColor.YELLOW)));
-        sender.sendMessage(Component.text("Seçili Pet ID: ", NamedTextColor.GRAY).append(Component.text(selected.map(s -> s.petId().toString().substring(0, 8)).orElse("Yok"), NamedTextColor.AQUA)));
-        sender.sendMessage(Component.text("Dünyada Spawned: ", NamedTextColor.GRAY).append(Component.text(spawned.map(s -> s.petId().toString().substring(0, 8)).orElse("Yok"), NamedTextColor.GREEN)));
-        sender.sendMessage(Component.text("-----------------------------------------", NamedTextColor.DARK_GRAY));
-        for (PetSnapshot pet : owned) {
-            String name = pet.customName() != null ? pet.customName() : pet.definitionId();
-            sender.sendMessage(Component.text("- [" + pet.definitionId() + "] ", NamedTextColor.GOLD)
-                    .append(Component.text(name, NamedTextColor.WHITE))
-                    .append(Component.text(" (Lv." + pet.level() + ", " + pet.experience() + " XP) ", NamedTextColor.YELLOW))
-                    .append(Component.text("[" + pet.availabilityState() + "]", pet.availabilityState() == PetAvailabilityState.DISABLED ? NamedTextColor.RED : NamedTextColor.GREEN))
-                    .append(Component.text(" ID: " + pet.petId().toString().substring(0, 8), NamedTextColor.DARK_GRAY)));
-        }
-        sender.sendMessage(Component.text("-----------------------------------------", NamedTextColor.DARK_GRAY));
+        CompletableFuture<List<PetSnapshot>> ownedFuture = petService instanceof AsyncPetService async ? async.getOwnedPetsAsync(target.getUniqueId()).thenApply(ArrayList::new) : CompletableFuture.completedFuture(new ArrayList<>(petService.getOwnedPets(target.getUniqueId())));
+        CompletableFuture<Optional<PetSnapshot>> selectedFuture = petService instanceof AsyncPetService async ? async.getSelectedPetAsync(target.getUniqueId()) : CompletableFuture.completedFuture(petService.getSelectedPet(target.getUniqueId()));
+
+        ownedFuture.thenCombine(selectedFuture, (owned, selected) -> {
+            sendMessageOnMain(sender, () -> {
+                Optional<PetSnapshot> spawned = owned.stream().filter(PetSnapshot::spawned).findFirst();
+
+                sender.sendMessage(Component.text("-----------------------------------------", NamedTextColor.DARK_GRAY));
+                sender.sendMessage(Component.text("=== Oyuncu Pet Raporu: " + (target.getName() != null ? target.getName() : target.getUniqueId()) + " ===", NamedTextColor.GOLD, TextDecoration.BOLD));
+                sender.sendMessage(Component.text("Oyuncu UUID: ", NamedTextColor.GRAY).append(Component.text(target.getUniqueId().toString(), NamedTextColor.WHITE)));
+                sender.sendMessage(Component.text("Toplam Pet Sayısı: ", NamedTextColor.GRAY).append(Component.text(owned.size(), NamedTextColor.YELLOW)));
+                sender.sendMessage(Component.text("Seçili Pet ID: ", NamedTextColor.GRAY).append(Component.text(selected.map(s -> s.petId().toString().substring(0, 8)).orElse("Yok"), NamedTextColor.AQUA)));
+                sender.sendMessage(Component.text("Dünyada Spawned: ", NamedTextColor.GRAY).append(Component.text(spawned.map(s -> s.petId().toString().substring(0, 8)).orElse("Yok"), NamedTextColor.GREEN)));
+                sender.sendMessage(Component.text("-----------------------------------------", NamedTextColor.DARK_GRAY));
+                for (PetSnapshot pet : owned) {
+                    String name = pet.customName() != null ? pet.customName() : pet.definitionId();
+                    sender.sendMessage(Component.text("- [" + pet.definitionId() + "] ", NamedTextColor.GOLD)
+                            .append(Component.text(name, NamedTextColor.WHITE))
+                            .append(Component.text(" (Lv." + pet.level() + ", " + pet.experience() + " XP) ", NamedTextColor.YELLOW))
+                            .append(Component.text("[" + pet.availabilityState() + "]", pet.availabilityState() == PetAvailabilityState.DISABLED ? NamedTextColor.RED : NamedTextColor.GREEN))
+                            .append(Component.text(" ID: " + pet.petId().toString().substring(0, 8), NamedTextColor.DARK_GRAY)));
+                }
+                sender.sendMessage(Component.text("-----------------------------------------", NamedTextColor.DARK_GRAY));
+            });
+            return null;
+        });
     }
 
     private void handleAddXp(CommandSender sender, String[] args) {
@@ -385,26 +403,30 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
             return;
         }
         OfflinePlayer target = Bukkit.getOfflinePlayer(args[1]);
-        SearchResult search = findPetByShortId(target.getUniqueId(), args[2]);
-        if (search.status() != SearchStatus.FOUND) {
-            sender.sendMessage(Component.text("Pet bulunamadı.", NamedTextColor.RED));
-            return;
-        }
-
-        try {
-            long xp = Long.parseLong(args[3]);
-            ExperienceResult result = experienceService.addExperience(search.pet().petId(), xp, ExperienceSource.COMMAND);
-            if (result.success()) {
-                sender.sendMessage(Component.text("XP eklendi! Toplam XP: " + result.newExperience(), NamedTextColor.GREEN));
-                if (auditLogger != null) {
-                    auditLogger.logAction("ADD_XP", sender.getName(), target.getUniqueId(), search.pet().petId(), "Miktar: " + xp);
-                }
-            } else {
-                sender.sendMessage(Component.text("XP eklenemedi: " + result.message(), NamedTextColor.RED));
+        findPetByShortId(target.getUniqueId(), args[2]).thenAccept(search -> sendMessageOnMain(sender, () -> {
+            if (search.status() != SearchStatus.FOUND) {
+                sender.sendMessage(Component.text("Pet bulunamadı.", NamedTextColor.RED));
+                return;
             }
-        } catch (NumberFormatException e) {
-            sender.sendMessage(Component.text("Geçersiz XP miktarı.", NamedTextColor.RED));
-        }
+
+            try {
+                long xp = Long.parseLong(args[3]);
+                CompletableFuture<ExperienceResult> future = experienceService instanceof AsyncPetExperienceService async ? async.addExperienceAsync(search.pet().petId(), xp, ExperienceSource.COMMAND) : CompletableFuture.completedFuture(experienceService.addExperience(search.pet().petId(), xp, ExperienceSource.COMMAND));
+
+                future.thenAccept(result -> sendMessageOnMain(sender, () -> {
+                    if (result.success()) {
+                        sender.sendMessage(Component.text("XP eklendi! Toplam XP: " + result.newExperience(), NamedTextColor.GREEN));
+                        if (auditLogger != null) {
+                            auditLogger.logAction("ADD_XP", sender.getName(), target.getUniqueId(), search.pet().petId(), "Miktar: " + xp);
+                        }
+                    } else {
+                        sender.sendMessage(Component.text("XP eklenemedi: " + result.message(), NamedTextColor.RED));
+                    }
+                }));
+            } catch (NumberFormatException e) {
+                sender.sendMessage(Component.text("Geçersiz XP miktarı.", NamedTextColor.RED));
+            }
+        }));
     }
 
     private void handleSetXp(CommandSender sender, String[] args) {
@@ -413,26 +435,30 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
             return;
         }
         OfflinePlayer target = Bukkit.getOfflinePlayer(args[1]);
-        SearchResult search = findPetByShortId(target.getUniqueId(), args[2]);
-        if (search.status() != SearchStatus.FOUND) {
-            sender.sendMessage(Component.text("Pet bulunamadı.", NamedTextColor.RED));
-            return;
-        }
-
-        try {
-            long xp = Long.parseLong(args[3]);
-            ExperienceResult result = experienceService.setExperience(search.pet().petId(), xp, ExperienceSource.COMMAND);
-            if (result.success()) {
-                sender.sendMessage(Component.text("XP güncellendi! Toplam XP: " + result.newExperience(), NamedTextColor.GREEN));
-                if (auditLogger != null) {
-                    auditLogger.logAction("SET_XP", sender.getName(), target.getUniqueId(), search.pet().petId(), "Miktar: " + xp);
-                }
-            } else {
-                sender.sendMessage(Component.text("XP güncellenemedi: " + result.message(), NamedTextColor.RED));
+        findPetByShortId(target.getUniqueId(), args[2]).thenAccept(search -> sendMessageOnMain(sender, () -> {
+            if (search.status() != SearchStatus.FOUND) {
+                sender.sendMessage(Component.text("Pet bulunamadı.", NamedTextColor.RED));
+                return;
             }
-        } catch (NumberFormatException e) {
-            sender.sendMessage(Component.text("Geçersiz XP miktarı.", NamedTextColor.RED));
-        }
+
+            try {
+                long xp = Long.parseLong(args[3]);
+                CompletableFuture<ExperienceResult> future = experienceService instanceof AsyncPetExperienceService async ? async.setExperienceAsync(search.pet().petId(), xp, ExperienceSource.COMMAND) : CompletableFuture.completedFuture(experienceService.setExperience(search.pet().petId(), xp, ExperienceSource.COMMAND));
+
+                future.thenAccept(result -> sendMessageOnMain(sender, () -> {
+                    if (result.success()) {
+                        sender.sendMessage(Component.text("XP güncellendi! Toplam XP: " + result.newExperience(), NamedTextColor.GREEN));
+                        if (auditLogger != null) {
+                            auditLogger.logAction("SET_XP", sender.getName(), target.getUniqueId(), search.pet().petId(), "Miktar: " + xp);
+                        }
+                    } else {
+                        sender.sendMessage(Component.text("XP güncellenemedi: " + result.message(), NamedTextColor.RED));
+                    }
+                }));
+            } catch (NumberFormatException e) {
+                sender.sendMessage(Component.text("Geçersiz XP miktarı.", NamedTextColor.RED));
+            }
+        }));
     }
 
     private void handleSetLevel(CommandSender sender, String[] args) {
@@ -441,26 +467,30 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
             return;
         }
         OfflinePlayer target = Bukkit.getOfflinePlayer(args[1]);
-        SearchResult search = findPetByShortId(target.getUniqueId(), args[2]);
-        if (search.status() != SearchStatus.FOUND) {
-            sender.sendMessage(Component.text("Pet bulunamadı.", NamedTextColor.RED));
-            return;
-        }
-
-        try {
-            int level = Integer.parseInt(args[3]);
-            LevelResult result = experienceService.setLevel(search.pet().petId(), level);
-            if (result.success()) {
-                sender.sendMessage(Component.text("Seviye güncellendi! Yeni Seviye: " + result.newLevel(), NamedTextColor.GREEN));
-                if (auditLogger != null) {
-                    auditLogger.logAction("SET_LEVEL", sender.getName(), target.getUniqueId(), search.pet().petId(), "Seviye: " + level);
-                }
-            } else {
-                sender.sendMessage(Component.text("Seviye güncellenemedi: " + result.message(), NamedTextColor.RED));
+        findPetByShortId(target.getUniqueId(), args[2]).thenAccept(search -> sendMessageOnMain(sender, () -> {
+            if (search.status() != SearchStatus.FOUND) {
+                sender.sendMessage(Component.text("Pet bulunamadı.", NamedTextColor.RED));
+                return;
             }
-        } catch (NumberFormatException e) {
-            sender.sendMessage(Component.text("Geçersiz seviye miktarı.", NamedTextColor.RED));
-        }
+
+            try {
+                int level = Integer.parseInt(args[3]);
+                CompletableFuture<LevelResult> future = experienceService instanceof AsyncPetExperienceService async ? async.setLevelAsync(search.pet().petId(), level) : CompletableFuture.completedFuture(experienceService.setLevel(search.pet().petId(), level));
+
+                future.thenAccept(result -> sendMessageOnMain(sender, () -> {
+                    if (result.success()) {
+                        sender.sendMessage(Component.text("Seviye güncellendi! Yeni Seviye: " + result.newLevel(), NamedTextColor.GREEN));
+                        if (auditLogger != null) {
+                            auditLogger.logAction("SET_LEVEL", sender.getName(), target.getUniqueId(), search.pet().petId(), "Seviye: " + level);
+                        }
+                    } else {
+                        sender.sendMessage(Component.text("Seviye güncellenemedi: " + result.message(), NamedTextColor.RED));
+                    }
+                }));
+            } catch (NumberFormatException e) {
+                sender.sendMessage(Component.text("Geçersiz seviye miktarı.", NamedTextColor.RED));
+            }
+        }));
     }
 
     private void handleSummon(CommandSender sender, String[] args) {
@@ -474,18 +504,25 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
             return;
         }
 
-        SearchResult search = findPetByShortId(target.getUniqueId(), args[2]);
-        if (search.status() != SearchStatus.FOUND) {
-            sender.sendMessage(Component.text("Pet bulunamadı.", NamedTextColor.RED));
-            return;
-        }
+        findPetByShortId(target.getUniqueId(), args[2]).thenAccept(search -> sendMessageOnMain(sender, () -> {
+            if (search.status() != SearchStatus.FOUND) {
+                sender.sendMessage(Component.text("Pet bulunamadı.", NamedTextColor.RED));
+                return;
+            }
 
-        PetSummonResult result = petService.summon(target, search.pet().petId());
-        if (result.success()) {
-            sender.sendMessage(Component.text("Pet oyuncu için başarıyla çağırıldı.", NamedTextColor.GREEN));
-        } else {
-            sender.sendMessage(Component.text("Pet çağırılamadı: " + result.message(), NamedTextColor.RED));
-        }
+            PetRuntimeOperationService opService = context != null ? context.operationService() : null;
+            CompletableFuture<?> future = opService != null ? opService.summonAsync(target, search.pet().petId()) : CompletableFuture.completedFuture(petService.summon(target, search.pet().petId()));
+
+            future.thenAccept(res -> sendMessageOnMain(sender, () -> {
+                boolean success = res instanceof com.petsistemi.api.result.PetSummonResult r && r.success();
+                String msg = res instanceof com.petsistemi.api.result.PetSummonResult r ? r.message() : "Çağırma başarısız.";
+                if (success) {
+                    sender.sendMessage(Component.text("Pet oyuncu için başarıyla çağırıldı.", NamedTextColor.GREEN));
+                } else {
+                    sender.sendMessage(Component.text("Pet çağırılamadı: " + msg, NamedTextColor.RED));
+                }
+            }));
+        }));
     }
 
     private void handleDismiss(CommandSender sender, String[] args) {
@@ -499,8 +536,12 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
             return;
         }
 
-        petService.dismiss(target);
-        sender.sendMessage(Component.text("Oyuncunun peti kaldırıldı.", NamedTextColor.GREEN));
+        PetRuntimeOperationService opService = context != null ? context.operationService() : null;
+        CompletableFuture<?> future = opService != null ? opService.dismissAsync(target) : CompletableFuture.completedFuture(petService.dismiss(target));
+
+        future.thenAccept(res -> sendMessageOnMain(sender, () -> {
+            sender.sendMessage(Component.text("Oyuncunun peti kaldırıldı.", NamedTextColor.GREEN));
+        }));
     }
 
     private void handleReload(CommandSender sender) {
@@ -517,8 +558,8 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
                 auditLogger.logAction("RELOAD", sender.getName(), null, null, "Atomik reload başarıyla tamamlandı");
             }
         } else {
-            String suffix = result.rolledBack() 
-                    ? " (eski canlı konfigürasyon başarıyla geri yüklendi)" 
+            String suffix = result.rolledBack()
+                    ? " (eski canlı konfigürasyon başarıyla geri yüklendi)"
                     : " (rollback tamamlanamadı; sunucu yöneticisi logları kontrol etmeli)";
             sender.sendMessage(Component.text("Yenileme sırasında hata oluştu" + suffix + ": " + result.message(), NamedTextColor.RED));
         }
@@ -645,28 +686,24 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
         int despawnedOrphans = 0;
         int restoredCount = 0;
 
-        // 1. Despawn runtime entity ONLY for offline owners (preserving persistent selection!)
         for (ActivePet activePet : activeRegistry.getAllActive()) {
             Player owner = Bukkit.getPlayer(activePet.getOwnerId());
             if (owner == null || !owner.isOnline()) {
-                if (coordinator != null) coordinator.despawnOnQuit(activePet.getOwnerId());
+                if (coordinator != null) coordinator.despawnRuntime(activePet.getOwnerId());
                 despawnedOrphans++;
             }
         }
 
-        // 2. Restore active selection for online players without spawned entities
         for (Player online : Bukkit.getOnlinePlayers()) {
             if (activeRegistry.getByOwner(online.getUniqueId()).isEmpty()) {
-                if (coordinator != null) {
-                    coordinator.restoreOnJoin(online);
-                    if (activeRegistry.getByOwner(online.getUniqueId()).isPresent()) {
-                        restoredCount++;
-                    }
+                if (context != null && context.operationService() != null) {
+                    context.operationService().restoreSelectedPetAsync(online);
+                    restoredCount++;
                 }
             }
         }
 
-        sender.sendMessage(Component.text("Uzlaştırma tamamlandı. Kaldırılan yetim varlık: " + despawnedOrphans + " | Restore edilen: " + restoredCount, NamedTextColor.GREEN));
+        sender.sendMessage(Component.text("Uzlaştırma tamamlandı. Kaldırılan yetim varlık: " + despawnedOrphans + " | Restore başlatılan: " + restoredCount, NamedTextColor.GREEN));
         if (auditLogger != null) {
             auditLogger.logAction("RECONCILE", sender.getName(), null, null, "Despawn: " + despawnedOrphans + ", Restore: " + restoredCount);
         }
@@ -679,15 +716,20 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
         }
         try {
             UUID petId = UUID.fromString(args[1]);
-            com.petsistemi.api.result.PetDisableResult result = petService.disablePet(petId);
-            if (result.success()) {
-                if (auditLogger != null) {
-                    auditLogger.logAction("DISABLE_PET", sender.getName(), null, petId, "Pet DISABLED yapıldı");
+            CompletableFuture<?> future = petService instanceof AsyncPetService async ? async.disablePetAsync(petId) : CompletableFuture.completedFuture(petService.disablePet(petId));
+
+            future.thenAccept(res -> sendMessageOnMain(sender, () -> {
+                boolean success = res instanceof PetDisableResult r && r.success();
+                String msg = res instanceof PetDisableResult r ? r.message() : "Devre dışı bırakma başarısız.";
+                if (success) {
+                    if (auditLogger != null) {
+                        auditLogger.logAction("DISABLE_PET", sender.getName(), null, petId, "Pet DISABLED yapıldı");
+                    }
+                    sender.sendMessage(Component.text("Pet " + petId + " başarıyla devre dışı bırakıldı (DISABLED).", NamedTextColor.GREEN));
+                } else {
+                    sender.sendMessage(Component.text("Pet devre dışı bırakılamadı: " + msg, NamedTextColor.RED));
                 }
-                sender.sendMessage(Component.text("Pet " + petId + " başarıyla devre dışı bırakıldı (DISABLED).", NamedTextColor.GREEN));
-            } else {
-                sender.sendMessage(Component.text("Pet devre dışı bırakılamadı: " + result.message(), NamedTextColor.RED));
-            }
+            }));
         } catch (IllegalArgumentException e) {
             sender.sendMessage(Component.text("Geçersiz UUID formatı.", NamedTextColor.RED));
         }
@@ -700,42 +742,51 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
         }
         try {
             UUID petId = UUID.fromString(args[1]);
-            com.petsistemi.api.result.PetDisableResult result = petService.enablePet(petId);
-            if (result.success()) {
-                if (auditLogger != null) {
-                    auditLogger.logAction("ENABLE_PET", sender.getName(), null, petId, "Pet AVAILABLE yapıldı");
+            CompletableFuture<?> future = petService instanceof AsyncPetService async ? async.enablePetAsync(petId) : CompletableFuture.completedFuture(petService.enablePet(petId));
+
+            future.thenAccept(res -> sendMessageOnMain(sender, () -> {
+                boolean success = res instanceof PetDisableResult r && r.success();
+                String msg = res instanceof PetDisableResult r ? r.message() : "Etkinleştirme başarısız.";
+                if (success) {
+                    if (auditLogger != null) {
+                        auditLogger.logAction("ENABLE_PET", sender.getName(), null, petId, "Pet AVAILABLE yapıldı");
+                    }
+                    sender.sendMessage(Component.text("Pet " + petId + " başarıyla etkinleştirildi (AVAILABLE).", NamedTextColor.GREEN));
+                } else {
+                    sender.sendMessage(Component.text("Pet etkinleştirilemedi: " + msg, NamedTextColor.RED));
                 }
-                sender.sendMessage(Component.text("Pet " + petId + " başarıyla etkinleştirildi (AVAILABLE).", NamedTextColor.GREEN));
-            } else {
-                sender.sendMessage(Component.text("Pet etkinleştirilemedi: " + result.message(), NamedTextColor.RED));
-            }
+            }));
         } catch (IllegalArgumentException e) {
             sender.sendMessage(Component.text("Geçersiz UUID formatı.", NamedTextColor.RED));
         }
     }
 
-    private SearchResult findPetByShortId(UUID ownerId, String input) {
-        try {
-            UUID full = UUID.fromString(input);
-            Optional<PetInstance> pet = repository.findById(full);
-            if (pet.isPresent() && pet.get().ownerId().equals(ownerId)) {
-                return new SearchResult(SearchStatus.FOUND, pet.get());
-            } else {
-                return new SearchResult(SearchStatus.NOT_FOUND, null);
-            }
-        } catch (IllegalArgumentException ignored) {}
-
-        List<PetInstance> pets = repository.findByOwner(ownerId);
-        List<PetInstance> matches = pets.stream()
-                .filter(p -> p.petId().toString().toLowerCase().startsWith(input.toLowerCase()))
-                .collect(Collectors.toList());
-
-        if (matches.isEmpty()) {
-            return new SearchResult(SearchStatus.NOT_FOUND, null);
-        } else if (matches.size() > 1) {
-            return new SearchResult(SearchStatus.AMBIGUOUS, null);
+    private void sendMessageOnMain(CommandSender sender, Runnable action) {
+        if (plugin != null) {
+            Bukkit.getScheduler().runTask(plugin, action);
+        } else {
+            action.run();
         }
-        return new SearchResult(SearchStatus.FOUND, matches.get(0));
+    }
+
+    private enum SearchStatus { FOUND, NOT_FOUND, AMBIGUOUS }
+    private record SearchResult(SearchStatus status, PetSnapshot pet) {}
+
+    private CompletableFuture<SearchResult> findPetByShortId(UUID ownerId, String input) {
+        CompletableFuture<List<PetSnapshot>> ownedFuture = petService instanceof AsyncPetService async ? async.getOwnedPetsAsync(ownerId).thenApply(ArrayList::new) : CompletableFuture.completedFuture(new ArrayList<>(petService.getOwnedPets(ownerId)));
+
+        return ownedFuture.thenApply(pets -> {
+            List<PetSnapshot> matches = pets.stream()
+                    .filter(p -> p.petId().toString().toLowerCase().startsWith(input.toLowerCase()))
+                    .toList();
+
+            if (matches.isEmpty()) {
+                return new SearchResult(SearchStatus.NOT_FOUND, null);
+            } else if (matches.size() > 1) {
+                return new SearchResult(SearchStatus.AMBIGUOUS, null);
+            }
+            return new SearchResult(SearchStatus.FOUND, matches.get(0));
+        });
     }
 
     @Override
@@ -787,7 +838,4 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
 
         return Collections.emptyList();
     }
-
-    private enum SearchStatus { FOUND, NOT_FOUND, AMBIGUOUS }
-    private record SearchResult(SearchStatus status, PetInstance pet) {}
 }

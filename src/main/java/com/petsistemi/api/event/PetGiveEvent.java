@@ -19,6 +19,10 @@ public class PetGiveEvent extends Event {
         this.pet = pet;
     }
 
+    public PetGiveEvent(PetSnapshot pet) {
+        this(pet != null ? pet.ownerId() : null, pet);
+    }
+
     public UUID getOwnerId() {
         return ownerId;
     }
