@@ -307,11 +307,10 @@ public class PetRuntimeCoordinator {
             if (entity == null || !entity.isValid() || entity.isDead()) {
                 UUID petId = active.getPetId();
 
-                if (recoveryQueue.isPending(petId) || recoveryQueue.isExhausted(petId)) {
+                if (!recoveryQueue.tryStart(ownerId, petId)) {
                     continue;
                 }
 
-                recoveryQueue.recordAttempt(ownerId, petId, System.currentTimeMillis() / 50);
                 if (plugin != null) plugin.getLogger().warning(
                         "Watchdog: Pet entitysi kaybolmuş tespit edildi (" + petId
                         + "). Otomatik kurtarma başlatılıyor...");
@@ -350,11 +349,15 @@ public class PetRuntimeCoordinator {
             }
 
             if (repository != null) {
-                Optional<PetInstance> activeInDb = repository.findActiveByOwner(ownerId);
-                if (activeInDb.isPresent() && !activeInDb.get().petId().equals(petId)) {
-                    recoveryQueue.clear(petId);
-                    if (plugin != null) plugin.getLogger().info("Watchdog: Veritabanında seçili pet değişmiş. Eski pet (" + petId + ") kurtarması iptal edildi.");
-                    return;
+                try {
+                    Optional<PetInstance> activeInDb = repository.findActiveByOwner(ownerId);
+                    if (activeInDb.isEmpty() || !activeInDb.get().petId().equals(petId)) {
+                        recoveryQueue.clear(petId);
+                        if (plugin != null) plugin.getLogger().info("Watchdog: Oyuncunun seçili peti değişmiş veya temizlenmiş. Eski pet (" + petId + ") kurtarması iptal edildi.");
+                        return;
+                    }
+                } catch (Exception e) {
+                    if (plugin != null) plugin.getLogger().warning("Watchdog: DB kontrolü sırasında hata oluştu (" + e.getMessage() + "), kurtarma denemesi devam ediyor.");
                 }
             }
 

@@ -505,48 +505,20 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
 
     private void handleReload(CommandSender sender) {
         sender.sendMessage(Component.text("PetSistemi konfigürasyon ve tanımları yenileniyor...", NamedTextColor.YELLOW));
-        try {
-            // 1. Load candidate YAML from disk without mutating live Bukkit config
-            java.io.File configFile = new java.io.File(plugin.getDataFolder(), "config.yml");
-            org.bukkit.configuration.file.YamlConfiguration candidateYaml = new org.bukkit.configuration.file.YamlConfiguration();
-            if (configFile.exists()) {
-                candidateYaml.load(configFile);
-            }
+        com.petsistemi.definition.AtomicPetDefinitionRegistry atomicRegistry =
+                (definitionRegistry instanceof com.petsistemi.definition.AtomicPetDefinitionRegistry atomic) ? atomic : null;
 
-            // 2. Validate candidate PluginConfiguration
-            PluginConfiguration candidateConfig = PluginConfigurationLoader.load(candidateYaml);
+        com.petsistemi.config.RuntimeReloadService.ReloadResult result =
+                com.petsistemi.config.RuntimeReloadService.performReload(context, plugin, messageService, atomicRegistry);
 
-            // 3. Reload candidate message and definition registries
-            if (messageService != null) {
-                messageService.reload();
-            }
-            definitionRegistry.reload();
-
-            // 4. Create candidate RuntimeConfigurationSnapshot
-            com.petsistemi.config.RuntimeConfigurationSnapshot candidateSnapshot = new com.petsistemi.config.RuntimeConfigurationSnapshot(
-                    candidateConfig,
-                    messageService,
-                    definitionRegistry,
-                    System.currentTimeMillis()
-            );
-
-            // 5. Validation passed → apply to live Bukkit config and publish snapshot atomically
-            plugin.reloadConfig();
-
-            if (context != null && context.configSnapshot() != null) {
-                context.configSnapshot().set(candidateSnapshot);
-            }
-
-            if (context != null) {
-                com.petsistemi.bootstrap.registrar.SchedulerRegistrar.reevaluateFeatureTasks(context);
-            }
-
-            sender.sendMessage(Component.text("Konfigürasyon ve pet tanımları atomik olarak başarıyla yenilendi!", NamedTextColor.GREEN));
+        if (result.success()) {
+            sender.sendMessage(Component.text(result.message(), NamedTextColor.GREEN));
             if (auditLogger != null) {
                 auditLogger.logAction("RELOAD", sender.getName(), null, null, "Atomik reload başarıyla tamamlandı");
             }
-        } catch (Exception e) {
-            sender.sendMessage(Component.text("Yenileme sırasında hata oluştu (eski canlı konfigürasyon korundu): " + e.getMessage(), NamedTextColor.RED));
+        } else {
+            String suffix = result.rolledBack() ? " (eski canlı konfigürasyon korundu)" : " (eski canlı konfigürasyon korundu)";
+            sender.sendMessage(Component.text("Yenileme sırasında hata oluştu" + suffix + ": " + result.message(), NamedTextColor.RED));
         }
     }
 

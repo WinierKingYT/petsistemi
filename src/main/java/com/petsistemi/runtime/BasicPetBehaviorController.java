@@ -34,9 +34,23 @@ public class BasicPetBehaviorController implements PetBehaviorController {
         this.defaultFollowSpeed = 1.2;
     }
 
-    /** Legacy constructor — reads initial distances from Bukkit config. */
+    /** Legacy / test constructor — reads initial distances from Bukkit config. */
     public BasicPetBehaviorController(FileConfiguration config) {
-        this((AtomicReference<RuntimeConfigurationSnapshot>) null);
+        this.configSnapshot = null;
+        if (config != null) {
+            double teleport = config.getDouble("runtime.teleport-distance", 20.0);
+            double stop     = config.getDouble("runtime.stop-distance",     2.0);
+            double start    = config.getDouble("runtime.start-distance",    3.5);
+            this.defaultFollowSpeed                = config.getDouble("runtime.follow-speed", 1.2);
+            this.defaultTeleportDistanceSquared    = teleport * teleport;
+            this.defaultStopDistanceSquared        = stop * stop;
+            this.defaultStartFollowDistanceSquared = start * start;
+        } else {
+            this.defaultTeleportDistanceSquared    = 400.0;
+            this.defaultStopDistanceSquared        = 4.0;
+            this.defaultStartFollowDistanceSquared = 12.25;
+            this.defaultFollowSpeed                = 1.2;
+        }
     }
 
     /** Headless / test constructor with explicit values. */
@@ -67,14 +81,15 @@ public class BasicPetBehaviorController implements PetBehaviorController {
             return;
         }
 
-        PluginConfiguration.RuntimeConfiguration runtimeConfig = (configSnapshot != null && configSnapshot.get() != null)
-                ? configSnapshot.get().configuration().runtime()
+        RuntimeConfigurationSnapshot snapshot = (configSnapshot != null) ? configSnapshot.get() : null;
+        PluginConfiguration.RuntimeConfiguration runtimeConfig = (snapshot != null && snapshot.configuration() != null)
+                ? snapshot.configuration().runtime()
                 : null;
 
-        double teleportDistSq = runtimeConfig != null ? runtimeConfig.teleportDistance() * runtimeConfig.teleportDistance() : defaultTeleportDistanceSquared;
-        double stopDistSq     = runtimeConfig != null ? runtimeConfig.stopDistance() * runtimeConfig.stopDistance() : defaultStopDistanceSquared;
-        double startDistSq    = runtimeConfig != null ? runtimeConfig.startDistance() * runtimeConfig.startDistance() : defaultStartFollowDistanceSquared;
-        double speed          = runtimeConfig != null ? runtimeConfig.followSpeed() : defaultFollowSpeed;
+        double teleportDistSq = (runtimeConfig != null) ? runtimeConfig.teleportDistance() * runtimeConfig.teleportDistance() : defaultTeleportDistanceSquared;
+        double stopDistSq     = (runtimeConfig != null) ? runtimeConfig.stopDistance() * runtimeConfig.stopDistance() : defaultStopDistanceSquared;
+        double startDistSq    = (runtimeConfig != null) ? runtimeConfig.startDistance() * runtimeConfig.startDistance() : defaultStartFollowDistanceSquared;
+        double speed          = (runtimeConfig != null) ? runtimeConfig.followSpeed() : defaultFollowSpeed;
 
         UUID petId = activePet.getPetId();
         Location petLoc  = entity.getLocation();
@@ -101,7 +116,6 @@ public class BasicPetBehaviorController implements PetBehaviorController {
             if (mob.getTarget() != null) mob.setTarget(null);
 
             if (distSq < stopDistSq) {
-                // Stop and face owner
                 if (mob.getPathfinder().hasPath()) mob.getPathfinder().stopPathfinding();
                 Vector dir = ownerLoc.toVector().subtract(petLoc.toVector());
                 if (dir.lengthSquared() > 0.01) {

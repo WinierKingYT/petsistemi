@@ -1,6 +1,7 @@
 package com.petsistemi.bootstrap.registrar;
 
 import com.petsistemi.bootstrap.PetPluginContext;
+import com.petsistemi.config.RuntimeConfigurationSnapshot;
 import com.petsistemi.runtime.ActivePet;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Entity;
@@ -11,9 +12,39 @@ import org.bukkit.scheduler.BukkitTask;
 public final class SchedulerRegistrar {
 
     public static void register(PetPluginContext context) {
-        long tickInterval = context.plugin().getConfig().getLong("runtime.tick-interval-ticks", 5L);
+        // Watchdog Task (Fixed lifecycle)
+        BukkitTask watchdogTask = Bukkit.getScheduler().runTaskTimer(context.plugin(), () -> {
+            if (context.coordinator() != null) {
+                context.coordinator().runWatchdogCheck();
+            }
+        }, 100L, 100L);
+        context.taskRegistry().registerNamed("watchdogTask", watchdogTask);
 
-        // Behavior Ticking Task
+        // Restore task for online players on startup
+        Bukkit.getScheduler().runTaskLater(context.plugin(), () -> {
+            for (Player player : Bukkit.getOnlinePlayers()) {
+                context.petService().getSelectedPet(player.getUniqueId()).ifPresent(snapshot -> {
+                    if (context.activePetRegistry().getByOwner(player.getUniqueId()).isEmpty()) {
+                        context.coordinator().restoreOnJoin(player);
+                    }
+                });
+            }
+        }, 20L);
+
+        // Single entrypoint for reloadable tasks
+        reevaluateReloadableTasks(context);
+    }
+
+    public static void reevaluateReloadableTasks(PetPluginContext context) {
+        RuntimeConfigurationSnapshot snapshot = (context.configSnapshot() != null) ? context.configSnapshot().get() : null;
+        var config = (snapshot != null) ? snapshot.configuration() : null;
+        var runtime = (config != null) ? config.runtime() : null;
+        var features = (config != null) ? config.features() : null;
+
+        long tickInterval = (runtime != null) ? runtime.tickIntervalTicks() : 5L;
+        if (tickInterval < 1L) tickInterval = 5L;
+
+        // 1. Behavior Ticking Task
         BukkitTask behaviorTask = Bukkit.getScheduler().runTaskTimer(context.plugin(), () -> {
             for (ActivePet activePet : context.activePetRegistry().getAllActive()) {
                 Player owner = Bukkit.getPlayer(activePet.getOwnerId());
@@ -25,50 +56,17 @@ public final class SchedulerRegistrar {
                 }
             }
         }, 20L, tickInterval);
+        context.taskRegistry().registerNamed("behaviorTask", behaviorTask);
 
-        context.taskRegistry().register(behaviorTask);
-
-        // Watchdog Task
-        BukkitTask watchdogTask = Bukkit.getScheduler().runTaskTimer(context.plugin(), () -> {
-            if (context.coordinator() != null) {
-                context.coordinator().runWatchdogCheck();
-            }
-        }, 100L, 100L);
-
-        context.taskRegistry().register(watchdogTask);
-
-        // Online Players Reload Restore Task
-        Bukkit.getScheduler().runTaskLater(context.plugin(), () -> {
-            for (Player player : Bukkit.getOnlinePlayers()) {
-                context.petService().getSelectedPet(player.getUniqueId()).ifPresent(snapshot -> {
-                    if (context.activePetRegistry().getByOwner(player.getUniqueId()).isEmpty()) {
-                        context.coordinator().restoreOnJoin(player);
-                    }
-                });
-            }
-        }, 20L);
-
-        // Milestone 2 Tasks: Passive XP
+        // 2. Passive XP Task
         BukkitTask passiveXpTask = Bukkit.getScheduler().runTaskTimer(
                 context.plugin(),
-                new com.petsistemi.progression.PetPassiveXpTask(context.activePetRegistry(), context.experienceService(), context.plugin().getConfig()),
+                new com.petsistemi.progression.PetPassiveXpTask(context.activePetRegistry(), context.experienceService(), context.configSnapshot()),
                 1200L, 1200L
         );
-        context.taskRegistry().register(passiveXpTask);
+        context.taskRegistry().registerNamed("passiveXpTask", passiveXpTask);
 
-        // Register initial feature flag tasks
-        reevaluateFeatureTasks(context);
-    }
-
-    public static void reevaluateFeatureTasks(PetPluginContext context) {
-        var snapshot = context.configSnapshot() != null ? context.configSnapshot().get() : null;
-        var features = snapshot != null && snapshot.configuration() != null ? snapshot.configuration().features() : null;
-
-        // Cancel existing feature tasks
-        context.taskRegistry().cancelNamed("abilityTask");
-        context.taskRegistry().cancelNamed("magnetTask");
-        context.taskRegistry().cancelNamed("particleTask");
-
+        // 3. Ability Task
         if (features != null && features.abilitiesEnabled()) {
             BukkitTask abilityTask = Bukkit.getScheduler().runTaskTimer(
                     context.plugin(),
@@ -76,8 +74,11 @@ public final class SchedulerRegistrar {
                     40L, 40L
             );
             context.taskRegistry().registerNamed("abilityTask", abilityTask);
+        } else {
+            context.taskRegistry().cancelNamed("abilityTask");
         }
 
+        // 4. Magnet Task
         if (features != null && features.magnetEnabled()) {
             BukkitTask magnetTask = Bukkit.getScheduler().runTaskTimer(
                     context.plugin(),
@@ -85,8 +86,11 @@ public final class SchedulerRegistrar {
                     20L, 20L
             );
             context.taskRegistry().registerNamed("magnetTask", magnetTask);
+        } else {
+            context.taskRegistry().cancelNamed("magnetTask");
         }
 
+        // 5. Particle Task
         if (features != null && features.particlesEnabled()) {
             BukkitTask particleTask = Bukkit.getScheduler().runTaskTimer(
                     context.plugin(),
@@ -94,6 +98,12 @@ public final class SchedulerRegistrar {
                     10L, 10L
             );
             context.taskRegistry().registerNamed("particleTask", particleTask);
+        } else {
+            context.taskRegistry().cancelNamed("particleTask");
         }
+    }
+
+    public static void reevaluateFeatureTasks(PetPluginContext context) {
+        reevaluateReloadableTasks(context);
     }
 }

@@ -18,6 +18,12 @@ public final class PluginConfigurationLoader {
 
         boolean progressionEnabled = config.getBoolean("progression.enabled", true);
         int maxLevel = config.getInt("progression.maximum-level", 100);
+        long xpPerLevel = config.getLong("progression.xp-per-level", 100L);
+        long passiveXpPerMinute = config.getLong("progression.passive-xp-per-minute", 10L);
+        double walkXpThreshold = config.getDouble("progression.walk-xp-threshold", 50.0);
+        long walkXpAmount = config.getLong("progression.walk-xp-amount", 5L);
+        long blockBreakXp = config.getLong("progression.block-break-xp", 2L);
+        double killXpMultiplier = config.getDouble("progression.kill-xp-multiplier", 0.5);
 
         long tickInterval = config.getLong("runtime.tick-interval-ticks", 5L);
         double startDist = config.getDouble("runtime.start-distance", 5.0);
@@ -36,7 +42,16 @@ public final class PluginConfigurationLoader {
         PluginConfiguration pluginConfig = new PluginConfiguration(
                 new PluginConfiguration.LimitsConfiguration(maxPets),
                 new PluginConfiguration.NamingConfiguration(minLen, maxLen, allowColors, allowFormatting),
-                new PluginConfiguration.ProgressionConfiguration(progressionEnabled, maxLevel),
+                new PluginConfiguration.ProgressionConfiguration(
+                        progressionEnabled,
+                        maxLevel,
+                        xpPerLevel,
+                        passiveXpPerMinute,
+                        walkXpThreshold,
+                        walkXpAmount,
+                        blockBreakXp,
+                        killXpMultiplier
+                ),
                 new PluginConfiguration.RuntimeConfiguration(tickInterval, startDist, stopDist, teleportDist, followSpeed),
                 new PluginConfiguration.DatabaseConfiguration(backupEnabled, failOnBackupError, maxBackups),
                 new PluginConfiguration.GuiConfiguration("Pet Menüsü", 6),

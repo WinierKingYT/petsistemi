@@ -1,6 +1,8 @@
 package com.petsistemi.listener;
 
 import com.petsistemi.api.PetExperienceService;
+import com.petsistemi.config.PluginConfiguration;
+import com.petsistemi.config.RuntimeConfigurationSnapshot;
 import com.petsistemi.domain.ExperienceSource;
 import com.petsistemi.runtime.ActivePet;
 import com.petsistemi.runtime.ActivePetRegistry;
@@ -22,47 +24,65 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class PetProgressionListener implements Listener {
 
-    // Sensible floor values
     private static final long KILL_XP_MIN  = 1L;
     private static final long BLOCK_XP_MIN = 1L;
 
     private final ActivePetRegistry activePetRegistry;
     private final PetExperienceService experienceService;
+    private final AtomicReference<RuntimeConfigurationSnapshot> configSnapshot;
 
-    // Config-driven values
-    private final double walkXpThreshold;   // blocks walked per XP award
-    private final long   walkXpAmount;      // XP per threshold
-    private final long   blockBreakXpBase;  // flat XP per block break
-    // Kill XP is dynamic (based on max health), but multiplier is configurable
-    private final double killXpMultiplier;
+    private final double fallbackWalkXpThreshold;
+    private final long fallbackWalkXpAmount;
+    private final long fallbackBlockBreakXpBase;
+    private final double fallbackKillXpMultiplier;
 
     private final Map<UUID, Double> distanceAccumulator = new ConcurrentHashMap<>();
 
-    /** Config-aware constructor. */
+    /** Production constructor using atomic configuration snapshot. */
     public PetProgressionListener(ActivePetRegistry activePetRegistry,
-                                   PetExperienceService experienceService,
-                                   FileConfiguration config) {
+                                  PetExperienceService experienceService,
+                                  AtomicReference<RuntimeConfigurationSnapshot> configSnapshot) {
         this.activePetRegistry = activePetRegistry;
         this.experienceService = experienceService;
+        this.configSnapshot = configSnapshot;
+        this.fallbackWalkXpThreshold = 50.0;
+        this.fallbackWalkXpAmount = 5L;
+        this.fallbackBlockBreakXpBase = 2L;
+        this.fallbackKillXpMultiplier = 0.5;
+    }
+
+    /** Config-aware legacy constructor using Bukkit FileConfiguration. */
+    public PetProgressionListener(ActivePetRegistry activePetRegistry,
+                                  PetExperienceService experienceService,
+                                  FileConfiguration config) {
+        this.activePetRegistry = activePetRegistry;
+        this.experienceService = experienceService;
+        this.configSnapshot = null;
         if (config != null) {
-            this.walkXpThreshold  = config.getDouble("progression.walk-xp-threshold",  50.0);
-            this.walkXpAmount     = config.getLong("progression.walk-xp-amount",        5L);
-            this.blockBreakXpBase = config.getLong("progression.block-break-xp",        2L);
-            this.killXpMultiplier = config.getDouble("progression.kill-xp-multiplier",  0.5);
+            this.fallbackWalkXpThreshold  = config.getDouble("progression.walk-xp-threshold",  50.0);
+            this.fallbackWalkXpAmount     = config.getLong("progression.walk-xp-amount",        5L);
+            this.fallbackBlockBreakXpBase = config.getLong("progression.block-break-xp",        2L);
+            this.fallbackKillXpMultiplier = config.getDouble("progression.kill-xp-multiplier",  0.5);
         } else {
-            this.walkXpThreshold  = 50.0;
-            this.walkXpAmount     = 5L;
-            this.blockBreakXpBase = 2L;
-            this.killXpMultiplier = 0.5;
+            this.fallbackWalkXpThreshold  = 50.0;
+            this.fallbackWalkXpAmount     = 5L;
+            this.fallbackBlockBreakXpBase = 2L;
+            this.fallbackKillXpMultiplier = 0.5;
         }
     }
 
-    /** Backward-compatible constructor (used by existing registrars). */
+    /** Backward-compatible constructor. */
     public PetProgressionListener(ActivePetRegistry activePetRegistry, PetExperienceService experienceService) {
-        this(activePetRegistry, experienceService, null);
+        this(activePetRegistry, experienceService, (FileConfiguration) null);
+    }
+
+    private PluginConfiguration.ProgressionConfiguration getProgressionConfig() {
+        RuntimeConfigurationSnapshot snapshot = (configSnapshot != null) ? configSnapshot.get() : null;
+        return (snapshot != null && snapshot.configuration() != null) ? snapshot.configuration().progression() : null;
     }
 
     // ── Mob Kill ────────────────────────────────────────────────────────────────
@@ -76,7 +96,9 @@ public class PetProgressionListener implements Listener {
         Optional<ActivePet> activeOpt = activePetRegistry.getByOwner(killer.getUniqueId());
         if (activeOpt.isEmpty()) return;
 
-        // XP scales with mob max-health × configurable multiplier
+        PluginConfiguration.ProgressionConfiguration prog = getProgressionConfig();
+        double killXpMultiplier = (prog != null) ? prog.killXpMultiplier() : fallbackKillXpMultiplier;
+
         double maxHealth = 20.0;
         AttributeInstance attr = entity.getAttribute(Attribute.GENERIC_MAX_HEALTH);
         if (attr != null) maxHealth = attr.getValue();
@@ -89,14 +111,17 @@ public class PetProgressionListener implements Listener {
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onBlockBreak(BlockBreakEvent event) {
-        if (blockBreakXpBase <= 0) return; // disabled by config
+        PluginConfiguration.ProgressionConfiguration prog = getProgressionConfig();
+        long blockBreakXp = (prog != null) ? prog.blockBreakXp() : fallbackBlockBreakXpBase;
+
+        if (blockBreakXp <= 0) return; // disabled by config
 
         Player player = event.getPlayer();
         Optional<ActivePet> activeOpt = activePetRegistry.getByOwner(player.getUniqueId());
         if (activeOpt.isEmpty()) return;
 
         experienceService.addExperience(activeOpt.get().getPetId(),
-                Math.max(BLOCK_XP_MIN, blockBreakXpBase),
+                Math.max(BLOCK_XP_MIN, blockBreakXp),
                 ExperienceSource.BLOCK_BREAK);
     }
 
@@ -106,7 +131,6 @@ public class PetProgressionListener implements Listener {
     public void onPlayerMove(PlayerMoveEvent event) {
         Location from = event.getFrom();
         Location to   = event.getTo();
-        // Skip head-only rotation events (no block change)
         if (to == null
                 || (from.getBlockX() == to.getBlockX()
                 &&  from.getBlockY() == to.getBlockY()
@@ -122,15 +146,19 @@ public class PetProgressionListener implements Listener {
         try {
             distance = from.distance(to);
         } catch (IllegalArgumentException ignored) {
-            return; // different worlds — skip
+            return;
         }
 
-        if (distance <= 0.0 || distance > 10.0) return; // >10 = teleport noise
+        if (distance <= 0.0 || distance > 10.0) return;
+
+        PluginConfiguration.ProgressionConfiguration prog = getProgressionConfig();
+        double walkXpThreshold = (prog != null) ? prog.walkXpThreshold() : fallbackWalkXpThreshold;
+        long walkXpAmount      = (prog != null) ? prog.walkXpAmount() : fallbackWalkXpAmount;
 
         UUID uuid = player.getUniqueId();
         double accumulated = distanceAccumulator.getOrDefault(uuid, 0.0) + distance;
         if (accumulated >= walkXpThreshold) {
-            distanceAccumulator.put(uuid, accumulated - walkXpThreshold); // carry remainder
+            distanceAccumulator.put(uuid, accumulated - walkXpThreshold);
             experienceService.addExperience(activeOpt.get().getPetId(), walkXpAmount, ExperienceSource.WALKING);
         } else {
             distanceAccumulator.put(uuid, accumulated);

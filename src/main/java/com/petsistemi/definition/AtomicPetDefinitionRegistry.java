@@ -2,7 +2,6 @@ package com.petsistemi.definition;
 
 import com.petsistemi.domain.PetDefinition;
 import org.bukkit.configuration.file.YamlConfiguration;
-import org.bukkit.entity.EntityType;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
@@ -11,8 +10,10 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
 
 public class AtomicPetDefinitionRegistry implements PetDefinitionRegistry {
 
@@ -23,25 +24,7 @@ public class AtomicPetDefinitionRegistry implements PetDefinitionRegistry {
         this.plugin = plugin;
     }
 
-    public void publishSnapshot(Map<String, PetDefinition> newSnapshot) {
-        if (newSnapshot != null) {
-            this.registry = new ConcurrentHashMap<>(newSnapshot);
-        }
-    }
-
-    @Override
-    public Optional<PetDefinition> find(String id) {
-        if (id == null) return Optional.empty();
-        return Optional.ofNullable(registry.get(id.toLowerCase()));
-    }
-
-    @Override
-    public Collection<PetDefinition> getAll() {
-        return Collections.unmodifiableCollection(registry.values());
-    }
-
-    @Override
-    public synchronized void reload() {
+    public Map<String, PetDefinition> loadCandidateSnapshot() throws IllegalStateException {
         File petsFolder = new File(plugin.getDataFolder(), "pets");
         if (!petsFolder.exists()) {
             petsFolder.mkdirs();
@@ -54,7 +37,7 @@ public class AtomicPetDefinitionRegistry implements PetDefinitionRegistry {
             files = petsFolder.listFiles((dir, name) -> name.endsWith(".yml") || name.endsWith(".yaml"));
         }
 
-        Map<String, PetDefinition> newSnapshot = new HashMap<>();
+        Map<String, PetDefinition> candidateMap = new HashMap<>();
         Map<String, List<String>> errorsPerFile = new HashMap<>();
 
         if (files != null) {
@@ -101,7 +84,7 @@ public class AtomicPetDefinitionRegistry implements PetDefinitionRegistry {
                     if (!errors.isEmpty()) {
                         errorsPerFile.put(file.getName(), errors);
                     } else {
-                        newSnapshot.put(id, def);
+                        candidateMap.put(id, def);
                     }
                 } catch (Exception e) {
                     errorsPerFile.put(file.getName(), List.of("Ayrıştırma hatası: " + e.getMessage()));
@@ -110,15 +93,48 @@ public class AtomicPetDefinitionRegistry implements PetDefinitionRegistry {
         }
 
         if (!errorsPerFile.isEmpty()) {
-            plugin.getLogger().severe("Pet tanımları yüklenirken " + errorsPerFile.size() + " dosyada hata tespit edildi! Eski tanım snapshot'ı korundu.");
-            for (Map.Entry<String, List<String>> entry : errorsPerFile.entrySet()) {
-                plugin.getLogger().severe("  - " + entry.getKey() + ": " + String.join(", ", entry.getValue()));
-            }
-            return;
+            String errorSummary = errorsPerFile.entrySet().stream()
+                    .map(e -> e.getKey() + ": [" + String.join("; ", e.getValue()) + "]")
+                    .collect(Collectors.joining(", "));
+            throw new IllegalStateException("Pet tanımları yüklenirken hata oluştu! Hatalı dosyalar: " + errorSummary);
         }
 
-        publishSnapshot(newSnapshot);
-        plugin.getLogger().info("Pet tanımları başarıyla yüklendi. Aktif tanım sayısı: " + newSnapshot.size());
+        return Collections.unmodifiableMap(candidateMap);
+    }
+
+    public void publishSnapshot(Map<String, PetDefinition> candidateMap) {
+        Objects.requireNonNull(candidateMap, "PetDefinition candidate map null olamaz.");
+        this.registry = new ConcurrentHashMap<>(candidateMap);
+    }
+
+    public Map<String, PetDefinition> currentSnapshot() {
+        return Collections.unmodifiableMap(registry);
+    }
+
+    @Override
+    public Optional<PetDefinition> find(String id) {
+        if (id == null) return Optional.empty();
+        return Optional.ofNullable(registry.get(id.toLowerCase()));
+    }
+
+    @Override
+    public Collection<PetDefinition> getAll() {
+        return Collections.unmodifiableCollection(registry.values());
+    }
+
+    @Override
+    public synchronized void reload() {
+        try {
+            Map<String, PetDefinition> candidate = loadCandidateSnapshot();
+            publishSnapshot(candidate);
+            if (plugin != null && plugin.getLogger() != null) {
+                plugin.getLogger().info("Pet tanımları başarıyla yüklendi. Aktif tanım sayısı: " + candidate.size());
+            }
+        } catch (Exception e) {
+            if (plugin != null && plugin.getLogger() != null) {
+                plugin.getLogger().severe(e.getMessage());
+            }
+        }
     }
 
     private void saveDefaultPetFiles(File petsFolder) {
@@ -126,7 +142,7 @@ public class AtomicPetDefinitionRegistry implements PetDefinitionRegistry {
         for (String defFile : defaults) {
             try {
                 File target = new File(petsFolder, defFile);
-                if (!target.exists()) {
+                if (!target.exists() && plugin != null) {
                     plugin.saveResource("pets/" + defFile, false);
                 }
             } catch (Exception ignored) {}

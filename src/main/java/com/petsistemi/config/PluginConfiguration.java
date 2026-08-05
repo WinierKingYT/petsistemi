@@ -22,7 +22,20 @@ public record PluginConfiguration(
 
     public record LimitsConfiguration(int maximumOwnedPets) {}
     public record NamingConfiguration(int minimumLength, int maximumLength, boolean allowColors, boolean allowFormatting) {}
-    public record ProgressionConfiguration(boolean enabled, int maximumLevel) {}
+    public record ProgressionConfiguration(
+            boolean enabled,
+            int maximumLevel,
+            long xpPerLevel,
+            long passiveXpPerMinute,
+            double walkXpThreshold,
+            long walkXpAmount,
+            long blockBreakXp,
+            double killXpMultiplier
+    ) {
+        public ProgressionConfiguration(boolean enabled, int maximumLevel) {
+            this(enabled, maximumLevel, 100L, 10L, 50.0, 5L, 2L, 0.5);
+        }
+    }
     public record RuntimeConfiguration(long tickIntervalTicks, double startDistance, double stopDistance, double teleportDistance, double followSpeed) {}
     public record DatabaseConfiguration(boolean backupEnabled, boolean failOnBackupError, int maxBackups) {}
     public record GuiConfiguration(String title, int rows) {}

@@ -9,47 +9,76 @@ import java.io.File;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
+import java.util.Objects;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class MessageService {
 
     private final JavaPlugin plugin;
-    private MessageBundle activeBundle;
+    private final AtomicReference<MessageBundle> activeBundle = new AtomicReference<>();
 
     public MessageService(JavaPlugin plugin) {
         this.plugin = plugin;
-        loadBundle(plugin.getConfig().getString("locale", "tr_TR"));
+        String initialLocale = (plugin != null && plugin.getConfig() != null) ? plugin.getConfig().getString("locale", "tr_TR") : "tr_TR";
+        publish(loadCandidate(initialLocale));
     }
 
-    public void reload() {
-        loadBundle(plugin.getConfig().getString("locale", "tr_TR"));
-    }
+    public MessageBundle loadCandidate(String locale) {
+        String targetLocale = (locale != null && !locale.trim().isEmpty()) ? locale.trim() : "tr_TR";
+        YamlConfiguration yamlConfig = null;
 
-    public void loadBundle(String locale) {
-        File messageFile = new File(plugin.getDataFolder(), "messages/" + locale + ".yml");
-        YamlConfiguration yamlConfig;
+        if (plugin != null && plugin.getDataFolder() != null) {
+            File messageFile = new File(plugin.getDataFolder(), "messages/" + targetLocale + ".yml");
+            if (messageFile.exists()) {
+                try {
+                    yamlConfig = YamlConfiguration.loadConfiguration(messageFile);
+                } catch (Exception ignored) {}
+            }
+        }
 
-        if (messageFile.exists()) {
-            yamlConfig = YamlConfiguration.loadConfiguration(messageFile);
-        } else {
-            InputStream is = plugin.getResource("messages/" + locale + ".yml");
+        if (yamlConfig == null && plugin != null) {
+            InputStream is = plugin.getResource("messages/" + targetLocale + ".yml");
             if (is == null) {
                 is = plugin.getResource("messages/tr_TR.yml");
             }
             if (is != null) {
-                yamlConfig = YamlConfiguration.loadConfiguration(new InputStreamReader(is, StandardCharsets.UTF_8));
-            } else {
-                yamlConfig = new YamlConfiguration();
+                try (InputStreamReader reader = new InputStreamReader(is, StandardCharsets.UTF_8)) {
+                    yamlConfig = YamlConfiguration.loadConfiguration(reader);
+                } catch (Exception ignored) {}
             }
         }
 
-        this.activeBundle = new MessageBundle(yamlConfig);
+        if (yamlConfig == null) {
+            yamlConfig = new YamlConfiguration();
+        }
+
+        return new MessageBundle(yamlConfig);
+    }
+
+    public void publish(MessageBundle candidate) {
+        Objects.requireNonNull(candidate, "MessageBundle candidate null olamaz.");
+        this.activeBundle.set(candidate);
+    }
+
+    public MessageBundle currentBundle() {
+        return activeBundle.get();
+    }
+
+    public void reload() {
+        String locale = (plugin != null && plugin.getConfig() != null) ? plugin.getConfig().getString("locale", "tr_TR") : "tr_TR";
+        publish(loadCandidate(locale));
+    }
+
+    public void loadBundle(String locale) {
+        publish(loadCandidate(locale));
     }
 
     public Component getComponent(String key, String fallback, PlaceholderMap placeholders) {
-        if (activeBundle == null) {
+        MessageBundle bundle = currentBundle();
+        if (bundle == null) {
             return MiniMessageRenderer.render(fallback, placeholders);
         }
-        String raw = activeBundle.getMessage(key, fallback);
+        String raw = bundle.getMessage(key, fallback);
         return MiniMessageRenderer.render(raw, placeholders);
     }
 

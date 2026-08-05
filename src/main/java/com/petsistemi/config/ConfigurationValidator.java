@@ -48,8 +48,26 @@ public final class ConfigurationValidator {
         if (config.progression() == null) {
             errors.add("progression yapılandırması eksik.");
         } else {
-            if (config.progression().maximumLevel() <= 0) {
-                errors.add("progression.maximum-level 0'dan büyük olmalıdır.");
+            if (config.progression().maximumLevel() < 1) {
+                errors.add("progression.maximum-level en az 1 olmalıdır.");
+            }
+            if (config.progression().xpPerLevel() < 1) {
+                errors.add("progression.xp-per-level en az 1 olmalıdır.");
+            }
+            if (config.progression().passiveXpPerMinute() < 0) {
+                errors.add("progression.passive-xp-per-minute negatif olamaz.");
+            }
+            if (config.progression().walkXpThreshold() <= 0 || !Double.isFinite(config.progression().walkXpThreshold())) {
+                errors.add("progression.walk-xp-threshold 0'dan büyük ve sonlu olmalıdır.");
+            }
+            if (config.progression().walkXpAmount() < 0) {
+                errors.add("progression.walk-xp-amount negatif olamaz.");
+            }
+            if (config.progression().blockBreakXp() < 0) {
+                errors.add("progression.block-break-xp negatif olamaz.");
+            }
+            if (config.progression().killXpMultiplier() < 0 || !Double.isFinite(config.progression().killXpMultiplier())) {
+                errors.add("progression.kill-xp-multiplier negatif olamaz ve sonlu olmalıdır.");
             }
         }
 
