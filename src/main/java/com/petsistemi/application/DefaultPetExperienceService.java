@@ -66,7 +66,7 @@ public class DefaultPetExperienceService implements PetExperienceService, AsyncP
 
     @Override
     public ExperienceResult addExperience(UUID petId, long amount, ExperienceSource source) {
-        if (!plugin.getConfig().getBoolean("progression.enabled", true)) {
+        if (plugin != null && plugin.getConfig() != null && !plugin.getConfig().getBoolean("progression.enabled", true)) {
             return new ExperienceResult(false, "Sistem genelinde tecrübe sistemi devre dışı.", 0, false);
         }
 
@@ -85,18 +85,21 @@ public class DefaultPetExperienceService implements PetExperienceService, AsyncP
             return new ExperienceResult(false, "Bu pet türü için gelişim sistemi kapalı.", pet.experience(), false);
         }
 
-        int maxLevel = definition != null ? definition.maxLevel() : plugin.getConfig().getInt("progression.maximum-level", 100);
+        int maxLevel = definition != null ? definition.maxLevel() : (plugin != null && plugin.getConfig() != null ? plugin.getConfig().getInt("progression.maximum-level", 100) : 100);
 
         PetSnapshot snapshot = mapToSnapshot(pet);
 
         // Trigger Event
-        PetGainExperienceEvent event = new PetGainExperienceEvent(snapshot, amount, source);
-        Bukkit.getPluginManager().callEvent(event);
-        if (event.isCancelled()) {
-            return new ExperienceResult(false, "Deneyim kazanma işlemi iptal edildi.", pet.experience(), false);
+        long actualAmount = amount;
+        if (Bukkit.getServer() != null) {
+            PetGainExperienceEvent event = new PetGainExperienceEvent(snapshot, amount, source);
+            Bukkit.getPluginManager().callEvent(event);
+            if (event.isCancelled()) {
+                return new ExperienceResult(false, "Deneyim kazanma işlemi iptal edildi.", pet.experience(), false);
+            }
+            actualAmount = event.getAmount();
         }
 
-        long actualAmount = event.getAmount();
         if (actualAmount <= 0) {
             return new ExperienceResult(false, "Etkinlik sonrası geçerli tecrübe miktarı sıfır veya negatif kaldı.", pet.experience(), false);
         }
@@ -134,7 +137,7 @@ public class DefaultPetExperienceService implements PetExperienceService, AsyncP
             }
         }
 
-        if (leveledUp) {
+        if (leveledUp && Bukkit.getServer() != null) {
             PetLevelUpEvent levelUpEvent = new PetLevelUpEvent(mapToSnapshot(updatedPet), oldLevel, newLevel);
             Bukkit.getPluginManager().callEvent(levelUpEvent);
         }

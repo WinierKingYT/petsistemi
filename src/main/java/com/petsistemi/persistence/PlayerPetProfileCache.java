@@ -44,8 +44,8 @@ public class PlayerPetProfileCache {
 
     public PlayerPetProfile loadProfile(UUID ownerId) {
         long gen = beginLoad(ownerId);
-        List<PetInstance> pets = petRepository.findByOwner(ownerId);
-        Optional<PetSelection> selection = selectionRepository.findByOwner(ownerId);
+        List<PetInstance> pets = petRepository != null ? petRepository.findByOwner(ownerId) : Collections.emptyList();
+        Optional<PetSelection> selection = selectionRepository != null ? selectionRepository.findByOwner(ownerId) : Optional.empty();
         UUID selectedId = selection.map(PetSelection::petId).orElse(null);
 
         Map<UUID, PetSnapshot> petMap = new HashMap<>();
@@ -75,47 +75,56 @@ public class PlayerPetProfileCache {
             return CompletableFuture.completedFuture(existing);
         }
 
-        return inFlightLoads.computeIfAbsent(ownerId, k -> {
-            if (dbExecutor == null) {
-                try {
-                    PlayerPetProfile loaded = loadProfile(ownerId);
-                    return CompletableFuture.completedFuture(loaded);
-                } catch (Exception e) {
-                    CompletableFuture<PlayerPetProfile> failed = new CompletableFuture<>();
-                    failed.completeExceptionally(e);
-                    return failed;
-                } finally {
-                    inFlightLoads.remove(ownerId);
-                }
-            } else {
-                long gen = beginLoad(ownerId);
-                return dbExecutor.submit(() -> {
-                    List<PetInstance> pets = petRepository.findByOwner(ownerId);
-                    Optional<PetSelection> selection = selectionRepository.findByOwner(ownerId);
-                    UUID selectedId = selection.map(PetSelection::petId).orElse(null);
+        CompletableFuture<PlayerPetProfile> existingFuture = inFlightLoads.get(ownerId);
+        if (existingFuture != null) {
+            return existingFuture;
+        }
 
-                    Map<UUID, PetSnapshot> petMap = new HashMap<>();
-                    for (PetInstance pet : pets) {
-                        boolean isSelected = selectedId != null && selectedId.equals(pet.petId());
-                        petMap.put(pet.petId(), new PetSnapshot(
-                                pet.petId(),
-                                pet.ownerId(),
-                                pet.definitionId(),
-                                pet.customName(),
-                                pet.level(),
-                                pet.experience(),
-                                pet.availabilityState(),
-                                isSelected,
-                                false
-                        ));
-                    }
-                    return new PlayerPetProfile(ownerId, Collections.unmodifiableMap(petMap), selectedId, System.currentTimeMillis(), 1L);
-                }).thenApply(loaded -> {
-                    completeLoad(ownerId, gen, loaded);
-                    return loaded;
-                }).whenComplete((res, ex) -> inFlightLoads.remove(ownerId));
+        CompletableFuture<PlayerPetProfile> newFuture;
+        if (dbExecutor == null) {
+            try {
+                PlayerPetProfile loaded = loadProfile(ownerId);
+                newFuture = CompletableFuture.completedFuture(loaded);
+            } catch (Exception e) {
+                newFuture = new CompletableFuture<>();
+                newFuture.completeExceptionally(e);
             }
-        });
+        } else {
+            long gen = beginLoad(ownerId);
+            newFuture = dbExecutor.submit(() -> {
+                List<PetInstance> pets = petRepository != null ? petRepository.findByOwner(ownerId) : Collections.emptyList();
+                Optional<PetSelection> selection = selectionRepository != null ? selectionRepository.findByOwner(ownerId) : Optional.empty();
+                UUID selectedId = selection.map(PetSelection::petId).orElse(null);
+
+                Map<UUID, PetSnapshot> petMap = new HashMap<>();
+                for (PetInstance pet : pets) {
+                    boolean isSelected = selectedId != null && selectedId.equals(pet.petId());
+                    petMap.put(pet.petId(), new PetSnapshot(
+                            pet.petId(),
+                            pet.ownerId(),
+                            pet.definitionId(),
+                            pet.customName(),
+                            pet.level(),
+                            pet.experience(),
+                            pet.availabilityState(),
+                            isSelected,
+                            false
+                    ));
+                }
+                return new PlayerPetProfile(ownerId, Collections.unmodifiableMap(petMap), selectedId, System.currentTimeMillis(), 1L);
+            }).thenApply(loaded -> {
+                completeLoad(ownerId, gen, loaded);
+                return loaded;
+            });
+        }
+
+        CompletableFuture<PlayerPetProfile> actualFuture = inFlightLoads.putIfAbsent(ownerId, newFuture);
+        if (actualFuture != null) {
+            return actualFuture;
+        }
+
+        newFuture.whenComplete((res, ex) -> inFlightLoads.remove(ownerId));
+        return newFuture;
     }
 
     public Optional<PlayerPetProfile> getProfile(UUID ownerId) {
