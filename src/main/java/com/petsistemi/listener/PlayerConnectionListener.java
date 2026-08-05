@@ -1,7 +1,5 @@
 package com.petsistemi.listener;
 
-import com.petsistemi.api.PetService;
-import com.petsistemi.api.PetSnapshot;
 import com.petsistemi.persistence.DatabaseExecutor;
 import com.petsistemi.persistence.PlayerPetProfileCache;
 import com.petsistemi.runtime.PetRuntimeCoordinator;
@@ -13,19 +11,18 @@ import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 
-import java.util.Optional;
+import java.util.UUID;
+import java.util.logging.Level;
 
 public class PlayerConnectionListener implements Listener {
 
     private final JavaPlugin plugin;
-    private final PetService petService;
     private final PetRuntimeCoordinator coordinator;
     private final PlayerPetProfileCache profileCache;
     private final DatabaseExecutor dbExecutor;
 
-    public PlayerConnectionListener(JavaPlugin plugin, PetService petService, PetRuntimeCoordinator coordinator, PlayerPetProfileCache profileCache, DatabaseExecutor dbExecutor) {
+    public PlayerConnectionListener(JavaPlugin plugin, PetRuntimeCoordinator coordinator, PlayerPetProfileCache profileCache, DatabaseExecutor dbExecutor) {
         this.plugin = plugin;
-        this.petService = petService;
         this.coordinator = coordinator;
         this.profileCache = profileCache;
         this.dbExecutor = dbExecutor;
@@ -34,25 +31,37 @@ public class PlayerConnectionListener implements Listener {
     @EventHandler
     public void onJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
+        UUID ownerId = player.getUniqueId();
 
-        // 1. Asynchronously load profile into cache
-        if (dbExecutor != null && profileCache != null) {
-            dbExecutor.executeAsync(() -> profileCache.loadProfile(player.getUniqueId()));
+        if (profileCache != null) {
+            profileCache.loadProfileAsync(dbExecutor, ownerId).whenComplete((profile, ex) -> {
+                if (ex != null) {
+                    if (plugin != null) {
+                        plugin.getLogger().log(Level.SEVERE, "Profil yükleme hatası [" + ownerId + "]: " + ex.getMessage(), ex);
+                    }
+                    return;
+                }
+                Bukkit.getScheduler().runTask(plugin, () -> {
+                    if (player.isOnline()) {
+                        coordinator.restoreOnJoin(player);
+                    }
+                });
+            });
+        } else {
+            Bukkit.getScheduler().runTask(plugin, () -> {
+                if (player.isOnline()) {
+                    coordinator.restoreOnJoin(player);
+                }
+            });
         }
-
-        // 2. Restore pet 20 ticks later after chunk loading
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
-            if (player.isOnline()) {
-                coordinator.restoreOnJoin(player);
-            }
-        }, 20L);
     }
 
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
-        coordinator.despawnOnQuit(event.getPlayer().getUniqueId());
+        UUID ownerId = event.getPlayer().getUniqueId();
+        coordinator.despawnOnQuit(ownerId);
         if (profileCache != null) {
-            profileCache.invalidate(event.getPlayer().getUniqueId());
+            profileCache.invalidate(ownerId);
         }
     }
 }

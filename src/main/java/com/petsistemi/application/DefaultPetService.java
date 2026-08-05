@@ -26,7 +26,9 @@ import java.util.*;
 import java.util.logging.Level;
 import java.util.stream.Collectors;
 
-public class DefaultPetService implements PetService {
+import com.petsistemi.api.AsyncPetService;
+
+public class DefaultPetService implements PetService, AsyncPetService {
 
     private final JavaPlugin plugin;
     private final PetRepository repository;
@@ -284,7 +286,7 @@ public class DefaultPetService implements PetService {
 
     @Override
     public PetRenameResult rename(UUID ownerId, UUID petId, String newName) {
-        Player player = Bukkit.getPlayer(ownerId);
+        Player player = Bukkit.getServer() != null ? Bukkit.getPlayer(ownerId) : null;
         if (player != null && player.isOnline()) {
             return rename(player, petId, newName);
         }
@@ -321,7 +323,7 @@ public class DefaultPetService implements PetService {
         }
 
         PetInstance pet = petOpt.get();
-        if (!pet.ownerId().equals(owner.getUniqueId())) {
+        if (owner != null && !pet.ownerId().equals(owner.getUniqueId())) {
             return new PetRenameResult(false, "Bu pet size ait değil.");
         }
 
@@ -332,13 +334,15 @@ public class DefaultPetService implements PetService {
 
         PetSnapshot snapshot = mapToSnapshot(pet);
 
-        PetRenameEvent event = new PetRenameEvent(owner, snapshot, pet.customName(), validatedName);
-        Bukkit.getPluginManager().callEvent(event);
-        if (event.isCancelled()) {
-            return new PetRenameResult(false, "İsim değiştirme işlemi başka bir eklenti tarafından engellendi.");
+        String finalName = validatedName;
+        if (owner != null && Bukkit.getServer() != null) {
+            PetRenameEvent event = new PetRenameEvent(owner, snapshot, pet.customName(), validatedName);
+            Bukkit.getPluginManager().callEvent(event);
+            if (event.isCancelled()) {
+                return new PetRenameResult(false, "İsim değiştirme işlemi başka bir eklenti tarafından engellendi.");
+            }
+            finalName = event.getNewName();
         }
-
-        String finalName = event.getNewName();
         PetInstance updated = pet.withCustomName(finalName);
         try {
             repository.update(updated);
@@ -347,13 +351,16 @@ public class DefaultPetService implements PetService {
         }
 
         // If currently active, update nameplate
-        Optional<ActivePet> activeOpt = activePetRegistry.getByOwner(owner.getUniqueId());
-        if (activeOpt.isPresent()) {
-            ActivePet activePet = activeOpt.get();
-            if (activePet.getPetId().equals(petId)) {
-                definitionRegistry.find(pet.definitionId()).ifPresent(def -> 
-                    entityController.updateName(activePet.getSpawnedEntity(), updated, def)
-                );
+        UUID ownerUuid = owner != null ? owner.getUniqueId() : pet.ownerId();
+        if (activePetRegistry != null) {
+            Optional<ActivePet> activeOpt = activePetRegistry.getByOwner(ownerUuid);
+            if (activeOpt.isPresent()) {
+                ActivePet activePet = activeOpt.get();
+                if (activePet.getPetId().equals(petId) && definitionRegistry != null && entityController != null) {
+                    definitionRegistry.find(pet.definitionId()).ifPresent(def -> 
+                        entityController.updateName(activePet.getSpawnedEntity(), updated, def)
+                    );
+                }
             }
         }
 
@@ -449,10 +456,10 @@ public class DefaultPetService implements PetService {
         if (name == null) return null;
         String clean = name.trim();
 
-        int min = plugin.getConfig().getInt("naming.minimum-length", 2);
-        int max = plugin.getConfig().getInt("naming.maximum-length", 16);
-        boolean allowColors = plugin.getConfig().getBoolean("naming.allow-colors", false);
-        boolean allowFormatting = plugin.getConfig().getBoolean("naming.allow-formatting", false);
+        int min = (plugin != null && plugin.getConfig() != null) ? plugin.getConfig().getInt("naming.minimum-length", 2) : 2;
+        int max = (plugin != null && plugin.getConfig() != null) ? plugin.getConfig().getInt("naming.maximum-length", 16) : 16;
+        boolean allowColors = (plugin != null && plugin.getConfig() != null) && plugin.getConfig().getBoolean("naming.allow-colors", false);
+        boolean allowFormatting = (plugin != null && plugin.getConfig() != null) && plugin.getConfig().getBoolean("naming.allow-formatting", false);
 
         if (clean.length() < min || clean.length() > max) {
             return null;
@@ -504,5 +511,100 @@ public class DefaultPetService implements PetService {
                 selected,
                 spawned
         );
+    }
+
+    @Override
+    public java.util.concurrent.CompletableFuture<Optional<PetSnapshot>> findPetAsync(UUID petId) {
+        if (dbExecutor == null) return java.util.concurrent.CompletableFuture.completedFuture(findPet(petId));
+        return dbExecutor.submit(() -> repository.findById(petId).map(this::mapToSnapshot));
+    }
+
+    @Override
+    public java.util.concurrent.CompletableFuture<Collection<PetSnapshot>> getOwnedPetsAsync(UUID ownerId) {
+        if (profileCache != null) {
+            Optional<com.petsistemi.persistence.PlayerPetProfile> cached = profileCache.getProfile(ownerId);
+            if (cached.isPresent()) {
+                return java.util.concurrent.CompletableFuture.completedFuture(getOwnedPets(ownerId));
+            }
+            return profileCache.loadProfileAsync(dbExecutor, ownerId).thenApply(profile -> getOwnedPets(ownerId));
+        }
+        if (dbExecutor == null) return java.util.concurrent.CompletableFuture.completedFuture(getOwnedPets(ownerId));
+        return dbExecutor.submit(() -> getOwnedPets(ownerId));
+    }
+
+    @Override
+    public java.util.concurrent.CompletableFuture<Optional<PetSnapshot>> getSelectedPetAsync(UUID ownerId) {
+        if (profileCache != null) {
+            Optional<com.petsistemi.persistence.PlayerPetProfile> cached = profileCache.getProfile(ownerId);
+            if (cached.isPresent()) {
+                return java.util.concurrent.CompletableFuture.completedFuture(getSelectedPet(ownerId));
+            }
+            return profileCache.loadProfileAsync(dbExecutor, ownerId).thenApply(profile -> getSelectedPet(ownerId));
+        }
+        if (dbExecutor == null) return java.util.concurrent.CompletableFuture.completedFuture(getSelectedPet(ownerId));
+        return dbExecutor.submit(() -> getSelectedPet(ownerId));
+    }
+
+    @Override
+    public java.util.concurrent.CompletableFuture<PetGiveResult> givePetAsync(UUID ownerId, String definitionId) {
+        if (dbExecutor == null) return java.util.concurrent.CompletableFuture.completedFuture(givePet(ownerId, definitionId));
+        return dbExecutor.submit(() -> {
+            PetGiveResult result = givePet(ownerId, definitionId);
+            if (result.success() && result.petSnapshot() != null && profileCache != null) {
+                profileCache.updatePet(ownerId, result.petSnapshot());
+            }
+            return result;
+        });
+    }
+
+    @Override
+    public java.util.concurrent.CompletableFuture<PetRenameResult> renameAsync(UUID ownerId, UUID petId, String newName) {
+        if (dbExecutor == null) return java.util.concurrent.CompletableFuture.completedFuture(rename(ownerId, petId, newName));
+        return dbExecutor.submit(() -> {
+            PetRenameResult result = rename(ownerId, petId, newName);
+            if (result.success() && profileCache != null) {
+                profileCache.updateName(ownerId, petId, validateName(newName));
+            }
+            return result;
+        });
+    }
+
+    @Override
+    public java.util.concurrent.CompletableFuture<PetDisableResult> disablePetAsync(UUID petId) {
+        if (dbExecutor == null) return java.util.concurrent.CompletableFuture.completedFuture(disablePet(petId));
+        return dbExecutor.submit(() -> {
+            Optional<PetInstance> petOpt = repository.findById(petId);
+            PetDisableResult result = disablePet(petId);
+            if (result.success() && petOpt.isPresent() && profileCache != null) {
+                profileCache.updateAvailability(petOpt.get().ownerId(), petId, PetAvailabilityState.DISABLED);
+            }
+            return result;
+        });
+    }
+
+    @Override
+    public java.util.concurrent.CompletableFuture<PetDisableResult> enablePetAsync(UUID petId) {
+        if (dbExecutor == null) return java.util.concurrent.CompletableFuture.completedFuture(enablePet(petId));
+        return dbExecutor.submit(() -> {
+            Optional<PetInstance> petOpt = repository.findById(petId);
+            PetDisableResult result = enablePet(petId);
+            if (result.success() && petOpt.isPresent() && profileCache != null) {
+                profileCache.updateAvailability(petOpt.get().ownerId(), petId, PetAvailabilityState.AVAILABLE);
+            }
+            return result;
+        });
+    }
+
+    @Override
+    public java.util.concurrent.CompletableFuture<PetRemoveResult> removePetAsync(UUID petId) {
+        if (dbExecutor == null) return java.util.concurrent.CompletableFuture.completedFuture(removePet(petId));
+        return dbExecutor.submit(() -> {
+            Optional<PetInstance> petOpt = repository.findById(petId);
+            PetRemoveResult result = removePet(petId);
+            if (result.success() && petOpt.isPresent() && profileCache != null) {
+                profileCache.removePet(petOpt.get().ownerId(), petId);
+            }
+            return result;
+        });
     }
 }

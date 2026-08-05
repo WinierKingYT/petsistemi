@@ -60,6 +60,7 @@ public class RuntimeReloadService {
         RuntimeConfigurationSnapshot oldSnapshot = (context != null && context.configSnapshot() != null) ? context.configSnapshot().get() : null;
         MessageBundle oldBundle = messageService != null ? messageService.currentBundle() : null;
         Map<String, PetDefinition> oldDefinitions = definitionRegistry != null ? definitionRegistry.currentSnapshot() : null;
+        String oldBukkitConfigYaml = plugin.getConfig() != null ? plugin.getConfig().saveToString() : null;
 
         // 6-11. Publish candidate state and re-evaluate tasks
         try {
@@ -103,6 +104,9 @@ public class RuntimeReloadService {
                 }
                 if (context != null && context.configSnapshot() != null && oldSnapshot != null) {
                     context.configSnapshot().set(oldSnapshot);
+                }
+                if (oldBukkitConfigYaml != null && plugin.getConfig() != null) {
+                    plugin.getConfig().loadFromString(oldBukkitConfigYaml);
                 }
                 if (context != null) {
                     SchedulerRegistrar.reevaluateReloadableTasks(context);

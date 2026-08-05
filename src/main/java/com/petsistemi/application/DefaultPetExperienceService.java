@@ -21,7 +21,9 @@ import org.bukkit.plugin.java.JavaPlugin;
 import java.util.Optional;
 import java.util.UUID;
 
-public class DefaultPetExperienceService implements PetExperienceService {
+import com.petsistemi.api.AsyncPetExperienceService;
+
+public class DefaultPetExperienceService implements PetExperienceService, AsyncPetExperienceService {
 
     private final JavaPlugin plugin;
     private final PetRepository repository;
@@ -297,5 +299,29 @@ public class DefaultPetExperienceService implements PetExperienceService {
                 selected,
                 spawned
         );
+    }
+
+    @Override
+    public java.util.concurrent.CompletableFuture<ExperienceResult> addExperienceAsync(UUID petId, long amount, ExperienceSource source) {
+        if (dbExecutor == null) return java.util.concurrent.CompletableFuture.completedFuture(addExperience(petId, amount, source));
+        return dbExecutor.submit(() -> addExperience(petId, amount, source));
+    }
+
+    @Override
+    public java.util.concurrent.CompletableFuture<ExperienceResult> removeExperienceAsync(UUID petId, long amount) {
+        if (dbExecutor == null) return java.util.concurrent.CompletableFuture.completedFuture(removeExperience(petId, amount));
+        return dbExecutor.submit(() -> removeExperience(petId, amount));
+    }
+
+    @Override
+    public java.util.concurrent.CompletableFuture<ExperienceResult> setExperienceAsync(UUID petId, long amount, ExperienceSource source) {
+        if (dbExecutor == null) return java.util.concurrent.CompletableFuture.completedFuture(setExperience(petId, amount, source));
+        return dbExecutor.submit(() -> setExperience(petId, amount, source));
+    }
+
+    @Override
+    public java.util.concurrent.CompletableFuture<LevelResult> setLevelAsync(UUID petId, int level) {
+        if (dbExecutor == null) return java.util.concurrent.CompletableFuture.completedFuture(setLevel(petId, level));
+        return dbExecutor.submit(() -> setLevel(petId, level));
     }
 }

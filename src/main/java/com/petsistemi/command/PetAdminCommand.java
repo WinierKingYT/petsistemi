@@ -517,7 +517,9 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
                 auditLogger.logAction("RELOAD", sender.getName(), null, null, "Atomik reload başarıyla tamamlandı");
             }
         } else {
-            String suffix = result.rolledBack() ? " (eski canlı konfigürasyon korundu)" : " (eski canlı konfigürasyon korundu)";
+            String suffix = result.rolledBack() 
+                    ? " (eski canlı konfigürasyon başarıyla geri yüklendi)" 
+                    : " (rollback tamamlanamadı; sunucu yöneticisi logları kontrol etmeli)";
             sender.sendMessage(Component.text("Yenileme sırasında hata oluştu" + suffix + ": " + result.message(), NamedTextColor.RED));
         }
     }
