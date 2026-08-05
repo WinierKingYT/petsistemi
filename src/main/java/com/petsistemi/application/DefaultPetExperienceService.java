@@ -30,12 +30,13 @@ public class DefaultPetExperienceService implements PetExperienceService {
     private final PetEntityController entityController;
 
     private final ExperienceCurve experienceCurve;
+    private final com.petsistemi.persistence.DatabaseExecutor dbExecutor;
 
     public DefaultPetExperienceService(JavaPlugin plugin, PetRepository repository,
                                        PetDefinitionRegistry definitionRegistry,
                                        ActivePetRegistry activePetRegistry,
                                        PetEntityController entityController) {
-        this(plugin, repository, definitionRegistry, activePetRegistry, entityController, new com.petsistemi.progression.LinearExperienceCurve(100));
+        this(plugin, repository, definitionRegistry, activePetRegistry, entityController, new com.petsistemi.progression.LinearExperienceCurve(100), null);
     }
 
     public DefaultPetExperienceService(JavaPlugin plugin, PetRepository repository,
@@ -43,12 +44,22 @@ public class DefaultPetExperienceService implements PetExperienceService {
                                       ActivePetRegistry activePetRegistry,
                                       PetEntityController entityController,
                                       ExperienceCurve experienceCurve) {
+        this(plugin, repository, definitionRegistry, activePetRegistry, entityController, experienceCurve, null);
+    }
+
+    public DefaultPetExperienceService(JavaPlugin plugin, PetRepository repository,
+                                      PetDefinitionRegistry definitionRegistry,
+                                      ActivePetRegistry activePetRegistry,
+                                      PetEntityController entityController,
+                                      ExperienceCurve experienceCurve,
+                                      com.petsistemi.persistence.DatabaseExecutor dbExecutor) {
         this.plugin = plugin;
         this.repository = repository;
         this.definitionRegistry = definitionRegistry;
         this.activePetRegistry = activePetRegistry;
         this.entityController = entityController;
         this.experienceCurve = experienceCurve != null ? experienceCurve : new com.petsistemi.progression.LinearExperienceCurve(100);
+        this.dbExecutor = dbExecutor;
     }
 
     @Override

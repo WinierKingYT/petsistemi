@@ -9,6 +9,7 @@ import com.petsistemi.domain.PetAvailabilityState;
 import com.petsistemi.domain.PetDefinition;
 import com.petsistemi.domain.PetInstance;
 import com.petsistemi.domain.PetSelection;
+import com.petsistemi.persistence.DatabaseExecutor;
 import com.petsistemi.persistence.PetRepository;
 import com.petsistemi.persistence.PetSelectionRepository;
 import com.petsistemi.persistence.PlayerPetProfileCache;
@@ -35,6 +36,7 @@ public class DefaultPetService implements PetService {
     private final PetEntityController entityController;
     private final PetRuntimeCoordinator coordinator;
     private final PlayerPetProfileCache profileCache;
+    private final DatabaseExecutor dbExecutor;
 
     public DefaultPetService(JavaPlugin plugin, PetRepository repository,
                              PetSelectionRepository selectionRepository,
@@ -42,7 +44,7 @@ public class DefaultPetService implements PetService {
                              ActivePetRegistry activePetRegistry,
                              PetEntityController entityController,
                              PetRuntimeCoordinator coordinator) {
-        this(plugin, repository, selectionRepository, definitionRegistry, activePetRegistry, entityController, coordinator, null);
+        this(plugin, repository, selectionRepository, definitionRegistry, activePetRegistry, entityController, coordinator, null, null);
     }
 
     public DefaultPetService(JavaPlugin plugin, PetRepository repository,
@@ -52,6 +54,17 @@ public class DefaultPetService implements PetService {
                              PetEntityController entityController,
                              PetRuntimeCoordinator coordinator,
                              PlayerPetProfileCache profileCache) {
+        this(plugin, repository, selectionRepository, definitionRegistry, activePetRegistry, entityController, coordinator, profileCache, null);
+    }
+
+    public DefaultPetService(JavaPlugin plugin, PetRepository repository,
+                             PetSelectionRepository selectionRepository,
+                             PetDefinitionRegistry definitionRegistry,
+                             ActivePetRegistry activePetRegistry,
+                             PetEntityController entityController,
+                             PetRuntimeCoordinator coordinator,
+                             PlayerPetProfileCache profileCache,
+                             DatabaseExecutor dbExecutor) {
         this.plugin = plugin;
         this.repository = repository;
         this.selectionRepository = selectionRepository;
@@ -60,6 +73,7 @@ public class DefaultPetService implements PetService {
         this.entityController = entityController;
         this.coordinator = coordinator;
         this.profileCache = profileCache;
+        this.dbExecutor = dbExecutor;
     }
 
     @Override
@@ -69,6 +83,29 @@ public class DefaultPetService implements PetService {
 
     @Override
     public Collection<PetSnapshot> getOwnedPets(UUID ownerId) {
+        if (profileCache != null) {
+            Optional<com.petsistemi.persistence.PlayerPetProfile> cached = profileCache.getProfile(ownerId);
+            if (cached.isPresent()) {
+                Optional<ActivePet> activeOpt = activePetRegistry.getByOwner(ownerId);
+                UUID spawnedPetId = activeOpt.map(ActivePet::getPetId).orElse(null);
+                UUID selectedPetId = cached.get().selectedPetId();
+
+                return cached.get().pets().values().stream()
+                        .map(p -> new PetSnapshot(
+                                p.petId(),
+                                p.ownerId(),
+                                p.definitionId(),
+                                p.customName(),
+                                p.level(),
+                                p.experience(),
+                                p.availabilityState(),
+                                p.petId().equals(selectedPetId),
+                                p.petId().equals(spawnedPetId)
+                        ))
+                        .collect(Collectors.toList());
+            }
+        }
+
         Optional<PetSelection> selectionOpt = selectionRepository.findByOwner(ownerId);
         UUID selectedPetId = selectionOpt.map(PetSelection::petId).orElse(null);
 
@@ -92,6 +129,21 @@ public class DefaultPetService implements PetService {
 
     @Override
     public Optional<PetSnapshot> getSelectedPet(UUID ownerId) {
+        if (profileCache != null) {
+            Optional<com.petsistemi.persistence.PlayerPetProfile> cached = profileCache.getProfile(ownerId);
+            if (cached.isPresent()) {
+                UUID selectedId = cached.get().selectedPetId();
+                if (selectedId != null) {
+                    PetSnapshot snapshot = cached.get().pets().get(selectedId);
+                    if (snapshot != null) {
+                        return Optional.of(snapshot);
+                    }
+                } else {
+                    return Optional.empty();
+                }
+            }
+        }
+
         return selectionRepository.findByOwner(ownerId)
                 .flatMap(selection -> repository.findById(selection.petId()))
                 .map(this::mapToSnapshot);

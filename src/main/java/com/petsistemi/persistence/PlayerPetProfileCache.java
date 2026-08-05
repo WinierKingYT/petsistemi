@@ -10,6 +10,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class PlayerPetProfileCache {
@@ -47,6 +48,13 @@ public class PlayerPetProfileCache {
         PlayerPetProfile profile = new PlayerPetProfile(ownerId, Collections.unmodifiableMap(petMap), selectedId, System.currentTimeMillis(), 1L);
         profiles.put(ownerId, profile);
         return profile;
+    }
+
+    public CompletableFuture<PlayerPetProfile> loadProfileAsync(DatabaseExecutor dbExecutor, UUID ownerId) {
+        if (dbExecutor == null) {
+            return CompletableFuture.completedFuture(loadProfile(ownerId));
+        }
+        return dbExecutor.submit(() -> loadProfile(ownerId));
     }
 
     public Optional<PlayerPetProfile> getProfile(UUID ownerId) {
