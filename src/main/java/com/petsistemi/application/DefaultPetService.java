@@ -7,6 +7,7 @@ import com.petsistemi.api.event.PetGiveEvent;
 import com.petsistemi.api.event.PetRenameEvent;
 import com.petsistemi.api.result.*;
 import com.petsistemi.bootstrap.MainThreadDispatcher;
+import com.petsistemi.config.PluginConfiguration;
 import com.petsistemi.config.RuntimeConfigurationSnapshot;
 import com.petsistemi.definition.PetDefinitionRegistry;
 import com.petsistemi.domain.PetAvailabilityState;
@@ -21,6 +22,7 @@ import com.petsistemi.persistence.PlayerPetProfileCache;
 import com.petsistemi.runtime.ActivePet;
 import com.petsistemi.runtime.ActivePetRegistry;
 import com.petsistemi.runtime.PetEntityController;
+import com.petsistemi.runtime.PetRuntimeCoordinator;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -41,6 +43,31 @@ public class DefaultPetService implements PetService, AsyncPetService {
     private final MainThreadDispatcher mainThreadDispatcher;
     private final PlayerPetProfileCache profileCache;
     private final AtomicReference<RuntimeConfigurationSnapshot> configSnapshot;
+    private final PetRuntimeCoordinator coordinator;
+
+    public DefaultPetService(JavaPlugin plugin,
+                             PetRepository repository,
+                             PetSelectionRepository selectionRepository,
+                             PetDefinitionRegistry definitionRegistry,
+                             ActivePetRegistry activePetRegistry,
+                             PetEntityController entityController,
+                             DatabaseExecutor dbExecutor,
+                             MainThreadDispatcher mainThreadDispatcher,
+                             PlayerPetProfileCache profileCache,
+                             AtomicReference<RuntimeConfigurationSnapshot> configSnapshot,
+                             PetRuntimeCoordinator coordinator) {
+        this.plugin = plugin;
+        this.repository = repository;
+        this.selectionRepository = selectionRepository;
+        this.definitionRegistry = definitionRegistry;
+        this.activePetRegistry = activePetRegistry;
+        this.entityController = entityController;
+        this.dbExecutor = dbExecutor;
+        this.mainThreadDispatcher = mainThreadDispatcher;
+        this.profileCache = profileCache;
+        this.configSnapshot = configSnapshot;
+        this.coordinator = coordinator;
+    }
 
     public DefaultPetService(JavaPlugin plugin,
                              PetRepository repository,
@@ -52,16 +79,7 @@ public class DefaultPetService implements PetService, AsyncPetService {
                              MainThreadDispatcher mainThreadDispatcher,
                              PlayerPetProfileCache profileCache,
                              AtomicReference<RuntimeConfigurationSnapshot> configSnapshot) {
-        this.plugin = plugin;
-        this.repository = repository;
-        this.selectionRepository = selectionRepository;
-        this.definitionRegistry = definitionRegistry;
-        this.activePetRegistry = activePetRegistry;
-        this.entityController = entityController;
-        this.dbExecutor = dbExecutor;
-        this.mainThreadDispatcher = mainThreadDispatcher;
-        this.profileCache = profileCache;
-        this.configSnapshot = configSnapshot;
+        this(plugin, repository, selectionRepository, definitionRegistry, activePetRegistry, entityController, dbExecutor, mainThreadDispatcher, profileCache, configSnapshot, null);
     }
 
     public DefaultPetService(JavaPlugin plugin,
@@ -71,7 +89,7 @@ public class DefaultPetService implements PetService, AsyncPetService {
                              ActivePetRegistry activePetRegistry,
                              PetEntityController entityController,
                              DatabaseExecutor dbExecutor) {
-        this(plugin, repository, selectionRepository, definitionRegistry, activePetRegistry, entityController, dbExecutor, null, null, null);
+        this(plugin, repository, selectionRepository, definitionRegistry, activePetRegistry, entityController, dbExecutor, null, null, null, null);
     }
 
     // --- ASYNC API ---
@@ -145,13 +163,39 @@ public class DefaultPetService implements PetService, AsyncPetService {
         });
     }
 
+    /**
+     * Admin-only rename: no ownership check.
+     * @see #renameAsync(UUID, UUID, String) for player-facing rename with ownership validation.
+     */
     @Override
     public CompletableFuture<PetRenameResult> renameAsync(UUID petId, String newName) {
-        return renameAsync(null, petId, newName);
+        return renameAsAdminAsync(petId, newName);
     }
 
+    /**
+     * Admin-only rename. No ownership check — caller must have verified admin permission.
+     */
+    public CompletableFuture<PetRenameResult> renameAsAdminAsync(UUID petId, String newName) {
+        Objects.requireNonNull(petId, "petId null olamaz.");
+        Objects.requireNonNull(newName, "newName null olamaz.");
+
+        String validatedName = validateNameInput(newName);
+        if (validatedName == null) {
+            return CompletableFuture.completedFuture(new PetRenameResult(false, "İsim konfigürasyondaki sınırlar veya yasaklı kelimeler nedeniyle geçersiz."));
+        }
+
+        return dbExecutor.submit(() -> loadPetForRenameDb(petId)).thenCompose(petOpt -> {
+            if (petOpt.isEmpty()) {
+                return CompletableFuture.completedFuture(new PetRenameResult(false, "Pet veritabanında bulunamadı."));
+            }
+            return executeRenameInternal(petOpt.get(), petId, validatedName);
+        });
+    }
+
+    /** Player-facing rename: requires non-null ownerId and validates ownership. */
     @Override
     public CompletableFuture<PetRenameResult> renameAsync(UUID ownerId, UUID petId, String newName) {
+        Objects.requireNonNull(ownerId, "ownerId null olamaz — kullanıcı rename için owner kimliği gereklidir.");
         Objects.requireNonNull(petId, "petId null olamaz.");
         Objects.requireNonNull(newName, "newName null olamaz.");
 
@@ -166,44 +210,58 @@ public class DefaultPetService implements PetService, AsyncPetService {
             }
             PetInstance pet = petOpt.get();
 
-            CompletableFuture<PetRenameEvent> eventFuture = mainThreadDispatcher != null ? mainThreadDispatcher.supply(() -> {
-                PetSnapshot beforeSnapshot = mapToSnapshot(pet);
-                PetRenameEvent event = new PetRenameEvent(beforeSnapshot, validatedName);
-                if (Bukkit.getServer() != null) {
-                    Bukkit.getPluginManager().callEvent(event);
+            // Stage 11: ownership validation
+            if (!pet.ownerId().equals(ownerId)) {
+                return CompletableFuture.completedFuture(new PetRenameResult(false, "Bu pet size ait değil."));
+            }
+
+            return executeRenameInternal(pet, petId, validatedName);
+        });
+    }
+
+    private CompletableFuture<PetRenameResult> executeRenameInternal(PetInstance pet, UUID petId, String validatedName) {
+        CompletableFuture<PetRenameEvent> eventFuture = mainThreadDispatcher != null ? mainThreadDispatcher.supply(() -> {
+            PetSnapshot beforeSnapshot = mapToSnapshot(pet);
+            Player onlinePlayer = Bukkit.getServer() != null ? Bukkit.getPlayer(pet.ownerId()) : null;
+            PetRenameEvent event = new PetRenameEvent(onlinePlayer, pet.ownerId(), beforeSnapshot, beforeSnapshot.customName(), validatedName);
+            if (Bukkit.getServer() != null) {
+                Bukkit.getPluginManager().callEvent(event);
+            }
+            return event;
+        }) : CompletableFuture.completedFuture(new PetRenameEvent(null, pet.ownerId(), mapToSnapshot(pet), pet.customName(), validatedName));
+
+        return eventFuture.thenCompose(event -> {
+            if (event.isCancelled()) {
+                return CompletableFuture.completedFuture(new PetRenameResult(false, "İsim değiştirme işlemi başka bir eklenti tarafından iptal edildi."));
+            }
+
+            // Stage 11: re-validate the event-modified final name before persisting
+            String finalName = validateNameInput(event.getNewName());
+            if (finalName == null) {
+                return CompletableFuture.completedFuture(new PetRenameResult(false, "Olay tarafından belirlenen son isim geçersiz."));
+            }
+            return dbExecutor.submit(() -> updatePetNameDb(pet, finalName)).thenCompose(updatedPet -> {
+                if (profileCache != null) {
+                    profileCache.updateName(pet.ownerId(), petId, finalName);
                 }
-                return event;
-            }) : CompletableFuture.completedFuture(new PetRenameEvent(mapToSnapshot(pet), validatedName));
 
-            return eventFuture.thenCompose(event -> {
-                if (event.isCancelled()) {
-                    return CompletableFuture.completedFuture(new PetRenameResult(false, "İsim değiştirme işlemi başka bir eklenti tarafından iptal edildi."));
-                }
-
-                String finalName = event.getNewName();
-                return dbExecutor.submit(() -> updatePetNameDb(pet, finalName)).thenCompose(updatedPet -> {
-                    if (profileCache != null) {
-                        profileCache.updateName(pet.ownerId(), petId, finalName);
-                    }
-
-                    Runnable nameplateRunnable = () -> {
-                        if (activePetRegistry != null) {
-                            Optional<ActivePet> activeOpt = activePetRegistry.getByOwner(pet.ownerId());
-                            if (activeOpt.isPresent()) {
-                                ActivePet active = activeOpt.get();
-                                if (active.getPetId().equals(petId) && entityController != null && definitionRegistry != null) {
-                                    PetDefinition def = definitionRegistry.find(pet.definitionId()).orElse(null);
-                                    if (def != null) {
-                                        entityController.updateName(active.getSpawnedEntity(), updatedPet, def);
-                                    }
+                Runnable nameplateRunnable = () -> {
+                    if (activePetRegistry != null) {
+                        Optional<ActivePet> activeOpt = activePetRegistry.getByOwner(pet.ownerId());
+                        if (activeOpt.isPresent()) {
+                            ActivePet active = activeOpt.get();
+                            if (active.getPetId().equals(petId) && entityController != null && definitionRegistry != null) {
+                                PetDefinition def = definitionRegistry.find(pet.definitionId()).orElse(null);
+                                if (def != null) {
+                                    entityController.updateName(active.getSpawnedEntity(), updatedPet, def);
                                 }
                             }
                         }
-                    };
+                    }
+                };
 
-                    CompletableFuture<Void> mainFuture = mainThreadDispatcher != null ? mainThreadDispatcher.run(nameplateRunnable) : CompletableFuture.runAsync(nameplateRunnable);
-                    return mainFuture.thenApply(v -> new PetRenameResult(true, "Pet ismi başarıyla değiştirildi."));
-                });
+                CompletableFuture<Void> mainFuture = mainThreadDispatcher != null ? mainThreadDispatcher.run(nameplateRunnable) : CompletableFuture.runAsync(nameplateRunnable);
+                return mainFuture.thenApply(v -> new PetRenameResult(true, "Pet ismi başarıyla değiştirildi."));
             });
         });
     }
@@ -217,13 +275,19 @@ public class DefaultPetService implements PetService, AsyncPetService {
                 profileCache.updateAvailability(pet.ownerId(), petId, PetAvailabilityState.DISABLED);
             }
 
+            // Stage 18: use coordinator.despawnRuntime instead of manual registry+entityController
             Runnable cleanupRunnable = () -> {
                 if (activePetRegistry != null) {
                     Optional<ActivePet> activeOpt = activePetRegistry.getByOwner(pet.ownerId());
                     if (activeOpt.isPresent() && activeOpt.get().getPetId().equals(petId)) {
-                        activePetRegistry.unregister(pet.ownerId());
-                        if (entityController != null && activeOpt.get().getSpawnedEntity() != null) {
-                            entityController.remove(activeOpt.get().getSpawnedEntity());
+                        if (coordinator != null) {
+                            coordinator.despawnRuntime(pet.ownerId());
+                        } else {
+                            // Fallback if coordinator not injected
+                            activePetRegistry.unregister(pet.ownerId());
+                            if (entityController != null && activeOpt.get().getSpawnedEntity() != null) {
+                                entityController.remove(activeOpt.get().getSpawnedEntity());
+                            }
                         }
                     }
                 }
@@ -254,13 +318,19 @@ public class DefaultPetService implements PetService, AsyncPetService {
                 profileCache.removePet(pet.ownerId(), petId);
             }
 
+            // Stage 18: central lifecycle cleanup via coordinator
             Runnable cleanupRunnable = () -> {
                 if (activePetRegistry != null) {
                     Optional<ActivePet> activeOpt = activePetRegistry.getByOwner(pet.ownerId());
                     if (activeOpt.isPresent() && activeOpt.get().getPetId().equals(petId)) {
-                        activePetRegistry.unregister(pet.ownerId());
-                        if (entityController != null && activeOpt.get().getSpawnedEntity() != null) {
-                            entityController.remove(activeOpt.get().getSpawnedEntity());
+                        if (coordinator != null) {
+                            coordinator.despawnRuntime(pet.ownerId());
+                        } else {
+                            // Fallback if coordinator not injected
+                            activePetRegistry.unregister(pet.ownerId());
+                            if (entityController != null && activeOpt.get().getSpawnedEntity() != null) {
+                                entityController.remove(activeOpt.get().getSpawnedEntity());
+                            }
                         }
                     }
                 }
@@ -335,14 +405,64 @@ public class DefaultPetService implements PetService, AsyncPetService {
         return pet;
     }
 
+    /**
+     * Validates a pet name against the typed configuration.
+     * <ul>
+     *   <li>Length checks before/after trim</li>
+     *   <li>Newline and carriage-return ban</li>
+     *   <li>{@code &} and {@code §} color/formatting controls gated by {@code allow-colors}/{@code allow-formatting}</li>
+     *   <li>{@code <} and {@code >} tag controls gated by {@code allow-formatting}</li>
+     *   <li>Allowed character set: Unicode letters/digits/space/hyphen/underscore/apostrophe</li>
+     * </ul>
+     * Returns the trimmed, validated name or {@code null} when invalid.
+     */
     private String validateNameInput(String name) {
         if (name == null || name.isBlank()) return null;
-        int minLen = (configSnapshot != null && configSnapshot.get() != null && configSnapshot.get().configuration() != null)
-                ? configSnapshot.get().configuration().naming().minimumLength() : 2;
-        int maxLen = (configSnapshot != null && configSnapshot.get() != null && configSnapshot.get().configuration() != null)
-                ? configSnapshot.get().configuration().naming().maximumLength() : 16;
-        if (name.length() < minLen || name.length() > maxLen) return null;
-        return name.trim();
+        if (name.indexOf('\n') >= 0 || name.indexOf('\r') >= 0) return null;
+
+        PluginConfiguration config = configSnapshot != null && configSnapshot.get() != null
+                ? configSnapshot.get().configuration() : null;
+        int minLen = config != null ? config.naming().minimumLength() : 2;
+        int maxLen = config != null ? config.naming().maximumLength() : 16;
+        boolean allowColors = config != null && config.naming().allowColors();
+        boolean allowFormatting = config != null && config.naming().allowFormatting();
+
+        // Pre-trim length must not exceed the configured maximum (whitespace included)
+        if (name.length() > maxLen) return null;
+        String trimmed = name.trim();
+        if (trimmed.length() < minLen) return null;
+
+        // Color codes: &/§ followed by a color code char
+        if (!allowColors) {
+            for (int i = 0; i < trimmed.length() - 1; i++) {
+                char c = trimmed.charAt(i);
+                if (c == '&' || c == '§') {
+                    char code = trimmed.charAt(i + 1);
+                    if ("0123456789abcdefABCDEF".indexOf(code) >= 0) return null;
+                }
+            }
+        }
+        // Formatting codes: &/§ followed by a format char
+        if (!allowFormatting) {
+            for (int i = 0; i < trimmed.length() - 1; i++) {
+                char c = trimmed.charAt(i);
+                if (c == '&' || c == '§') {
+                    char code = trimmed.charAt(i + 1);
+                    if ("klmnorKLMNOR".indexOf(code) >= 0) return null;
+                }
+            }
+            // Angle-bracket tags (e.g. <bold>) require formatting to be enabled
+            if (trimmed.indexOf('<') >= 0 || trimmed.indexOf('>') >= 0) return null;
+        }
+
+        // Allowed character set
+        for (int i = 0; i < trimmed.length(); i++) {
+            char c = trimmed.charAt(i);
+            if (Character.isLetterOrDigit(c) || c == ' ' || c == '-' || c == '_' || c == '\'') continue;
+            if ((c == '&' || c == '§') && (allowColors || allowFormatting)) continue;
+            return null;
+        }
+        return trimmed;
     }
 
     private PetSnapshot mapToSnapshot(PetInstance pet) {

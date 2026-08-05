@@ -33,6 +33,7 @@ public class PetRuntimeCoordinator {
     private final ActivePetRegistry activeRegistry;
     private final PetEntityController entityController;
     private final PetBehaviorController behaviorController;
+    private volatile PetRecoveryHandler recoveryHandler;
 
     public PetRuntimeCoordinator(JavaPlugin plugin,
                                  PetDefinitionRegistry definitionRegistry,
@@ -44,6 +45,11 @@ public class PetRuntimeCoordinator {
         this.activeRegistry = activeRegistry;
         this.entityController = entityController;
         this.behaviorController = behaviorController;
+    }
+
+    /** Wires the recovery callback (set after construction to avoid circular dependencies). */
+    public void setRecoveryHandler(PetRecoveryHandler recoveryHandler) {
+        this.recoveryHandler = recoveryHandler;
     }
 
     public synchronized Entity spawnRuntimeUncommitted(Player owner, PetInstance pet, PetDefinition definition) throws Exception {
@@ -136,6 +142,16 @@ public class PetRuntimeCoordinator {
 
             if (entity == null || !entity.isValid() || entity.isDead()) {
                 despawnRuntime(ownerId);
+                // Stage 7: attempt recovery instead of leaving the pet unspawned
+                PetRecoveryHandler handler = recoveryHandler;
+                if (handler != null) {
+                    try {
+                        handler.attemptRecovery(active, owner);
+                    } catch (Exception e) {
+                        if (plugin != null)
+                            plugin.getLogger().warning("Watchdog kurtarma hatası (ownerId=" + ownerId + "): " + e.getMessage());
+                    }
+                }
             }
         }
     }

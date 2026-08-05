@@ -154,37 +154,52 @@ public class PetMenuListener implements Listener {
 
             if (isSpawned) {
                 CompletableFuture<?> opFuture = operationService != null ? operationService.dismissAsync(player) : CompletableFuture.completedFuture(petService.dismiss(player));
-                opFuture.whenComplete((res, ex) -> {
-                    Runnable refreshAction = () -> {
-                        try {
-                            if (player.isOnline()) {
-                                player.playSound(player.getLocation(), Sound.ENTITY_ENDERMAN_TELEPORT, 0.8f, 1.1f);
-                                PetListMenu.openAsync(player, petService, holder.page(), plugin, definitionRegistry, dispatcher);
-                            }
-                        } finally {
-                            processingPlayers.remove(uuid);
-                        }
-                    };
-                    if (dispatcher != null) dispatcher.run(refreshAction);
-                    else refreshAction.run();
-                });
+                handleOperationResult(player, holder, uuid, opFuture, "Pet gönderilemedi: ");
             } else {
                 CompletableFuture<?> opFuture = operationService != null ? operationService.summonAsync(player, petId) : CompletableFuture.completedFuture(petService.summon(player, petId));
-                opFuture.whenComplete((res, ex) -> {
-                    Runnable refreshAction = () -> {
-                        try {
-                            if (player.isOnline()) {
-                                player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, 1.2f);
-                                PetListMenu.openAsync(player, petService, holder.page(), plugin, definitionRegistry, dispatcher);
-                            }
-                        } finally {
-                            processingPlayers.remove(uuid);
-                        }
-                    };
-                    if (dispatcher != null) dispatcher.run(refreshAction);
-                    else refreshAction.run();
-                });
+                handleOperationResult(player, holder, uuid, opFuture, "Pet çağrılamadı: ");
             }
+        }).exceptionally(ex -> {
+            player.sendMessage(Component.text("Pet durumu alınamadı: " + ex.getMessage(), NamedTextColor.RED));
+            processingPlayers.remove(uuid);
+            return null;
+        });
+    }
+
+    private void handleOperationResult(Player player, PetMenuHolder holder, UUID uuid,
+                                       CompletableFuture<?> opFuture, String errorPrefix) {
+        opFuture.whenComplete((res, ex) -> {
+            boolean success = ex == null
+                    && ((res instanceof com.petsistemi.api.result.PetSummonResult sr && sr.success())
+                    || (res instanceof com.petsistemi.api.result.PetDismissResult dr && dr.success())
+                    || (!(res instanceof com.petsistemi.api.result.PetSummonResult) && !(res instanceof com.petsistemi.api.result.PetDismissResult)));
+
+            String errorMessage = null;
+            if (ex != null) {
+                errorMessage = errorPrefix + ex.getMessage();
+            } else if (res instanceof com.petsistemi.api.result.PetSummonResult sr && !sr.success()) {
+                errorMessage = errorPrefix + sr.message();
+            } else if (res instanceof com.petsistemi.api.result.PetDismissResult dr && !dr.success()) {
+                errorMessage = errorPrefix + dr.message();
+            }
+
+            final String message = errorMessage;
+            Runnable refreshAction = () -> {
+                try {
+                    if (player.isOnline()) {
+                        if (message != null) {
+                            player.sendMessage(Component.text(message, NamedTextColor.RED));
+                        } else {
+                            player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, 1.2f);
+                            PetListMenu.openAsync(player, petService, holder.page(), plugin, definitionRegistry, dispatcher);
+                        }
+                    }
+                } finally {
+                    processingPlayers.remove(uuid);
+                }
+            };
+            if (dispatcher != null) dispatcher.run(refreshAction);
+            else refreshAction.run();
         });
     }
 

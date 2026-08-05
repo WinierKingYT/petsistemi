@@ -122,6 +122,7 @@ public class SqlitePetRepository implements PetRepository {
 
     @Override
     public synchronized void delete(UUID petId) {
+        DatabaseThreadGuard.requireDatabaseThread();
         String sql = "DELETE FROM pets WHERE pet_id = ?;";
         try (PreparedStatement ps = connectionProvider.getConnection().prepareStatement(sql)) {
             ps.setString(1, petId.toString());
@@ -134,6 +135,7 @@ public class SqlitePetRepository implements PetRepository {
 
     @Override
     public synchronized void setActivePet(UUID ownerId, UUID petId) {
+        DatabaseThreadGuard.requireDatabaseThread();
         String sql = "INSERT INTO player_selected_pets (owner_id, pet_id, selected_at) VALUES (?, ?, ?) " +
                 "ON CONFLICT(owner_id) DO UPDATE SET pet_id = excluded.pet_id, selected_at = excluded.selected_at;";
         try (PreparedStatement ps = connectionProvider.getConnection().prepareStatement(sql)) {
@@ -149,6 +151,7 @@ public class SqlitePetRepository implements PetRepository {
 
     @Override
     public synchronized void clearActivePet(UUID ownerId) {
+        DatabaseThreadGuard.requireDatabaseThread();
         String sql = "DELETE FROM player_selected_pets WHERE owner_id = ?;";
         try (PreparedStatement ps = connectionProvider.getConnection().prepareStatement(sql)) {
             ps.setString(1, ownerId.toString());
@@ -161,6 +164,7 @@ public class SqlitePetRepository implements PetRepository {
 
     @Override
     public synchronized void switchActivePet(UUID ownerId, UUID previousPetId, UUID newPetId) {
+        DatabaseThreadGuard.requireDatabaseThread();
         Connection conn = connectionProvider.getConnection();
         boolean autoCommit = true;
         try {
@@ -189,23 +193,29 @@ public class SqlitePetRepository implements PetRepository {
         } catch (Exception e) {
             try {
                 conn.rollback();
-            } catch (SQLException ignored) {}
+            } catch (SQLException rollbackEx) {
+                logger.severe("switchActivePet rollback hatası: " + rollbackEx.getMessage());
+            }
             logger.severe("switchActivePet transaction hatası: " + e.getMessage());
             throw new PetPersistenceException("Pet değiştirme transaction işlemi başarısız.", e);
         } finally {
             try {
                 conn.setAutoCommit(autoCommit);
-            } catch (SQLException ignored) {}
+            } catch (SQLException acEx) {
+                logger.severe("switchActivePet autoCommit restore hatası: " + acEx.getMessage());
+            }
         }
     }
 
     @Override
     public synchronized void clearActivePetAndSetAvailable(UUID ownerId, UUID petId) {
+        DatabaseThreadGuard.requireDatabaseThread();
         clearActivePet(ownerId);
     }
 
     @Override
     public synchronized void restoreActivePet(UUID ownerId, UUID previousPetId, UUID failedPetId) {
+        DatabaseThreadGuard.requireDatabaseThread();
         Connection conn = connectionProvider.getConnection();
         boolean autoCommit = true;
         try {
@@ -231,18 +241,23 @@ public class SqlitePetRepository implements PetRepository {
         } catch (Exception e) {
             try {
                 conn.rollback();
-            } catch (SQLException ignored) {}
+            } catch (SQLException rollbackEx) {
+                logger.severe("restoreActivePet rollback hatası: " + rollbackEx.getMessage());
+            }
             logger.severe("restoreActivePet transaction hatası: " + e.getMessage());
             throw new PetPersistenceException("Eski peti geri yükleme transaction işlemi başarısız.", e);
         } finally {
             try {
                 conn.setAutoCommit(autoCommit);
-            } catch (SQLException ignored) {}
+            } catch (SQLException acEx) {
+                logger.severe("restoreActivePet autoCommit restore hatası: " + acEx.getMessage());
+            }
         }
     }
 
     @Override
     public synchronized void disablePetTransactional(UUID ownerId, PetInstance updatedPet) {
+        DatabaseThreadGuard.requireDatabaseThread();
         Connection conn = connectionProvider.getConnection();
         boolean autoCommit = true;
         try {
@@ -275,18 +290,23 @@ public class SqlitePetRepository implements PetRepository {
         } catch (Exception e) {
             try {
                 conn.rollback();
-            } catch (SQLException ignored) {}
+            } catch (SQLException rollbackEx) {
+                logger.severe("disablePetTransactional rollback hatası: " + rollbackEx.getMessage());
+            }
             logger.severe("disablePetTransactional hatası: " + e.getMessage());
             throw new PetPersistenceException("Pet devre dışı bırakma transaction işlemi başarısız.", e);
         } finally {
             try {
                 conn.setAutoCommit(autoCommit);
-            } catch (SQLException ignored) {}
+            } catch (SQLException acEx) {
+                logger.severe("disablePetTransactional autoCommit restore hatası: " + acEx.getMessage());
+            }
         }
     }
 
     @Override
     public synchronized void removePetTransactional(UUID ownerId, UUID petId) {
+        DatabaseThreadGuard.requireDatabaseThread();
         Connection conn = connectionProvider.getConnection();
         boolean autoCommit = true;
         try {
@@ -310,13 +330,17 @@ public class SqlitePetRepository implements PetRepository {
         } catch (Exception e) {
             try {
                 conn.rollback();
-            } catch (SQLException ignored) {}
+            } catch (SQLException rollbackEx) {
+                logger.severe("removePetTransactional rollback hatası: " + rollbackEx.getMessage());
+            }
             logger.severe("removePetTransactional hatası: " + e.getMessage());
             throw new PetPersistenceException("Pet silme transaction işlemi başarısız.", e);
         } finally {
             try {
                 conn.setAutoCommit(autoCommit);
-            } catch (SQLException ignored) {}
+            } catch (SQLException acEx) {
+                logger.severe("removePetTransactional autoCommit restore hatası: " + acEx.getMessage());
+            }
         }
     }
 

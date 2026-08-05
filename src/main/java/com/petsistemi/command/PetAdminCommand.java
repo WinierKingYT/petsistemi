@@ -38,9 +38,6 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.io.File;
-import java.sql.Connection;
-import java.sql.ResultSet;
-import java.sql.Statement;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
@@ -54,7 +51,7 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
     private final ActivePetRegistry activeRegistry;
     private final PetRepository repository;
     private final PetSelectionRepository selectionRepository;
-    private final ConnectionProvider connectionProvider;
+    private final AdminPersistenceService adminPersistenceService;
     private final AuditLogger auditLogger;
     private final PetRuntimeCoordinator coordinator;
     private final PlayerPetProfileCache profileCache;
@@ -132,7 +129,9 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
         this.activeRegistry = activeRegistry;
         this.repository = repository;
         this.selectionRepository = selectionRepository;
-        this.connectionProvider = connectionProvider;
+        this.adminPersistenceService = (context != null && context.dbExecutor() != null && connectionProvider != null)
+                ? new AdminPersistenceService(context.dbExecutor(), connectionProvider, plugin != null ? plugin.getLogger() : java.util.logging.Logger.getLogger("PetAdminCommand"))
+                : null;
         this.auditLogger = auditLogger;
         this.coordinator = coordinator;
         this.profileCache = profileCache;
@@ -620,26 +619,15 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
         sender.sendMessage(Component.text("-----------------------------------------", NamedTextColor.DARK_GRAY));
         sender.sendMessage(Component.text("=== PetSistemi Sağlık ve Raporlama ===", NamedTextColor.GOLD, TextDecoration.BOLD));
 
-        if (connectionProvider != null && connectionProvider.getConnection() != null) {
-            Connection conn = connectionProvider.getConnection();
-            try (Statement stmt = conn.createStatement()) {
-
-                String integrity = "Bilinmiyor";
-                try (ResultSet rs = stmt.executeQuery("PRAGMA integrity_check;")) {
-                    if (rs.next()) integrity = rs.getString(1);
+        if (adminPersistenceService != null) {
+            adminPersistenceService.checkHealthAsync().thenAccept(report -> sendMessageOnMain(sender, () -> {
+                if (report.ok()) {
+                    sender.sendMessage(Component.text("SQLite Bütünlüğü (Integrity): ", NamedTextColor.GRAY).append(Component.text("ok".equalsIgnoreCase(report.integrity()) ? "TAM (OK)" : report.integrity(), "ok".equalsIgnoreCase(report.integrity()) ? NamedTextColor.GREEN : NamedTextColor.RED)));
+                    sender.sendMessage(Component.text("Yabancı Anahtar İhlali: ", NamedTextColor.GRAY).append(Component.text(report.fkClean() ? "YOK (Temiz)" : "İHLAL VAR!", report.fkClean() ? NamedTextColor.GREEN : NamedTextColor.RED)));
+                } else {
+                    sender.sendMessage(Component.text("Veritabanı sağlık sorgusu hatası: " + report.errorMessage(), NamedTextColor.RED));
                 }
-
-                boolean fkClean = true;
-                try (ResultSet rs = stmt.executeQuery("PRAGMA foreign_key_check;")) {
-                    if (rs.next()) fkClean = false;
-                }
-
-                sender.sendMessage(Component.text("SQLite Bütünlüğü (Integrity): ", NamedTextColor.GRAY).append(Component.text("ok".equalsIgnoreCase(integrity) ? "TAM (OK)" : integrity, "ok".equalsIgnoreCase(integrity) ? NamedTextColor.GREEN : NamedTextColor.RED)));
-                sender.sendMessage(Component.text("Yabancı Anahtar İhlali: ", NamedTextColor.GRAY).append(Component.text(fkClean ? "YOK (Temiz)" : "İHLAL VAR!", fkClean ? NamedTextColor.GREEN : NamedTextColor.RED)));
-
-            } catch (Exception e) {
-                sender.sendMessage(Component.text("Veritabanı sağlık sorgusu hatası: " + e.getMessage(), NamedTextColor.RED));
-            }
+            }));
         }
 
         File dbFile = new File(plugin.getDataFolder(), "database.db");
@@ -662,12 +650,14 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
     }
 
     private void handleBackup(CommandSender sender) {
-        try {
-            File dbFile = new File(plugin.getDataFolder(), "database.db");
-            File backupDir = new File(plugin.getDataFolder(), "database-backups");
-            MigrationBackupManager backupManager = new MigrationBackupManager(plugin.getLogger());
-            Connection conn = connectionProvider != null ? connectionProvider.getConnection() : null;
-            File backup = backupManager.createBackup(conn, dbFile, backupDir, 0, true, true, 5);
+        if (adminPersistenceService == null) {
+            sender.sendMessage(Component.text("Yedekleme hizmeti kullanılamıyor.", NamedTextColor.RED));
+            return;
+        }
+
+        File dbFile = new File(plugin.getDataFolder(), "database.db");
+        File backupDir = new File(plugin.getDataFolder(), "database-backups");
+        adminPersistenceService.createBackupAsync(dbFile, backupDir, 5).thenAccept(backup -> sendMessageOnMain(sender, () -> {
             if (backup != null) {
                 sender.sendMessage(Component.text("WAL-safe ve doğrulanmış veritabanı yedeği alındı: " + backup.getName(), NamedTextColor.GREEN));
                 if (auditLogger != null) {
@@ -676,9 +666,10 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
             } else {
                 sender.sendMessage(Component.text("Yedekleme dosyası oluşturulamadı.", NamedTextColor.RED));
             }
-        } catch (Exception e) {
-            sender.sendMessage(Component.text("Yedek alma hatası: " + e.getMessage(), NamedTextColor.RED));
-        }
+        })).exceptionally(ex -> {
+            sender.sendMessage(Component.text("Yedek alma hatası: " + ex.getMessage(), NamedTextColor.RED));
+            return null;
+        });
     }
 
     private void handleReconcile(CommandSender sender, String[] args) {

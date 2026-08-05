@@ -5,6 +5,8 @@ import com.petsistemi.api.PetService;
 import com.petsistemi.api.PetSnapshot;
 import com.petsistemi.application.PetRuntimeOperationService;
 import com.petsistemi.definition.PetDefinitionRegistry;
+import com.petsistemi.persistence.PlayerPetProfile;
+import com.petsistemi.persistence.PlayerPetProfileCache;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.command.Command;
@@ -26,20 +28,26 @@ public class PetCommand implements CommandExecutor, TabCompleter {
     private final PetRuntimeOperationService operationService;
     private final PetService petService;
     private final PetDefinitionRegistry definitionRegistry;
+    private final PlayerPetProfileCache profileCache;
 
-    public PetCommand(JavaPlugin plugin, PetRuntimeOperationService operationService, PetService petService, PetDefinitionRegistry definitionRegistry) {
+    public PetCommand(JavaPlugin plugin, PetRuntimeOperationService operationService, PetService petService, PetDefinitionRegistry definitionRegistry, PlayerPetProfileCache profileCache) {
         this.plugin = plugin;
         this.operationService = operationService;
         this.petService = petService;
         this.definitionRegistry = definitionRegistry;
+        this.profileCache = profileCache;
+    }
+
+    public PetCommand(JavaPlugin plugin, PetRuntimeOperationService operationService, PetService petService, PetDefinitionRegistry definitionRegistry) {
+        this(plugin, operationService, petService, definitionRegistry, null);
     }
 
     public PetCommand(JavaPlugin plugin, PetService petService, PetDefinitionRegistry definitionRegistry) {
-        this(plugin, null, petService, definitionRegistry);
+        this(plugin, null, petService, definitionRegistry, null);
     }
 
     public PetCommand(JavaPlugin plugin, PetService petService) {
-        this(plugin, null, petService, null);
+        this(plugin, null, petService, null, null);
     }
 
     @Override
@@ -261,10 +269,17 @@ public class PetCommand implements CommandExecutor, TabCompleter {
         if (args.length == 2) {
             String sub = args[0].toLowerCase();
             if (sub.equals("summon") || sub.equals("info") || sub.equals("rename")) {
-                return petService.getOwnedPets(player.getUniqueId()).stream()
-                        .map(p -> p.petId().toString().substring(0, 6))
-                        .filter(id -> id.startsWith(args[1].toLowerCase()))
-                        .collect(Collectors.toList());
+                // Cache-only tab completion: never block the main thread on a DB query.
+                if (profileCache != null) {
+                    Optional<PlayerPetProfile> profile = profileCache.getProfile(player.getUniqueId());
+                    if (profile.isPresent()) {
+                        return profile.get().pets().values().stream()
+                                .map(p -> p.petId().toString().substring(0, 6))
+                                .filter(id -> id.startsWith(args[1].toLowerCase()))
+                                .collect(Collectors.toList());
+                    }
+                }
+                return Collections.emptyList();
             }
         }
 

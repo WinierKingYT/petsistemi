@@ -77,6 +77,8 @@ public final class PetPluginBootstrap {
                     plugin, petRepository, selectionRepository, definitionRegistry, coordinator, profileCache, dbExecutor, mainThreadDispatcher
             );
 
+            // Stage 7: watchdog recovery callback (wired after construction to avoid circularity)
+            coordinator.setRecoveryHandler(operationService::recoverPetAsync);
             PlayerInputSessionManager sessionManager = new PlayerInputSessionManager();
 
             // 7. Application Services

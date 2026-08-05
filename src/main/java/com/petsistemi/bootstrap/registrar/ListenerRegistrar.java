@@ -17,7 +17,7 @@ public final class ListenerRegistrar {
         Bukkit.getPluginManager().registerEvents(new PlayerConnectionListener(context.plugin(), context.coordinator(), context.operationService(), context.profileCache(), context.dbExecutor(), context.mainThreadDispatcher()), context.plugin());
         Bukkit.getPluginManager().registerEvents(new PetEntityListener(context.activePetRegistry(), context.coordinator()), context.plugin());
         Bukkit.getPluginManager().registerEvents(new PetProtectionListener(context.activePetRegistry()), context.plugin());
-        Bukkit.getPluginManager().registerEvents(new WorldChangeListener(context.plugin(), context.activePetRegistry(), context.coordinator()), context.plugin());
+        Bukkit.getPluginManager().registerEvents(new WorldChangeListener(context.plugin(), context.activePetRegistry(), context.coordinator(), context.operationService()), context.plugin());
         Bukkit.getPluginManager().registerEvents(new com.petsistemi.listener.PetLevelUpListener(), context.plugin());
         Bukkit.getPluginManager().registerEvents(new com.petsistemi.listener.PetProgressionListener(context.activePetRegistry(), context.experienceService(), context.configSnapshot()), context.plugin());
     }

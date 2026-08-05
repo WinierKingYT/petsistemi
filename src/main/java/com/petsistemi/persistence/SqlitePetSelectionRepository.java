@@ -127,13 +127,17 @@ public class SqlitePetSelectionRepository implements PetSelectionRepository {
         } catch (Exception e) {
             try {
                 conn.rollback();
-            } catch (SQLException ignored) {}
+            } catch (SQLException rollbackEx) {
+                logger.severe("switchSelection rollback hatası: " + rollbackEx.getMessage());
+            }
             logger.severe("switchSelection transaction hatası: " + e.getMessage());
             throw new PetPersistenceException("Pet seçimi değiştirme transaction hatası.", e);
         } finally {
             try {
                 conn.setAutoCommit(autoCommit);
-            } catch (SQLException ignored) {}
+            } catch (SQLException acEx) {
+                logger.severe("switchSelection autoCommit restore hatası: " + acEx.getMessage());
+            }
         }
     }
 }
