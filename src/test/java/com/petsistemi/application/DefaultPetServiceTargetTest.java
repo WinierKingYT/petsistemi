@@ -119,6 +119,19 @@ class DefaultPetServiceTargetTest {
         @Override public void switchActivePet(UUID ownerId, UUID previousPetId, UUID newPetId) {}
         @Override public void clearActivePetAndSetAvailable(UUID ownerId, UUID petId) {}
         @Override public void restoreActivePet(UUID ownerId, UUID previousPetId, UUID failedPetId) {}
+
+        @Override
+        public void disablePetTransactional(UUID clearSelectionOwnerId, PetInstance updatedPet) {
+            if (shouldFailUpdate) throw new RuntimeException("DB update simulated failure");
+            if (clearSelectionOwnerId != null) selectionRepo.clear(clearSelectionOwnerId);
+            map.put(updatedPet.petId(), updatedPet);
+        }
+
+        @Override
+        public void removePetTransactional(UUID clearSelectionOwnerId, UUID targetPetId) {
+            if (clearSelectionOwnerId != null) selectionRepo.clear(clearSelectionOwnerId);
+            map.remove(targetPetId);
+        }
     }
 
     private static class TestSelectionRepository implements PetSelectionRepository {

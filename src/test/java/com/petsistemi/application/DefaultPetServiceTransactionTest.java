@@ -128,4 +128,42 @@ class DefaultPetServiceTransactionTest {
         assertTrue(mockPetRepository.findById(petId).isEmpty(), "Pet record MUST be deleted from database");
         assertTrue(dbSelections.isEmpty(), "Selection MUST be cleared inside transaction");
     }
+
+    @Test
+    void testDisablingUnselectedPetDoesNotClearOtherSelection() {
+        // Pet A is selected; Pet B is unrelated (not selected)
+        UUID petBId = UUID.randomUUID();
+        PetInstance petB = new PetInstance(petBId, ownerId, "cat", "PetB", 1, 0, PetAvailabilityState.AVAILABLE, System.currentTimeMillis(), System.currentTimeMillis());
+        dbPets.put(petBId, petB);
+        // Selection still points to petId (Pet A), not petBId
+
+        PetDisableResult result = service.disablePet(petBId);
+        assertTrue(result.success(), "disablePet on unselected pet must succeed");
+
+        // Pet A's selection must NOT be touched
+        assertTrue(dbSelections.containsKey(ownerId), "Selection for Pet A MUST remain after disabling Pet B");
+        assertEquals(petId, dbSelections.get(ownerId).petId(), "Selected pet MUST still be Pet A");
+
+        // Pet B must now be DISABLED
+        PetInstance savedB = mockPetRepository.findById(petBId).orElseThrow();
+        assertEquals(PetAvailabilityState.DISABLED, savedB.availabilityState());
+    }
+
+    @Test
+    void testRemovingUnselectedPetDoesNotClearOtherSelection() {
+        // Pet A is selected; Pet B is unrelated (not selected)
+        UUID petBId = UUID.randomUUID();
+        PetInstance petB = new PetInstance(petBId, ownerId, "cat", "PetB", 1, 0, PetAvailabilityState.AVAILABLE, System.currentTimeMillis(), System.currentTimeMillis());
+        dbPets.put(petBId, petB);
+
+        PetRemoveResult result = service.removePet(petBId);
+        assertTrue(result.success(), "removePet on unselected pet must succeed");
+
+        // Pet A's selection must NOT be touched
+        assertTrue(dbSelections.containsKey(ownerId), "Selection for Pet A MUST remain after removing Pet B");
+        assertEquals(petId, dbSelections.get(ownerId).petId(), "Selected pet MUST still be Pet A");
+
+        // Pet B must be gone
+        assertTrue(mockPetRepository.findById(petBId).isEmpty(), "Pet B record MUST be deleted");
+    }
 }

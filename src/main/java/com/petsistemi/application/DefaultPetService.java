@@ -307,12 +307,13 @@ public class DefaultPetService implements PetService, AsyncPetService {
 
     private PetInstance disablePetDb(UUID petId) {
         PetInstance pet = repository.findById(petId).orElseThrow(() -> new IllegalArgumentException("Pet bulunamadı."));
-        Optional<PetSelection> selectionOpt = selectionRepository.findByOwner(pet.ownerId());
-        if (selectionOpt.isPresent() && selectionOpt.get().petId().equals(petId)) {
-            selectionRepository.clear(pet.ownerId());
-        }
         PetInstance updated = pet.withAvailabilityState(PetAvailabilityState.DISABLED);
-        repository.update(updated);
+        // Determine if this pet is currently selected — only clear selection if it is.
+        Optional<PetSelection> selectionOpt = selectionRepository.findByOwner(pet.ownerId());
+        UUID selectedOwnerId = (selectionOpt.isPresent() && selectionOpt.get().petId().equals(petId))
+                ? pet.ownerId() : null;
+        // Atomic: clear selection (if selected) + update state in one JDBC transaction.
+        repository.disablePetTransactional(selectedOwnerId, updated);
         return updated;
     }
 
@@ -325,11 +326,12 @@ public class DefaultPetService implements PetService, AsyncPetService {
 
     private PetInstance removePetDb(UUID petId) {
         PetInstance pet = repository.findById(petId).orElseThrow(() -> new IllegalArgumentException("Pet bulunamadı."));
+        // Determine if this pet is currently selected — only clear selection if it is.
         Optional<PetSelection> selectionOpt = selectionRepository.findByOwner(pet.ownerId());
-        if (selectionOpt.isPresent() && selectionOpt.get().petId().equals(petId)) {
-            selectionRepository.clear(pet.ownerId());
-        }
-        repository.delete(petId);
+        UUID selectedOwnerId = (selectionOpt.isPresent() && selectionOpt.get().petId().equals(petId))
+                ? pet.ownerId() : null;
+        // Atomic: clear selection (if selected) + delete in one JDBC transaction.
+        repository.removePetTransactional(selectedOwnerId, petId);
         return pet;
     }
 
