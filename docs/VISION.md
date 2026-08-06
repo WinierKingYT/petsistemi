@@ -32,7 +32,6 @@ Tüm sistemler dört aile üzerine kurulur:
 |---|---|---|---|
 | 1 | Sabit konumlu takipçi (ANCHORED) | ✅ | 8 pozisyon: BEHIND_RIGHT, BEHIND_LEFT, FRONT, ABOVE_HEAD, RIGHT_SHOULDER, LEFT_SHOULDER, WAIST, BELOW; `distance/height/rotate-with-owner` |
 | 2 | Accessory pet (ATTACHED_DISPLAY, kemik/pose) | ⬜ | Yaw/pitch/pose ile hesaplanır; yüksek risk |
-| 15 | Bağımsız dolaşma (ROAM_NEAR_OWNER) | ⬜ | `minimum/maximum-radius`, hedef değiştirme aralığı |
 | 16 | Yüzeye bağlı (SURFACE_CRAWL) | ⬜ | Zemin/duvar/tavan; display rotasyonlarıyla kontrol |
 | 17 | Yeraltı (BURROW) | ⬜ | Derinlik, toprak parçacığı, idle'da çıkma |
 | 33 | Pozisyon slotları | ⬜ | Çoklu pet çakışması için; ileride |
@@ -46,7 +45,7 @@ Tüm sistemler dört aile üzerine kurulur:
 | 7 | Hareket taklidi (MIRROR) | ✅ | Zıplama/eğilme/dönme kopyalama, delay-ticks; `mirror_doll` (ENTITY VILLAGER) — OwnerPose buffer + LivingEntity setSneaking/setGliding |
 | 8 | Gecikmeli hayalet (ECHO) | ✅ | Oyuncunun geçmiş konumunu sabit hızla yeniden oynatır (consuming queue); TRAIL'den farkı: noktalar tüketilir, beklenir; `echo_phantom` (ENTITY ALLAY) |
 | 12 | Takımyıldız (CONSTELLATION) | ⬜ | Noktalar + çizgiler (particle/display) |
-| 15 | Serbest dolaşma (ROAM_NEAR_OWNER) | ✅ | Sahip etrafında rastgele yarıçap içinde dolaşma, hedefe ulaşınca yeni hedef; `roam_fox` (ENTITY FOX) |
+| 15 | Serbest dolaşma (ROAM_NEAR_OWNER) | ✅ | Sahip etrafında rastgele yarıçap içinde dolaşma, hedefe ulaşınca yeni hedef; yarıçap `movement.follow-distance` (varsayılan 4.0), hız `follow-speed`; `roam_fox` (ENTITY FOX) |
 | 24 | Emote sistemi | ✅ | `/pet emote <ad>` + tab completion, per-pet `emotes:` şeması (sound/particle/cooldown-seconds), per-owner cooldown; `sleepy_cat` örneği |
 
 ### C. Çok parçalı petler

@@ -31,3 +31,4 @@ $env:JAVA_HOME="C:\Program Files\Eclipse Adoptium\jdk-17"; ./gradlew clean test 
 - [ADR 0002: State Ayrımı](docs/adr/0002-selection-runtime-separation.md)
 - [ADR 0003: Single DB Executor](docs/adr/0003-single-database-executor.md)
 - [ADR 0004: Immutable Migrations](docs/adr/0004-immutable-migrations.md)
+- [ADR 0005: Tanım Yükleme Hata Modları](docs/adr/0005-definition-load-failure-modes.md)

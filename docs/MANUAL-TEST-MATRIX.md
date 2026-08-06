@@ -4,7 +4,8 @@
 - [ ] Temiz data klasörü ile başlama
 - [ ] Bozuk config dosyası ile başlama (Fail-fast doğrulanmalı)
 - [ ] Geçersiz locale tanımı ile başlama
-- [ ] Hatalı pet YAML dosyası (Diğer geçerli petlerin yüklenmesi doğrulanmalı)
+- [ ] Hatalı pet YAML dosyası ile **açılış**: geçerli petler yüklenir, bozuk dosya konsolda SEVERE olarak adıyla ve hata listesiyle raporlanır (sunucu kullanılabilir kalır)
+- [ ] Tüm pet dosyaları bozukken açılış: "Hiçbir pet tanımı yüklenemedi" uyarısı görünür, sunucu yine de açılır
 - [ ] SQLite dosyasına erişilememe durumu
 
 ## Migration
@@ -48,7 +49,8 @@
 - [ ] `/pet mode stay` ile display pet yerinde durur; `follow` ile tekrar takip eder
 - [ ] Display pet isim etiketi (nameplate) Lv. ile doğru render edilir (TEXT_DISPLAY/PARTICLE hariç)
 - [ ] Legacy `wolf` pet (ENTITY + GROUND_FOLLOW) eski davranışıyla çalışmaya devam eder
-- [ ] Hatalı `representation.type` / `movement.type` içeren YAML: tüm petler yüklenmez (atomik), konsolda hata görünür
+- [ ] Hatalı `representation.type` / `movement.type` içeren YAML **açılışta**: yalnızca o pet atlanır, diğerleri yüklenir, konsolda hata görünür
+- [ ] Aynı hatalı YAML ile `/petadmin reload`: reload **başarısız** döner ve çalışan tanımlar değişmeden kalır (atomik reload); dosya düzeltilip tekrar reload edilince yüklenir
 - [ ] Display pet ile sunucu restart sonrası restore çalışır
 - [ ] Swarm (MULTI_ENTITY) dismiss edilince çocuk entity'lerin de silindiği görülür (entity leak yok)
 - [ ] Swarm çocuklarına hasar verilemez; çocuğa sağ tık → sahibi pet menüsünü görür (child koruması)
@@ -100,7 +102,7 @@
 
 ## Per-Pet Emotes (emotes: + /pet emote)
 - [ ] `/pet emote purr` → kedi `ENTITY_CAT_PURR` sesi + `HEART` parçacığı oynatır; 10 saniye içinde tekrar deneyince "Kalan süre: N saniye" mesajı gelir
-- [ ] `/pet emote hiss` → `ENTITY_CAT_HISS` + `SMOKE`; 5 saniye cooldown
+- [ ] `/pet emote hiss` → `ENTITY_CAT_HISS` + `SMOKE_NORMAL`; 5 saniye cooldown
 - [ ] `/pet emote <ad>` tab completion önerilen emote adlarını tamamlar; `/pet emote p` yazınca `purr` önerilir
 - [ ] Aktif pet yokken `/pet emote purr` → "Önce petinizi çağırın"; tanımlı emote olmayan pette "tanımlı emote yok"
 - [ ] Bilinmeyen isim `/pet emote xyz` → "Geçersiz emote" + mevcut emote listesi
