@@ -1,0 +1,44 @@
+schema-version: 1
+display-name: "<yellow>Wisplight</yellow>"
+description:
+  - "<gray>Gece feneri, gündüz toz zerresi.</gray>"
+  - "<gray>Gece olunca yanar, suya girince cam olur.</gray>"
+gui-material: GLOWSTONE_DUST
+permission: companionpets.pet.wisplight
+representation:
+  type: ITEM_DISPLAY
+  item-material: GLOWSTONE_DUST
+  scale:
+    x: 0.7
+    y: 0.7
+    z: 0.7
+movement:
+  type: HOVER
+  height: 1.6
+  teleport-distance: 24.0
+  update-interval-ticks: 5
+transforms:
+  night:
+    when:
+      time-of-day: NIGHT
+    apply:
+      representation:
+        item-material: SOUL_LANTERN
+        glowing: true
+        scale:
+          x: 0.9
+          y: 0.9
+          z: 0.9
+  water:
+    when:
+      owner-state: IN_WATER
+    apply:
+      representation:
+        item-material: LIGHT_BLUE_STAINED_GLASS
+progression:
+  enabled: true
+  maximum-level: 100
+nameplate:
+  enabled: true
+  format:
+    - "<yellow>{pet_name}</yellow> <gray>Lv.{level}</gray>"

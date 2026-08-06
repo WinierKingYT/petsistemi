@@ -1,0 +1,24 @@
+schema-version: 1
+display-name: "<aqua>Yansıma Bebek</aqua>"
+description:
+  - "<gray>Her hareketini gecikmeli olarak taklit eden bir oyuncak bebek.</gray>"
+gui-material: TOTEM_OF_UNDYING
+permission: companionpets.pet.mirrordoll
+representation:
+  type: ENTITY
+  entity-type: VILLAGER
+  baby: true
+  silent: true
+  invulnerable: true
+movement:
+  type: MIRROR
+  height: 0.0
+  side-offset: 1.2
+  delay-ticks: 10
+progression:
+  enabled: true
+  maximum-level: 100
+nameplate:
+  enabled: true
+  format:
+    - "<aqua>{pet_name}</aqua> <gray>Lv.{level}</gray>"

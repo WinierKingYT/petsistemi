@@ -68,10 +68,51 @@ public final class PetPluginBootstrap {
             AuditLogger auditLogger = new AuditLogger(databaseManager, plugin.getLogger());
 
             // 6. Runtime Components & Operations
-            PetEntityController entityController = new PaperPetEntityController(plugin);
+            PaperPetEntityController paperEntityController = new PaperPetEntityController(plugin);
+            PetEntityController entityController = paperEntityController;
             PetBehaviorController behaviorController = new BasicPetBehaviorController(configSnapshot);
             ActivePetRegistry activePetRegistry = new ActivePetRegistry();
-            PetRuntimeCoordinator coordinator = new PetRuntimeCoordinator(plugin, definitionRegistry, activePetRegistry, entityController, behaviorController);
+
+            // Modular representation / movement registries
+            PetRepresentationRegistry representationRegistry = new PetRepresentationRegistry();
+            PetMovementRegistry movementRegistry = new PetMovementRegistry();
+            representationRegistry.register(com.petsistemi.domain.RuntimeRepresentationType.ENTITY, paperEntityController);
+            representationRegistry.register(com.petsistemi.domain.RuntimeRepresentationType.ITEM_DISPLAY, new ItemDisplayPetRepresentation(plugin, configSnapshot));
+            representationRegistry.register(com.petsistemi.domain.RuntimeRepresentationType.BLOCK_DISPLAY, new BlockDisplayPetRepresentation(plugin, configSnapshot));
+            representationRegistry.register(com.petsistemi.domain.RuntimeRepresentationType.TEXT_DISPLAY, new TextDisplayPetRepresentation(plugin, configSnapshot));
+            representationRegistry.register(com.petsistemi.domain.RuntimeRepresentationType.PARTICLE, new ParticlePetRepresentation(plugin));
+            representationRegistry.register(com.petsistemi.domain.RuntimeRepresentationType.INVISIBLE, new InvisiblePetRepresentation(plugin));
+            representationRegistry.register(com.petsistemi.domain.RuntimeRepresentationType.MULTI_ENTITY, new MultiEntityPetRepresentation(plugin, configSnapshot));
+            movementRegistry.register(com.petsistemi.domain.PetMovementType.GROUND_FOLLOW, new GroundFollowMovement(configSnapshot));
+            movementRegistry.register(com.petsistemi.domain.PetMovementType.FLYING_FOLLOW, new FlyingFollowMovement(configSnapshot));
+            movementRegistry.register(com.petsistemi.domain.PetMovementType.ORBIT, new OrbitMovement(configSnapshot));
+            movementRegistry.register(com.petsistemi.domain.PetMovementType.HOVER, new HoverMovement());
+            movementRegistry.register(com.petsistemi.domain.PetMovementType.SHOULDER, new ShoulderMovement());
+            movementRegistry.register(com.petsistemi.domain.PetMovementType.ANCHORED, new AnchoredMovement());
+            movementRegistry.register(com.petsistemi.domain.PetMovementType.TRAIL, new TrailMovement());
+            movementRegistry.register(com.petsistemi.domain.PetMovementType.FORMATION, new FormationMovement());
+            movementRegistry.register(com.petsistemi.domain.PetMovementType.TELEPORT_ONLY, new TeleportOnlyMovement());
+            movementRegistry.register(com.petsistemi.domain.PetMovementType.STATIC_NEAR_OWNER, new TeleportOnlyMovement());
+            movementRegistry.register(com.petsistemi.domain.PetMovementType.ECHO, new EchoMovement());
+            movementRegistry.register(com.petsistemi.domain.PetMovementType.SHADOW_TRAIL, new ShadowTrailMovement());
+            movementRegistry.register(com.petsistemi.domain.PetMovementType.ROAM_NEAR_OWNER, new RoamNearOwnerMovement());
+            movementRegistry.register(com.petsistemi.domain.PetMovementType.MIRROR, new MirrorMovement());
+
+            PetRuntimeCoordinator coordinator = new PetRuntimeCoordinator(
+                    plugin, definitionRegistry, activePetRegistry, entityController, behaviorController,
+                    representationRegistry, movementRegistry
+            );
+
+            PetReactionEngine reactionEngine = new PetReactionEngine(configSnapshot);
+            PetEmoteController emoteController = new PetEmoteController(reactionEngine);
+            PetIdleSleepController idleSleepController = new PetIdleSleepController(
+                    configSnapshot, definitionRegistry, representationRegistry, reactionEngine);
+            PetTransformController transformController = new PetTransformController(
+                    definitionRegistry, representationRegistry);
+            coordinator.setTransformController(transformController);
+            idleSleepController.setTransformController(transformController);
+            coordinator.setIdleSleepController(idleSleepController);
+            coordinator.setEmoteController(emoteController);
 
             PetRuntimeOperationService operationService = new PetRuntimeOperationService(
                     plugin, petRepository, selectionRepository, definitionRegistry, coordinator, profileCache, dbExecutor, mainThreadDispatcher
@@ -116,7 +157,9 @@ public final class PetPluginBootstrap {
                     experienceService,
                     sessionManager,
                     taskRegistry,
-                    configSnapshot
+                    configSnapshot,
+                    reactionEngine,
+                    emoteController
             );
         } catch (Throwable t) {
             plugin.getLogger().severe("PetSistemi önyüklemesi sırasında kritik hata oluştu! Kaynaklar temizleniyor: " + t.getMessage());

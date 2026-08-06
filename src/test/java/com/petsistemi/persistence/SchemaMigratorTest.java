@@ -66,7 +66,7 @@ class SchemaMigratorTest {
 
         try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM schema_migrations;")) {
             assertTrue(rs.next());
-            assertEquals(7, rs.getInt(1));
+            assertEquals(8, rs.getInt(1));
         }
     }
 
@@ -80,7 +80,7 @@ class SchemaMigratorTest {
 
         try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM schema_migrations;")) {
             assertTrue(rs.next());
-            assertEquals(7, rs.getInt(1));
+            assertEquals(8, rs.getInt(1));
         }
     }
 
@@ -165,7 +165,7 @@ class SchemaMigratorTest {
 
         try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM schema_migrations;")) {
             assertTrue(rs.next());
-            assertEquals(7, rs.getInt(1));
+            assertEquals(8, rs.getInt(1));
         }
     }
 
@@ -188,6 +188,41 @@ class SchemaMigratorTest {
         try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery("SELECT owner_id FROM player_selected_pets WHERE pet_id = '" + petId + "';")) {
             assertTrue(rs.next());
             assertEquals(ownerId.toString(), rs.getString("owner_id"));
+        }
+    }
+
+    @Test
+    void addsFollowModeColumnWithDefaultAndPreservesRows() throws Exception {
+        connection.createStatement().execute("CREATE TABLE player_selected_pets (owner_id TEXT PRIMARY KEY, pet_id TEXT NOT NULL, selected_at INTEGER NOT NULL);");
+        connection.createStatement().execute("INSERT INTO player_selected_pets VALUES ('owner-fm', 'pet-fm', 100);");
+
+        new com.petsistemi.persistence.migration.V8FollowModeMigration().apply(connection);
+        new com.petsistemi.persistence.migration.V8FollowModeMigration().apply(connection);
+
+        try (Statement stmt = connection.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT pet_id, follow_mode FROM player_selected_pets WHERE owner_id = 'owner-fm';")) {
+            assertTrue(rs.next(), "Selection row must survive V8");
+            assertEquals("pet-fm", rs.getString("pet_id"));
+            assertEquals("FOLLOW", rs.getString("follow_mode"), "Existing rows get the default FOLLOW mode");
+        }
+    }
+
+    @Test
+    void keepsPersistedFollowMode() throws Exception {
+        executeSqlResource("/migrations/v3-schema.sql");
+        SchemaMigrator.migrate(connection);
+        try (Statement stmt = connection.createStatement()) {
+            stmt.execute("INSERT INTO pets (pet_id, owner_id, definition_id, custom_name, level, experience, availability_state, created_at, updated_at) " +
+                    "VALUES ('pet-fm2', 'owner-fm2', 'wolf', 'Wolfy', 3, 10, 'AVAILABLE', 100, 100);");
+            stmt.execute("INSERT INTO player_selected_pets (owner_id, pet_id, selected_at, follow_mode) VALUES ('owner-fm2', 'pet-fm2', 100, 'STAY');");
+        }
+
+        SchemaMigrator.migrate(connection);
+
+        try (Statement stmt = connection.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT follow_mode FROM player_selected_pets WHERE owner_id = 'owner-fm2';")) {
+            assertTrue(rs.next());
+            assertEquals("STAY", rs.getString("follow_mode"));
         }
     }
 
@@ -256,7 +291,7 @@ class SchemaMigratorTest {
         try (Statement stmt = connection.createStatement();
              ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM schema_migrations;")) {
             assertTrue(rs.next());
-            assertEquals(7, rs.getInt(1));
+            assertEquals(8, rs.getInt(1));
         }
 
         try (Statement stmt = connection.createStatement();

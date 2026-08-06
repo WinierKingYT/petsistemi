@@ -1,0 +1,30 @@
+schema-version: 1
+display-name: "<dark_purple>Arcane Crystal</dark_purple>"
+description:
+  - "<light_purple>Etrafınızda dönen büyülü bir kristal.</light_purple>"
+gui-material: AMETHYST_SHARD
+permission: companionpets.pet.arcanecrystal
+representation:
+  type: ITEM_DISPLAY
+  item-material: AMETHYST_SHARD
+  custom-model-data: 12001
+  scale:
+    x: 1.2
+    y: 1.2
+    z: 1.2
+  glowing: true
+movement:
+  type: ORBIT
+  orbit:
+    radius: 1.7
+    height: 1.4
+    angular-speed: 1.2
+    clockwise: true
+  update-interval-ticks: 5
+progression:
+  enabled: true
+  maximum-level: 100
+nameplate:
+  enabled: true
+  format:
+    - "<light_purple>{pet_name}</light_purple> <gray>Lv.{level}</gray>"

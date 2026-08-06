@@ -1,0 +1,24 @@
+schema-version: 1
+display-name: "<gold>Gezgin Tilki</gold>"
+description:
+  - "<gold>Sahibinin etrafında özgürce dolaşan meraklı bir tilki.</gold>"
+  - "<gray>Belirli bir yarıçap içinde rastgele noktalara gidip gelir.</gray>"
+gui-material: ORANGE_DYE
+permission: companionpets.pet.roamfox
+representation:
+  type: ENTITY
+  entity-type: FOX
+  baby: true
+  silent: true
+movement:
+  type: ROAM_NEAR_OWNER
+  follow-distance: 5.0
+  follow-speed: 0.15
+  teleport-distance: 24.0
+progression:
+  enabled: true
+  maximum-level: 100
+nameplate:
+  enabled: true
+  format:
+    - "<gold>{pet_name}</gold> <gray>Lv.{level}</gray>"

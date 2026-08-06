@@ -1,0 +1,48 @@
+schema-version: 1
+display-name: "<yellow>Uyuyan Kedi</yellow>"
+description:
+  - "<gray>Sahibi uzun süre durursa kıvrılıp uyuyan kedi dostu.</gray>"
+gui-material: CAT_SPAWN_EGG
+permission: companionpets.pet.sleepycat
+representation:
+  type: ENTITY
+  entity-type: CAT
+  baby: true
+  silent: true
+movement:
+  type: GROUND_FOLLOW
+  follow-distance: 2.5
+  teleport-distance: 24.0
+states:
+  MOVING:
+    animation: WALK
+  IDLE:
+    after-ticks: 100
+    animation: SLEEP
+reactions:
+  OWNER_DAMAGE:
+    sound: ENTITY_CAT_HISS
+    particle: VILLAGER_ANGRY
+    particle-count: 4
+    volume: 0.9
+  LEVEL_UP:
+    particle: VILLAGER_HAPPY
+    particle-count: 10
+emotes:
+  purr:
+    sound: ENTITY_CAT_PURR
+    particle: HEART
+    particle-count: 5
+    cooldown-seconds: 10
+  hiss:
+    sound: ENTITY_CAT_HISS
+    particle: SMOKE_NORMAL
+    particle-count: 6
+    cooldown-seconds: 5
+progression:
+  enabled: true
+  maximum-level: 100
+nameplate:
+  enabled: true
+  format:
+    - "<yellow>{pet_name}</yellow> <gray>Lv.{level}</gray>"

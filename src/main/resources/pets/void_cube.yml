@@ -1,0 +1,25 @@
+schema-version: 1
+display-name: "<dark_gray>Void Cube</dark_gray>"
+description:
+  - "<gray>Başınızın üzerinde asılı duran obsidiyen bir küp.</gray>"
+gui-material: CRYING_OBSIDIAN
+permission: companionpets.pet.voidcube
+representation:
+  type: BLOCK_DISPLAY
+  block-material: CRYING_OBSIDIAN
+  scale:
+    x: 0.8
+    y: 0.8
+    z: 0.8
+movement:
+  type: HOVER
+  height: 2.2
+  teleport-distance: 24.0
+  update-interval-ticks: 5
+progression:
+  enabled: true
+  maximum-level: 100
+nameplate:
+  enabled: true
+  format:
+    - "<gray>{pet_name}</gray> <gray>Lv.{level}</gray>"

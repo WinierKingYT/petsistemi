@@ -34,4 +34,30 @@ database:
     enabled: true
     fail-startup-on-backup-error: true
     maximum-backups: 5
+
+# Özellik Bayrakları
+features:
+  abilities:
+    enabled: false
+  particles:
+    enabled: true
+  magnet:
+    enabled: false
+  riding:
+    enabled: false
+
+  # Idle/Sleep: sahibi idle-seconds saniye hareket etmezse pet oturur/dinlenir
+  idle-sleep:
+    enabled: false
+    idle-seconds: 45
+
+  # Reaction'lar: hasar/level-up/rest geçişlerinde ses + parçacık
+  reactions:
+    enabled: false
+
+  # Level Scaling: display petler seviyeyle büyür (sadece display representation'lar)
+  level-scaling:
+    enabled: false
+    growth-per-level: 0.02
+    max-multiplier: 1.5
 ```

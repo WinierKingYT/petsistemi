@@ -12,7 +12,11 @@ public final class CommandRegistrar {
                 context.operationService(),
                 context.petService(),
                 context.definitionRegistry(),
-                context.profileCache()
+                context.profileCache(),
+                context.activePetRegistry(),
+                context.messageService(),
+                context.configSnapshot(),
+                context.emoteController()
         );
         if (context.plugin().getCommand("pet") != null) {
             context.plugin().getCommand("pet").setExecutor(petCommand);

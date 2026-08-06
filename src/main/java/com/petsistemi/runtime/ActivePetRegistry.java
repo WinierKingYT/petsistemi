@@ -1,5 +1,7 @@
 package com.petsistemi.runtime;
 
+import org.bukkit.entity.Entity;
+
 import java.util.*;
 
 public class ActivePetRegistry {
@@ -27,6 +29,22 @@ public class ActivePetRegistry {
 
     public synchronized Optional<ActivePet> getByEntity(UUID entityId) {
         return Optional.ofNullable(activePetsByEntity.get(entityId));
+    }
+
+    /** Resolves a pet by its primary entity OR any tracked child entity (e.g. MULTI_ENTITY swarms). */
+    public synchronized Optional<ActivePet> getByAnyEntity(UUID entityId) {
+        Optional<ActivePet> direct = getByEntity(entityId);
+        if (direct.isPresent()) {
+            return direct;
+        }
+        for (ActivePet pet : activePetsByOwner.values()) {
+            for (Entity child : pet.getChildren()) {
+                if (child != null && child.getUniqueId().equals(entityId)) {
+                    return Optional.of(pet);
+                }
+            }
+        }
+        return Optional.empty();
     }
 
     public synchronized Collection<ActivePet> getAllActive() {

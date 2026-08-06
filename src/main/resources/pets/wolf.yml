@@ -9,12 +9,7 @@ glowing: false
 invulnerable: true
 silent: false
 gravity: true
-behavior-profile: DEFAULT
-follow-speed: 1.2
-follow-distances:
-  start: 5.0
-  stop: 2.0
-  teleport: 15.0
+# movement bölümü yoksa takip davranışı config.yml'deki runtime.* değerleriyle yönetilir.
 progression:
   enabled: true
   maximum-level: 100

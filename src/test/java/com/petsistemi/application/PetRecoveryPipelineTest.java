@@ -70,6 +70,7 @@ class PetRecoveryPipelineTest {
             @Override public void select(UUID ownerId, UUID petId) {}
             @Override public void clear(UUID ownerId) {}
             @Override public void switchSelection(UUID ownerId, UUID previousPetId, UUID newPetId) {}
+            @Override public void updateFollowMode(UUID ownerId, com.petsistemi.domain.PetFollowMode followMode) {}
         };
 
         PetDefinition def = new PetDefinition("wolf", "Kurt", List.of("WOLF"), "DOG", true, true, true, true, true, true, 100, true, List.of());
@@ -167,6 +168,7 @@ class PetRecoveryPipelineTest {
             @Override public void select(UUID ownerId, UUID petId) {}
             @Override public void clear(UUID ownerId) {}
             @Override public void switchSelection(UUID ownerId, UUID previousPetId, UUID newPetId) {}
+            @Override public void updateFollowMode(UUID ownerId, com.petsistemi.domain.PetFollowMode followMode) {}
         };
         ActivePetRegistry activeRegistry = new ActivePetRegistry();
         PlayerPetProfileCache profileCache = new PlayerPetProfileCache(petRepository, selectionRepository);

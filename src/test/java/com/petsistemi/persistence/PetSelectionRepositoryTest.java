@@ -99,4 +99,47 @@ class PetSelectionRepositoryTest {
         Optional<PetSelection> selection = selectionRepository.findByOwner(ownerId);
         assertTrue(selection.isEmpty(), "Disabled pet must not be selected");
     }
+
+    @Test
+    void testUpdateFollowModePersists() {
+        UUID ownerId = UUID.randomUUID();
+        UUID petId = UUID.randomUUID();
+
+        petRepository.insert(new PetInstance(petId, ownerId, "wolf", "Bobi", 1, 0, PetAvailabilityState.AVAILABLE, 1000L, 1000L));
+        selectionRepository.select(ownerId, petId);
+
+        selectionRepository.updateFollowMode(ownerId, com.petsistemi.domain.PetFollowMode.STAY);
+
+        Optional<PetSelection> selection = selectionRepository.findByOwner(ownerId);
+        assertTrue(selection.isPresent());
+        assertEquals(com.petsistemi.domain.PetFollowMode.STAY, selection.get().followMode());
+    }
+
+    @Test
+    void testFollowModeDefaultsToFollow() {
+        UUID ownerId = UUID.randomUUID();
+        UUID petId = UUID.randomUUID();
+
+        petRepository.insert(new PetInstance(petId, ownerId, "wolf", "Bobi", 1, 0, PetAvailabilityState.AVAILABLE, 1000L, 1000L));
+        selectionRepository.select(ownerId, petId);
+
+        Optional<PetSelection> selection = selectionRepository.findByOwner(ownerId);
+        assertTrue(selection.isPresent());
+        assertEquals(com.petsistemi.domain.PetFollowMode.FOLLOW, selection.get().followMode());
+    }
+
+    @Test
+    void testNullFollowModeIsTreatedAsFollow() {
+        UUID ownerId = UUID.randomUUID();
+        UUID petId = UUID.randomUUID();
+
+        petRepository.insert(new PetInstance(petId, ownerId, "wolf", "Bobi", 1, 0, PetAvailabilityState.AVAILABLE, 1000L, 1000L));
+        selectionRepository.select(ownerId, petId);
+
+        selectionRepository.updateFollowMode(ownerId, null);
+
+        Optional<PetSelection> selection = selectionRepository.findByOwner(ownerId);
+        assertTrue(selection.isPresent());
+        assertEquals(com.petsistemi.domain.PetFollowMode.FOLLOW, selection.get().followMode());
+    }
 }

@@ -88,6 +88,7 @@ class DefaultPetServiceTransactionTest {
             @Override public void select(UUID ownerId, UUID petId) { dbSelections.put(ownerId, new PetSelection(ownerId, petId, System.currentTimeMillis())); }
             @Override public void clear(UUID ownerId) { dbSelections.remove(ownerId); }
             @Override public void switchSelection(UUID ownerId, UUID previousPetId, UUID newPetId) { dbSelections.put(ownerId, new PetSelection(ownerId, newPetId, System.currentTimeMillis())); }
+            @Override public void updateFollowMode(UUID ownerId, com.petsistemi.domain.PetFollowMode followMode) {}
         };
 
         mockDefRegistry = new PetDefinitionRegistry() {

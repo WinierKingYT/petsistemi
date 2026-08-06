@@ -1,0 +1,27 @@
+schema-version: 1
+display-name: "<gray>Gölge Zerresi</gray>"
+description:
+  - "<dark_gray>Yerde sahibinin izini süren karanlık bir gölge.</dark_gray>"
+  - "<dark_gray>Arkasında kısa bir gölge izi bırakır.</dark_gray>"
+gui-material: BLACK_DYE
+permission: companionpets.pet.shadowwisp
+representation:
+  type: BLOCK_DISPLAY
+  block-material: BLACK_STAINED_GLASS
+  scale:
+    x: 0.4
+    y: 0.1
+    z: 0.4
+  glowing: false
+movement:
+  type: SHADOW_TRAIL
+  follow-distance: 5.0
+  teleport-distance: 24.0
+  update-interval-ticks: 3
+progression:
+  enabled: true
+  maximum-level: 100
+nameplate:
+  enabled: true
+  format:
+    - "<dark_gray>{pet_name}</dark_gray> <gray>Lv.{level}</gray>"

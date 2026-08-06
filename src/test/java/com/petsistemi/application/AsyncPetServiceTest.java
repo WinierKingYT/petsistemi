@@ -65,6 +65,7 @@ class AsyncPetServiceTest {
             @Override public void select(UUID ownerId, UUID petId) {}
             @Override public void clear(UUID ownerId) {}
             @Override public void switchSelection(UUID ownerId, UUID previousPetId, UUID newPetId) {}
+            @Override public void updateFollowMode(UUID ownerId, com.petsistemi.domain.PetFollowMode followMode) {}
         };
 
         profileCache = new PlayerPetProfileCache(repository, selectionRepository);

@@ -30,3 +30,20 @@
 ## 📋 Değişiklik Günlüğü ve Notlar
 
 - **[Başlangıç]**: `71c915c` commitinden başlandı.
+
+---
+
+## 🧭 Sonraki Aşamalar (Companion Runtime Vizyonu)
+
+Milestone 0-13 (temel ürün) tamamlandı. Ürünün devamı `VISION.md`'de tanımlanan companion
+runtime vizyonuna göre ilerler: 4 ürün ailesi (Canlı/Familiar/Attached/Special), 33 sistem
+kataloğu ve Faz A/B/C yol haritası.
+
+- **Faz 0 (tamamlandı)**: İlk genişleme paketi — ENTITY+GROUND_FOLLOW, ITEM_DISPLAY+FLYING_FOLLOW,
+  ITEM_DISPLAY+ORBIT, DISPLAY+SHOULDER/ANCHORED, DISPLAY+TRAIL, SWARM+FORMATION; idle/sleep,
+  reaction çekirdeği, level-scale, mode persistence (V8).
+- **Faz A**: Per-pet `states:` şeması, dönüşümler + çevre varyantları, per-pet reaction/emote,
+  ECHO/SHADOW_TRAIL/ROAM_NEAR_OWNER/MIRROR hareketleri, SWARM/COMPOSITE ayrımı, interaction
+  hitbox, kişilik, stage'li visual progression.
+- **Faz B**: Orta seviye sistemler (bkz. VISION.md §4).
+- **Faz C**: Yüksek riskli sistemler (binek, pet evi, packet görünürlük, evrim) — core stabil olunca.

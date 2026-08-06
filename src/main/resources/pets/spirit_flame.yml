@@ -1,0 +1,21 @@
+schema-version: 1
+display-name: "<gold>Spirit Flame</gold>"
+description:
+  - "<gold>Etrafınızda dans eden saf bir ruh alevi.</gold>"
+gui-material: SOUL_LANTERN
+permission: companionpets.pet.spiritflame
+representation:
+  type: PARTICLE
+  particle-type: SOUL_FIRE_FLAME
+  particle-count: 6
+  particle-offset: 0.4
+  particle-speed: 0.02
+movement:
+  type: HOVER
+  height: 1.8
+  update-interval-ticks: 5
+progression:
+  enabled: true
+  maximum-level: 100
+nameplate:
+  enabled: false

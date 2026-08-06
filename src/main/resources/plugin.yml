@@ -3,14 +3,14 @@ version: '${version}'
 main: com.petsistemi.PetSistemiPlugin
 api-version: '1.20'
 author: Antigravity
-description: Advanced Paper 1.20.4 Pet System Plugin
+description: Advanced modular Paper 1.20.4 Pet System Plugin (mob, item-display, orbit & familiar pets)
 
 commands:
   pet:
     description: Oyuncu pet yönetim ve GUI komutu.
     aliases: [companion, pets]
     permission: companionpets.use
-    usage: /pet [list|summon|dismiss|info|rename|help]
+    usage: /pet [list|summon|dismiss|info|rename|mode|emote|help]
   petadmin:
     description: Yönetici pet yönetim komutları.
     usage: /petadmin <give|remove|list|info|addxp|setxp|setlevel|summon|dismiss|reload|inspect|health|backup|reconcile|disable|enable>
@@ -87,3 +87,48 @@ permissions:
   companionpets.admin.enable:
     description: Pet etkinleştirme yetkisi.
     default: op
+  # Pet tanımlarındaki `permission:` alanı çağırma sırasında zorunlu tutulur.
+  # Paketlenmiş petler varsayılan olarak herkese açıktır; kısıtlamak için
+  # ilgili düğümü izin eklentinizde false yapmanız yeterlidir.
+  companionpets.pet.wolf:
+    description: Kurt Dostu petini kullanma yetkisi.
+    default: true
+  companionpets.pet.arcanecrystal:
+    description: Arcane Crystal petini kullanma yetkisi.
+    default: true
+  companionpets.pet.floatingbook:
+    description: Floating Book petini kullanma yetkisi.
+    default: true
+  companionpets.pet.shoulderorb:
+    description: Shoulder Orb petini kullanma yetkisi.
+    default: true
+  companionpets.pet.ghostscribe:
+    description: Ghost Scribe petini kullanma yetkisi.
+    default: true
+  companionpets.pet.spiritflame:
+    description: Spirit Flame petini kullanma yetkisi.
+    default: true
+  companionpets.pet.familiarswarm:
+    description: Familiar Swarm petini kullanma yetkisi.
+    default: true
+  companionpets.pet.voidcube:
+    description: Void Cube petini kullanma yetkisi.
+    default: true
+  companionpets.pet.sleepycat:
+    description: Uyuyan Kedi petini kullanma yetkisi.
+    default: true
+  companionpets.pet.wisplight:
+    description: Wisplight petini kullanma yetkisi.
+    default: true
+  companionpets.pet.shadowwisp:
+    description: Gölge Zerresi petini kullanma yetkisi.
+    default: true
+  companionpets.pet.mirrordoll:
+    description: Yansıma Bebek petini kullanma yetkisi.
+    default: true
+  companionpets.pet.echophantom:
+    description: Yankı Hayaleti petini kullanma yetkisi.
+    default: true
+  companionpets.pet.roamfox:
+    description: Gezgin Tilki petini kullanma yetkisi.
+    default: true

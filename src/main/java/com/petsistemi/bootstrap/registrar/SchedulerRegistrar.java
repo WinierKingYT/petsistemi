@@ -2,10 +2,8 @@ package com.petsistemi.bootstrap.registrar;
 
 import com.petsistemi.bootstrap.PetPluginContext;
 import com.petsistemi.config.RuntimeConfigurationSnapshot;
-import com.petsistemi.runtime.ActivePet;
+import com.petsistemi.runtime.task.PetRuntimeTickTask;
 import org.bukkit.Bukkit;
-import org.bukkit.entity.Entity;
-import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitTask;
 
@@ -37,25 +35,16 @@ public final class SchedulerRegistrar {
     public static void reevaluateReloadableTasks(PetPluginContext context) {
         RuntimeConfigurationSnapshot snapshot = (context.configSnapshot() != null) ? context.configSnapshot().get() : null;
         var config = (snapshot != null) ? snapshot.configuration() : null;
-        var runtime = (config != null) ? config.runtime() : null;
         var features = (config != null) ? config.features() : null;
 
-        long tickInterval = (runtime != null) ? runtime.tickIntervalTicks() : 5L;
-        if (tickInterval < 1L) tickInterval = 5L;
-
-        // 1. Behavior Ticking Task
-        BukkitTask behaviorTask = Bukkit.getScheduler().runTaskTimer(context.plugin(), () -> {
-            for (ActivePet activePet : context.activePetRegistry().getAllActive()) {
-                Player owner = Bukkit.getPlayer(activePet.getOwnerId());
-                if (owner != null && owner.isOnline()) {
-                    Entity entity = activePet.getSpawnedEntity();
-                    if (entity instanceof LivingEntity living) {
-                        context.behaviorController().tick(activePet, living, owner);
-                    }
-                }
-            }
-        }, 20L, tickInterval);
-        context.taskRegistry().registerNamed("behaviorTask", behaviorTask);
+        // 1. Runtime Tick Task (single entrypoint: movement/behavior for all pets).
+        //    Runs every game tick; per-pet cadence via update-interval-ticks.
+        BukkitTask runtimeTickTask = Bukkit.getScheduler().runTaskTimer(
+                context.plugin(),
+                new PetRuntimeTickTask(context.coordinator()),
+                20L, 1L
+        );
+        context.taskRegistry().registerNamed("runtimeTickTask", runtimeTickTask);
 
         // 2. Passive XP Task
         BukkitTask passiveXpTask = Bukkit.getScheduler().runTaskTimer(
@@ -69,7 +58,7 @@ public final class SchedulerRegistrar {
         if (features != null && features.abilitiesEnabled()) {
             BukkitTask abilityTask = Bukkit.getScheduler().runTaskTimer(
                     context.plugin(),
-                    new com.petsistemi.runtime.task.PetAbilityTask(context.activePetRegistry(), context.petRepository(), context.definitionRegistry()),
+                    new com.petsistemi.runtime.task.PetAbilityTask(context.activePetRegistry()),
                     40L, 40L
             );
             context.taskRegistry().registerNamed("abilityTask", abilityTask);
@@ -93,7 +82,7 @@ public final class SchedulerRegistrar {
         if (features != null && features.particlesEnabled()) {
             BukkitTask particleTask = Bukkit.getScheduler().runTaskTimer(
                     context.plugin(),
-                    new com.petsistemi.runtime.task.PetParticleTask(context.activePetRegistry(), context.petRepository()),
+                    new com.petsistemi.runtime.task.PetParticleTask(context.activePetRegistry()),
                     10L, 10L
             );
             context.taskRegistry().registerNamed("particleTask", particleTask);
