@@ -12,6 +12,7 @@ import com.petsistemi.bootstrap.MainThreadDispatcher;
 import com.petsistemi.definition.PetDefinitionRegistry;
 import com.petsistemi.domain.PetAvailabilityState;
 import com.petsistemi.domain.PetDefinition;
+import com.petsistemi.domain.PetFollowMode;
 import com.petsistemi.domain.PetInstance;
 import com.petsistemi.domain.PetRuntimeState;
 import com.petsistemi.domain.PetSelection;
@@ -99,24 +100,24 @@ public class PetRuntimeOperationService {
         dbExecutor.submit(() -> {
             Optional<PetInstance> petOpt = repository.findById(petId);
             if (petOpt.isEmpty())
-                return new InternalSummonState(false, "Pet veritabanında bulunamadı.", null, null, null);
+                return new InternalSummonState(false, "Pet veritabanında bulunamadı.", null, null, null, PetFollowMode.FOLLOW);
 
             PetInstance pet = petOpt.get();
             if (!pet.ownerId().equals(ownerId))
-                return new InternalSummonState(false, "Bu pet size ait değil.", null, null, null);
+                return new InternalSummonState(false, "Bu pet size ait değil.", null, null, null, PetFollowMode.FOLLOW);
             if (pet.availabilityState() == PetAvailabilityState.DISABLED)
-                return new InternalSummonState(false, "Devre dışı bırakılmış petler (DISABLED) çağrılamaz.", null, null, null);
+                return new InternalSummonState(false, "Devre dışı bırakılmış petler (DISABLED) çağrılamaz.", null, null, null, PetFollowMode.FOLLOW);
 
             PetDefinition def = definitionRegistry.find(pet.definitionId()).orElse(null);
             if (def == null)
                 return new InternalSummonState(false,
-                        "Pet türü konfigürasyonda bulunamadı: " + pet.definitionId(), null, null, null);
+                        "Pet türü konfigürasyonda bulunamadı: " + pet.definitionId(), null, null, null, PetFollowMode.FOLLOW);
 
-            // Selection state is read from selectionRepository (single owner)
             Optional<PetSelection> selOpt = selectionRepository.findByOwner(ownerId);
             UUID previousPetId = selOpt.map(PetSelection::petId).orElse(null);
+            PetFollowMode followMode = selOpt.map(PetSelection::followMode).orElse(PetFollowMode.FOLLOW);
 
-            return new InternalSummonState(true, null, pet, def, previousPetId);
+            return new InternalSummonState(true, null, pet, def, previousPetId, followMode);
 
         }).thenAccept(state -> {
             if (!state.success()) {
@@ -130,6 +131,15 @@ public class PetRuntimeOperationService {
                 if (!owner.isOnline()) {
                     ownerLocks.remove(ownerId, lockMarker);
                     future.complete(new PetSummonResult(false, "Oyuncu çevrimdışı olduğu için çağırma iptal edildi."));
+                    return;
+                }
+
+                // A definition may gate itself behind a permission node; pets without one stay open to everyone.
+                String requiredPermission = state.definition().permission();
+                if (requiredPermission != null && !owner.hasPermission(requiredPermission)) {
+                    ownerLocks.remove(ownerId, lockMarker);
+                    future.complete(new PetSummonResult(false,
+                            "Bu pet türünü kullanma yetkiniz yok (" + requiredPermission + ")."));
                     return;
                 }
 
@@ -153,19 +163,18 @@ public class PetRuntimeOperationService {
                 // Capture previous runtime handle BEFORE spawning new entity
                 Optional<ActivePet> previousRuntime = coordinator.getRuntimePet(ownerId);
 
-                Entity uncommittedEntity;
+                ActivePet uncommittedHandle;
                 try {
-                    uncommittedEntity = coordinator.spawnRuntimeUncommitted(owner, state.pet(), state.definition());
+                    uncommittedHandle = coordinator.spawnRuntimeUncommittedHandle(owner, state.pet(), state.definition());
                 } catch (Exception e) {
                     ownerLocks.remove(ownerId, lockMarker);
                     future.complete(new PetSummonResult(false, "Pet varlığı oluşturulamadı: " + e.getMessage()));
                     return;
                 }
+                uncommittedHandle.setFollowMode(state.followMode());
+                Entity uncommittedEntity = uncommittedHandle.getSpawnedEntity();
 
-                ActivePet newActivePet = new ActivePet(
-                        state.pet().petId(), ownerId, state.pet().definitionId(),
-                        state.pet().level(), uncommittedEntity.getUniqueId(),
-                        uncommittedEntity, PetRuntimeState.ACTIVE);
+                ActivePet newActivePet = uncommittedHandle;
 
                 // ── Phase 3: DB – atomic selection switch (selectionRepository ONLY) ──
                 dbExecutor.submit(() -> {
@@ -254,6 +263,32 @@ public class PetRuntimeOperationService {
         });
 
         return future;
+    }
+
+    /**
+     * Persists the follow mode for the owner's selected pet and applies it to the
+     * currently active runtime pet (if any). Runs the DB write on the database thread.
+     */
+    public CompletableFuture<Boolean> setFollowModeAsync(Player owner, PetFollowMode mode) {
+        Objects.requireNonNull(owner, "owner null olamaz.");
+        Objects.requireNonNull(mode, "mode null olamaz.");
+        UUID ownerId = owner.getUniqueId();
+
+        return dbExecutor.submit(() -> {
+            try {
+                selectionRepository.updateFollowMode(ownerId, mode);
+                return true;
+            } catch (Exception e) {
+                if (plugin != null) {
+                    plugin.getLogger().log(Level.WARNING, "Follow mode kaydedilemedi (ownerId=" + ownerId + "): " + e.getMessage());
+                }
+                return false;
+            }
+        }).thenCompose(persisted -> mainThreadDispatcher.run(() -> {
+            if (persisted) {
+                coordinator.getRuntimePet(ownerId).ifPresent(active -> active.setFollowMode(mode));
+            }
+        }).thenApply(v -> persisted));
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -471,5 +506,5 @@ public class PetRuntimeOperationService {
     }
 
     private record InternalSummonState(boolean success, String message, PetInstance pet,
-                                       PetDefinition definition, UUID previousPetId) {}
+                                       PetDefinition definition, UUID previousPetId, PetFollowMode followMode) {}
 }

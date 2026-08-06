@@ -1,0 +1,24 @@
+schema-version: 1
+display-name: "<aqua>Floating Tome</aqua>"
+description:
+  - "<blue>Omzunuzun üzerinde süzülen eski bir büyü kitabı.</blue>"
+gui-material: BOOK
+permission: companionpets.pet.floatingbook
+representation:
+  type: ITEM_DISPLAY
+  item-material: ENCHANTED_BOOK
+  glowing: false
+movement:
+  type: FLYING_FOLLOW
+  height: 1.5
+  side-offset: 1.1
+  follow-speed: 0.18
+  teleport-distance: 24.0
+  update-interval-ticks: 5
+progression:
+  enabled: true
+  maximum-level: 100
+nameplate:
+  enabled: true
+  format:
+    - "<aqua>{pet_name}</aqua> <gray>Lv.{level}</gray>"

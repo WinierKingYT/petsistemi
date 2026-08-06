@@ -1,5 +1,6 @@
 package com.petsistemi.persistence;
 
+import com.petsistemi.domain.PetFollowMode;
 import com.petsistemi.domain.PetSelection;
 
 import java.util.Optional;
@@ -14,4 +15,6 @@ public interface PetSelectionRepository {
     void clear(UUID ownerId);
 
     void switchSelection(UUID ownerId, UUID previousPetId, UUID newPetId);
+
+    void updateFollowMode(UUID ownerId, PetFollowMode followMode);
 }

@@ -32,5 +32,7 @@ public record PetPluginContext(
         PetExperienceService experienceService,
         PlayerInputSessionManager sessionManager,
         TaskRegistry taskRegistry,
-        java.util.concurrent.atomic.AtomicReference<com.petsistemi.config.RuntimeConfigurationSnapshot> configSnapshot
+        java.util.concurrent.atomic.AtomicReference<com.petsistemi.config.RuntimeConfigurationSnapshot> configSnapshot,
+        PetReactionEngine reactionEngine,
+        PetEmoteController emoteController
 ) {}

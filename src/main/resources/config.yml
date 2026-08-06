@@ -2,6 +2,9 @@
 
 locale: 'tr_TR'
 
+gui:
+  title: 'Pet Menüsü'
+
 limits:
   maximum-owned-pets: 20
 
@@ -46,4 +49,19 @@ features:
     enabled: false
   magnet:
     enabled: false
+  riding:
+    # Sahip shift + sağ tık ile kendi petine binebilir (inspect için normal sağ tık)
+    enabled: false
+  idle-sleep:
+    # Sahip N saniye hareket etmezse pet uyku moduna geçer (ENTITY: oturur, display: küçülür)
+    enabled: false
+    idle-seconds: 45
+  reactions:
+    # Pet tepkileri: sahip hasar alınca sinirlenme, seviye atlayınca mutluluk, uyku sesleri
+    enabled: false
+  level-scaling:
+    # Display petler seviye başına boyut artar (1. + growth × (level-1), cap max-multiplier)
+    enabled: false
+    growth-per-level: 0.02
+    max-multiplier: 1.5
 

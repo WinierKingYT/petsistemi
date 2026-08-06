@@ -46,45 +46,17 @@ public class AtomicPetDefinitionRegistry implements PetDefinitionRegistry {
                     YamlConfiguration yaml = YamlConfiguration.loadConfiguration(file);
                     int schemaVersion = yaml.getInt("schema-version", 1);
                     String id = file.getName().replace(".yml", "").replace(".yaml", "").toLowerCase();
-                    String displayName = yaml.getString("display-name", id);
-                    List<String> description = yaml.getStringList("description");
-                    String typeStr = yaml.getString("entity-type", "WOLF");
-                    boolean baby = yaml.getBoolean("baby", false);
-                    boolean glowing = yaml.getBoolean("glowing", false);
-                    boolean invulnerable = yaml.getBoolean("invulnerable", true);
-                    boolean silent = yaml.getBoolean("silent", false);
-                    boolean gravity = yaml.getBoolean("gravity", true);
 
-                    boolean progressionEnabled = yaml.getBoolean("progression.enabled", true);
-                    int maxLevel = yaml.getInt("progression.maximum-level", 100);
-
-                    boolean nameplateEnabled = yaml.getBoolean("nameplate.enabled", true);
-                    List<String> nameplateFormat = yaml.getStringList("nameplate.format");
-                    if (nameplateFormat == null || nameplateFormat.isEmpty()) {
-                        nameplateFormat = List.of("<gradient:#ffaa00:#ff5500>{pet_name}</gradient> <gray>Lv.{level}</gray>");
+                    PetDefinitionYamlParser.Parsed parsed = PetDefinitionYamlParser.parse(id, yaml);
+                    List<String> errors = new java.util.ArrayList<>(parsed.errors());
+                    if (parsed.definition() != null) {
+                        errors.addAll(PetDefinitionValidator.validate(parsed.definition(), schemaVersion));
                     }
 
-                    PetDefinition def = new PetDefinition(
-                            id,
-                            displayName,
-                            description,
-                            typeStr.toUpperCase(),
-                            baby,
-                            glowing,
-                            invulnerable,
-                            silent,
-                            gravity,
-                            progressionEnabled,
-                            maxLevel,
-                            nameplateEnabled,
-                            nameplateFormat
-                    );
-
-                    List<String> errors = PetDefinitionValidator.validate(def, schemaVersion);
                     if (!errors.isEmpty()) {
                         errorsPerFile.put(file.getName(), errors);
-                    } else {
-                        candidateMap.put(id, def);
+                    } else if (parsed.definition() != null) {
+                        candidateMap.put(id, parsed.definition());
                     }
                 } catch (Exception e) {
                     errorsPerFile.put(file.getName(), List.of("Ayrıştırma hatası: " + e.getMessage()));
@@ -137,15 +109,31 @@ public class AtomicPetDefinitionRegistry implements PetDefinitionRegistry {
         }
     }
 
+    /**
+     * Pet templates copied into {@code plugins/PetSistemi/pets/} on first run.
+     * Every file bundled under {@code resources/pets/} must be listed here, otherwise the
+     * showcase pets exist in the jar but never reach a fresh server.
+     * {@code BundledPetDefinitionsTest} fails if this list drifts from the resource folder.
+     */
+    static final List<String> DEFAULT_PET_FILES = List.of(
+            "wolf.yml", "cat.yml", "allay.yml",
+            "arcane_crystal.yml", "floating_book.yml", "shoulder_orb.yml", "ghost_scribe.yml",
+            "familiar_swarm.yml", "void_cube.yml", "spirit_flame.yml",
+            "sleepy_cat.yml", "wisplight.yml",
+            "shadow_wisp.yml", "mirror_doll.yml", "echo_phantom.yml", "roam_fox.yml");
+
     private void saveDefaultPetFiles(File petsFolder) {
-        String[] defaults = new String[]{"wolf.yml", "cat.yml", "allay.yml"};
-        for (String defFile : defaults) {
+        for (String defFile : DEFAULT_PET_FILES) {
             try {
                 File target = new File(petsFolder, defFile);
                 if (!target.exists() && plugin != null) {
                     plugin.saveResource("pets/" + defFile, false);
                 }
-            } catch (Exception ignored) {}
+            } catch (Exception e) {
+                if (plugin != null && plugin.getLogger() != null) {
+                    plugin.getLogger().warning("Varsayılan pet şablonu kopyalanamadı: " + defFile + " (" + e.getMessage() + ")");
+                }
+            }
         }
     }
 }

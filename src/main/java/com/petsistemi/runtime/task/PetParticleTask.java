@@ -1,6 +1,5 @@
 package com.petsistemi.runtime.task;
 
-import com.petsistemi.persistence.PetRepository;
 import com.petsistemi.runtime.ActivePet;
 import com.petsistemi.runtime.ActivePetRegistry;
 import org.bukkit.Bukkit;
@@ -12,16 +11,20 @@ import org.bukkit.entity.Player;
 public class PetParticleTask implements Runnable {
 
     private final ActivePetRegistry activePetRegistry;
-    private final PetRepository petRepository;
 
-    public PetParticleTask(ActivePetRegistry activePetRegistry, PetRepository petRepository) {
+    public PetParticleTask(ActivePetRegistry activePetRegistry) {
         this.activePetRegistry = activePetRegistry;
-        this.petRepository = petRepository;
     }
 
     @Override
     public void run() {
         for (ActivePet activePet : activePetRegistry.getAllActive()) {
+            // Display representations manage their own visuals (e.g. PARTICLE auras);
+            // the legacy def-based aura applies to classic ENTITY pets only.
+            if (activePet.getRepresentationType() != com.petsistemi.domain.RuntimeRepresentationType.ENTITY) {
+                continue;
+            }
+
             Entity entity = activePet.getSpawnedEntity();
             if (entity == null || !entity.isValid() || entity.isDead()) continue;
 

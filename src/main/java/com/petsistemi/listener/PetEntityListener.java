@@ -27,7 +27,7 @@ public class PetEntityListener implements Listener {
     @EventHandler
     public void onDeath(EntityDeathEvent event) {
         Entity entity = event.getEntity();
-        Optional<ActivePet> activeOpt = activeRegistry.getByEntity(entity.getUniqueId());
+        Optional<ActivePet> activeOpt = activeRegistry.getByAnyEntity(entity.getUniqueId());
         if (activeOpt.isPresent()) {
             ActivePet activePet = activeOpt.get();
             event.getDrops().clear();
@@ -39,7 +39,7 @@ public class PetEntityListener implements Listener {
     @EventHandler
     public void onChunkUnload(ChunkUnloadEvent event) {
         for (Entity entity : event.getChunk().getEntities()) {
-            Optional<ActivePet> activeOpt = activeRegistry.getByEntity(entity.getUniqueId());
+            Optional<ActivePet> activeOpt = activeRegistry.getByAnyEntity(entity.getUniqueId());
             if (activeOpt.isPresent()) {
                 ActivePet active = activeOpt.get();
                 coordinator.despawnRuntime(active.getOwnerId());
@@ -49,21 +49,21 @@ public class PetEntityListener implements Listener {
 
     @EventHandler
     public void onDamage(EntityDamageEvent event) {
-        if (activeRegistry.getByEntity(event.getEntity().getUniqueId()).isPresent()) {
+        if (activeRegistry.getByAnyEntity(event.getEntity().getUniqueId()).isPresent()) {
             event.setCancelled(true);
         }
     }
 
     @EventHandler
     public void onCombust(EntityCombustEvent event) {
-        if (activeRegistry.getByEntity(event.getEntity().getUniqueId()).isPresent()) {
+        if (activeRegistry.getByAnyEntity(event.getEntity().getUniqueId()).isPresent()) {
             event.setCancelled(true);
         }
     }
 
     @EventHandler
     public void onMobTarget(EntityTargetLivingEntityEvent event) {
-        if (event.getTarget() != null && activeRegistry.getByEntity(event.getTarget().getUniqueId()).isPresent()) {
+        if (event.getTarget() != null && activeRegistry.getByAnyEntity(event.getTarget().getUniqueId()).isPresent()) {
             event.setCancelled(true);
         }
     }

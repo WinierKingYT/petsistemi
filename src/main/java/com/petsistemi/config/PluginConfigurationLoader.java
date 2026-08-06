@@ -38,6 +38,14 @@ public final class PluginConfigurationLoader {
         boolean abilitiesEnabled = config.getBoolean("features.abilities.enabled", false);
         boolean particlesEnabled = config.getBoolean("features.particles.enabled", false);
         boolean magnetEnabled = config.getBoolean("features.magnet.enabled", false);
+        boolean ridingEnabled = config.getBoolean("features.riding.enabled", false);
+
+        boolean idleSleepEnabled = config.getBoolean("features.idle-sleep.enabled", false);
+        int idleSleepSeconds = Math.max(5, config.getInt("features.idle-sleep.idle-seconds", 45));
+        boolean reactionsEnabled = config.getBoolean("features.reactions.enabled", false);
+        boolean levelScalingEnabled = config.getBoolean("features.level-scaling.enabled", false);
+        double levelScalingGrowth = Math.max(0.0, config.getDouble("features.level-scaling.growth-per-level", 0.02));
+        double levelScalingMax = Math.max(1.0, config.getDouble("features.level-scaling.max-multiplier", 1.5));
 
         PluginConfiguration pluginConfig = new PluginConfiguration(
                 new PluginConfiguration.LimitsConfiguration(maxPets),
@@ -54,10 +62,13 @@ public final class PluginConfigurationLoader {
                 ),
                 new PluginConfiguration.RuntimeConfiguration(tickInterval, startDist, stopDist, teleportDist, followSpeed),
                 new PluginConfiguration.DatabaseConfiguration(backupEnabled, failOnBackupError, maxBackups),
-                new PluginConfiguration.GuiConfiguration("Pet Menüsü", 6),
+                new PluginConfiguration.GuiConfiguration(config.getString("gui.title", "Pet Menüsü"), 6),
                 new PluginConfiguration.DiagnosticsConfiguration(100L),
                 new PluginConfiguration.DefinitionConfiguration("KEEP_OLD_ON_ANY_ERROR"),
-                new PluginConfiguration.FeaturesConfiguration(abilitiesEnabled, particlesEnabled, magnetEnabled),
+                new PluginConfiguration.FeaturesConfiguration(
+                        abilitiesEnabled, particlesEnabled, magnetEnabled, ridingEnabled,
+                        idleSleepEnabled, idleSleepSeconds, reactionsEnabled,
+                        levelScalingEnabled, levelScalingGrowth, levelScalingMax),
                 locale
         );
 

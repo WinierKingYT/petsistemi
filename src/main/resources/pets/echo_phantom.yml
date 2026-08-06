@@ -1,0 +1,22 @@
+schema-version: 1
+display-name: "<white>Yankı Hayaleti</white>"
+description:
+  - "<gray>Sahibinin geçmiş adımlarını tekrarlayan bir hayalet.</gray>"
+gui-material: PHANTOM_MEMBRANE
+permission: companionpets.pet.echophantom
+representation:
+  type: ENTITY
+  entity-type: ALLAY
+  glowing: true
+  silent: true
+movement:
+  type: ECHO
+  follow-distance: 8.0
+  teleport-distance: 30.0
+progression:
+  enabled: true
+  maximum-level: 100
+nameplate:
+  enabled: true
+  format:
+    - "<white>{pet_name}</white> <gray>Lv.{level}</gray>"

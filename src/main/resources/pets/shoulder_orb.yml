@@ -1,0 +1,28 @@
+schema-version: 1
+display-name: "<green>Shoulder Orb</green>"
+description:
+  - "<green>Sağ omzunuzda taşıdığınız doğal bir kristal küre.</green>"
+gui-material: END_CRYSTAL
+permission: companionpets.pet.shoulderorb
+representation:
+  type: ITEM_DISPLAY
+  item-material: END_CRYSTAL
+  scale:
+    x: 0.7
+    y: 0.7
+    z: 0.7
+  glowing: true
+movement:
+  type: ANCHORED
+  anchor:
+    position: RIGHT_SHOULDER
+    distance: 1.8
+    height: 0.6
+    rotate-with-owner: true
+  teleport-distance: 24.0
+  update-interval-ticks: 5
+progression:
+  enabled: true
+  maximum-level: 100
+nameplate:
+  enabled: false

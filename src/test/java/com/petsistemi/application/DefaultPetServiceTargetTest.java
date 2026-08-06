@@ -141,6 +141,9 @@ class DefaultPetServiceTargetTest {
         @Override public void select(UUID ownerId, UUID petId) { map.put(ownerId, new PetSelection(ownerId, petId, System.currentTimeMillis())); }
         @Override public void clear(UUID ownerId) { map.remove(ownerId); }
         @Override public void switchSelection(UUID ownerId, UUID previousPetId, UUID newPetId) { map.put(ownerId, new PetSelection(ownerId, newPetId, System.currentTimeMillis())); }
+        @Override public void updateFollowMode(UUID ownerId, com.petsistemi.domain.PetFollowMode followMode) {
+            map.computeIfPresent(ownerId, (id, sel) -> sel.withFollowMode(followMode));
+        }
     }
 
     private static class TestCoordinator extends PetRuntimeCoordinator {

@@ -5,7 +5,10 @@ import com.petsistemi.api.PetService;
 import com.petsistemi.api.PetSnapshot;
 import com.petsistemi.application.PetRuntimeOperationService;
 import com.petsistemi.bootstrap.MainThreadDispatcher;
+import com.petsistemi.config.RuntimeConfigurationSnapshot;
 import com.petsistemi.definition.PetDefinitionRegistry;
+import com.petsistemi.message.MessageService;
+import com.petsistemi.message.PlaceholderMap;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.NamespacedKey;
@@ -26,6 +29,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class PetMenuListener implements Listener {
 
@@ -37,6 +41,8 @@ public class PetMenuListener implements Listener {
     private final PlayerInputSessionManager sessionManager;
     private final PetDefinitionRegistry definitionRegistry;
     private final MainThreadDispatcher dispatcher;
+    private final MessageService messageService;
+    private final AtomicReference<RuntimeConfigurationSnapshot> configSnapshot;
 
     private final Set<UUID> processingPlayers = ConcurrentHashMap.newKeySet();
     private final ConcurrentHashMap<UUID, Long> lastClickTime = new ConcurrentHashMap<>();
@@ -46,21 +52,34 @@ public class PetMenuListener implements Listener {
                            PetService petService,
                            PlayerInputSessionManager sessionManager,
                            PetDefinitionRegistry definitionRegistry,
-                           MainThreadDispatcher dispatcher) {
+                           MainThreadDispatcher dispatcher,
+                           MessageService messageService,
+                           AtomicReference<RuntimeConfigurationSnapshot> configSnapshot) {
         this.plugin = plugin;
         this.operationService = operationService;
         this.petService = petService;
         this.sessionManager = sessionManager;
         this.definitionRegistry = definitionRegistry;
         this.dispatcher = dispatcher;
+        this.messageService = messageService;
+        this.configSnapshot = configSnapshot;
+    }
+
+    public PetMenuListener(JavaPlugin plugin,
+                           PetRuntimeOperationService operationService,
+                           PetService petService,
+                           PlayerInputSessionManager sessionManager,
+                           PetDefinitionRegistry definitionRegistry,
+                           MainThreadDispatcher dispatcher) {
+        this(plugin, operationService, petService, sessionManager, definitionRegistry, dispatcher, null, null);
     }
 
     public PetMenuListener(JavaPlugin plugin, PetService petService, PlayerInputSessionManager sessionManager, PetDefinitionRegistry definitionRegistry) {
-        this(plugin, null, petService, sessionManager, definitionRegistry, null);
+        this(plugin, null, petService, sessionManager, definitionRegistry, null, null, null);
     }
 
     public PetMenuListener(JavaPlugin plugin, PetService petService, PlayerInputSessionManager sessionManager) {
-        this(plugin, null, petService, sessionManager, null, null);
+        this(plugin, null, petService, sessionManager, null, null, null, null);
     }
 
     @EventHandler(priority = EventPriority.HIGH)
@@ -87,14 +106,14 @@ public class PetMenuListener implements Listener {
 
         if (slot == 45 && holder.page() > 0) {
             player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 0.7f, 1.2f);
-            PetListMenu.openAsync(player, petService, holder.page() - 1, plugin, definitionRegistry, dispatcher);
+            PetListMenu.openAsync(player, petService, holder.page() - 1, plugin, definitionRegistry, dispatcher, configSnapshot, messageService);
             processingPlayers.remove(uuid);
             return;
         }
 
         if (slot == 53) {
             player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 0.7f, 1.2f);
-            PetListMenu.openAsync(player, petService, holder.page() + 1, plugin, definitionRegistry, dispatcher);
+            PetListMenu.openAsync(player, petService, holder.page() + 1, plugin, definitionRegistry, dispatcher, configSnapshot, messageService);
             processingPlayers.remove(uuid);
             return;
         }
@@ -129,7 +148,7 @@ public class PetMenuListener implements Listener {
         try {
             petId = UUID.fromString(petIdStr);
         } catch (IllegalArgumentException e) {
-            player.sendMessage(Component.text("Geçersiz pet verisi.", NamedTextColor.RED));
+            send(player, "command.invalid-pet-data", "<red>Geçersiz pet verisi.</red>");
             processingPlayers.remove(uuid);
             return;
         }
@@ -139,9 +158,8 @@ public class PetMenuListener implements Listener {
             player.closeInventory();
             if (sessionManager != null) {
                 sessionManager.startRenameSession(player.getUniqueId(), petId);
-                player.sendMessage(Component.text(
-                        "Lütfen chat ekranına yeni pet ismini yazın ('iptal' yazarak iptal edebilirsiniz):",
-                        NamedTextColor.YELLOW));
+                send(player, "command.rename-prompt",
+                        "<yellow>Lütfen chat ekranına yeni pet ismini yazın ('iptal' yazarak iptal edebilirsiniz):</yellow>");
             }
             processingPlayers.remove(uuid);
             return;
@@ -154,20 +172,28 @@ public class PetMenuListener implements Listener {
 
             if (isSpawned) {
                 CompletableFuture<?> opFuture = operationService != null ? operationService.dismissAsync(player) : CompletableFuture.completedFuture(petService.dismiss(player));
-                handleOperationResult(player, holder, uuid, opFuture, "Pet gönderilemedi: ");
+                handleOperationResult(player, holder, uuid, opFuture, "command.dismiss-failed");
             } else {
                 CompletableFuture<?> opFuture = operationService != null ? operationService.summonAsync(player, petId) : CompletableFuture.completedFuture(petService.summon(player, petId));
-                handleOperationResult(player, holder, uuid, opFuture, "Pet çağrılamadı: ");
+                handleOperationResult(player, holder, uuid, opFuture, "command.summon-failed");
             }
         }).exceptionally(ex -> {
-            player.sendMessage(Component.text("Pet durumu alınamadı: " + ex.getMessage(), NamedTextColor.RED));
+            send(player, "command.invalid-pet-data", "<red>Pet durumu alınamadı: " + ex.getMessage() + "</red>");
             processingPlayers.remove(uuid);
             return null;
         });
     }
 
+    private void send(Player player, String key, String fallback) {
+        if (messageService != null) {
+            messageService.send(player, key, fallback);
+        } else if (player != null) {
+            player.sendMessage(Component.text(fallback, NamedTextColor.RED));
+        }
+    }
+
     private void handleOperationResult(Player player, PetMenuHolder holder, UUID uuid,
-                                       CompletableFuture<?> opFuture, String errorPrefix) {
+                                       CompletableFuture<?> opFuture, String errorKey) {
         opFuture.whenComplete((res, ex) -> {
             boolean success = ex == null
                     && ((res instanceof com.petsistemi.api.result.PetSummonResult sr && sr.success())
@@ -176,11 +202,11 @@ public class PetMenuListener implements Listener {
 
             String errorMessage = null;
             if (ex != null) {
-                errorMessage = errorPrefix + ex.getMessage();
+                errorMessage = ex.getMessage();
             } else if (res instanceof com.petsistemi.api.result.PetSummonResult sr && !sr.success()) {
-                errorMessage = errorPrefix + sr.message();
+                errorMessage = sr.message();
             } else if (res instanceof com.petsistemi.api.result.PetDismissResult dr && !dr.success()) {
-                errorMessage = errorPrefix + dr.message();
+                errorMessage = dr.message();
             }
 
             final String message = errorMessage;
@@ -188,10 +214,10 @@ public class PetMenuListener implements Listener {
                 try {
                     if (player.isOnline()) {
                         if (message != null) {
-                            player.sendMessage(Component.text(message, NamedTextColor.RED));
+                            sendError(player, errorKey, message);
                         } else {
                             player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, 1.2f);
-                            PetListMenu.openAsync(player, petService, holder.page(), plugin, definitionRegistry, dispatcher);
+                            PetListMenu.openAsync(player, petService, holder.page(), plugin, definitionRegistry, dispatcher, configSnapshot, messageService);
                         }
                     }
                 } finally {
@@ -201,6 +227,14 @@ public class PetMenuListener implements Listener {
             if (dispatcher != null) dispatcher.run(refreshAction);
             else refreshAction.run();
         });
+    }
+
+    private void sendError(Player player, String key, String error) {
+        if (messageService != null) {
+            messageService.send(player, key, "<red>" + error + "</red>", PlaceholderMap.of("error", error));
+        } else if (player != null) {
+            player.sendMessage(Component.text(error, NamedTextColor.RED));
+        }
     }
 
     @EventHandler(priority = EventPriority.HIGH)

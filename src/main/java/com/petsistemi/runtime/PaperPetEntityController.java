@@ -2,19 +2,15 @@ package com.petsistemi.runtime;
 
 import com.petsistemi.domain.PetDefinition;
 import com.petsistemi.domain.PetInstance;
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.minimessage.MiniMessage;
 import org.bukkit.NamespacedKey;
 import org.bukkit.entity.*;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
 
-import java.util.ArrayList;
-import java.util.List;
 import java.util.UUID;
 
-public class PaperPetEntityController implements PetEntityController {
+public class PaperPetEntityController implements PetEntityController, PetRepresentationController {
 
     private final JavaPlugin plugin;
     private final NamespacedKey petIdKey;
@@ -88,33 +84,30 @@ public class PaperPetEntityController implements PetEntityController {
 
     @Override
     public void updateName(Entity entity, PetInstance pet, PetDefinition definition) {
-        if (!definition.nameplateEnabled()) {
-            entity.setCustomNameVisible(false);
-            return;
-        }
+        PetNameplateRenderer.updateName(entity, pet, definition);
+    }
 
-        String petName = pet.customName() != null ? pet.customName() : definition.displayName();
-        
-        List<String> lines = definition.nameplateFormat();
-        List<Component> components = new ArrayList<>();
-        
-        for (String line : lines) {
-            String processed = line.replace("{pet_name}", petName)
-                                  .replace("{level}", String.valueOf(pet.level()));
-            components.add(MiniMessage.miniMessage().deserialize(processed));
-        }
-
-        // Join multiple nameplate components with space/separator since vanilla nameplate is single line
-        Component joined = Component.empty();
-        for (int i = 0; i < components.size(); i++) {
-            joined = joined.append(components.get(i));
-            if (i < components.size() - 1) {
-                joined = joined.append(Component.text(" - "));
+    @Override
+    public void updateVisual(Entity primaryEntity, PetInstance pet, PetDefinition definition) {
+        if (primaryEntity != null && primaryEntity.isValid()) {
+            primaryEntity.setGlowing(definition.glowing());
+            if (primaryEntity instanceof Ageable ageable) {
+                if (definition.baby()) {
+                    ageable.setBaby();
+                } else {
+                    ageable.setAdult();
+                }
+                ageable.setAgeLock(true);
             }
         }
+        PetNameplateRenderer.updateName(primaryEntity, pet, definition);
+    }
 
-        entity.customName(joined);
-        entity.setCustomNameVisible(true);
+    @Override
+    public void applyRestState(Entity primaryEntity, PetInstance pet, PetDefinition definition, boolean resting) {
+        if (primaryEntity instanceof org.bukkit.entity.Sittable sittable && sittable.isSitting() != resting) {
+            sittable.setSitting(resting);
+        }
     }
 
     @Override

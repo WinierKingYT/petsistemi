@@ -14,6 +14,8 @@ Her yeni veritabanı şema güncellemesi, uzlaştırması veya düzeltmesi sıra
 - **V4 (State Reconciliation)**: `DISABLED` pet koruması, sahte seçimlerin silinmesi, uzlaştırma.
 - **V5 (Availability State Separation)**: Persistence `ACTIVE` statüsünün `AVAILABLE` / `DISABLED` availability modeline dönüştürülmesi.
 - **V6 (Selection Table Rename)**: `player_active_pets` tablosunun `player_selected_pets` olarak taşınması.
+- **V7 (Audit Log Table)**: Audit/izleme loglarının tutulduğu `audit_logs` tablosu.
+- **V8 (Follow Mode Persistence)**: `player_selected_pets.follow_mode` kolonu (`TEXT NOT NULL DEFAULT 'FOLLOW'`). Mevcut satırlar FOLLOW alır; `/pet mode` seçimi restart sonrası korunur. Kolon kontrolü `PRAGMA table_info` ile yapılır (idempotent).
 
 ## 3. Otomatik Veritabanı Yedekleme (Backup Before Migration)
 

@@ -1,0 +1,22 @@
+schema-version: 1
+display-name: "<gray>Ghost Scribe</gray>"
+description:
+  - "<gray>Adım adım izinizi süren kadim bir ruh yazmanı.</gray>"
+gui-material: NAME_TAG
+permission: companionpets.pet.ghostscribe
+representation:
+  type: TEXT_DISPLAY
+  scale:
+    x: 0.9
+    y: 0.9
+    z: 0.9
+movement:
+  type: TRAIL
+  follow-distance: 6.0
+  teleport-distance: 30.0
+  update-interval-ticks: 5
+progression:
+  enabled: true
+  maximum-level: 100
+nameplate:
+  enabled: false

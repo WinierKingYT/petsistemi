@@ -1,5 +1,6 @@
 package com.petsistemi.persistence;
 
+import com.petsistemi.domain.PetFollowMode;
 import com.petsistemi.domain.PetSelection;
 
 import java.sql.Connection;
@@ -31,7 +32,8 @@ public class SqlitePetSelectionRepository implements PetSelectionRepository {
                     return Optional.of(new PetSelection(
                             UUID.fromString(rs.getString("owner_id")),
                             UUID.fromString(rs.getString("pet_id")),
-                            rs.getLong("selected_at")
+                            rs.getLong("selected_at"),
+                            parseFollowMode(rs.getString("follow_mode"))
                     ));
                 }
             }
@@ -40,6 +42,11 @@ public class SqlitePetSelectionRepository implements PetSelectionRepository {
             throw new PetPersistenceException("Pet seçimi sorgulanamadı.", e);
         }
         return Optional.empty();
+    }
+
+    private static PetFollowMode parseFollowMode(String raw) {
+        PetFollowMode mode = PetFollowMode.fromString(raw);
+        return mode != null ? mode : PetFollowMode.FOLLOW;
     }
 
     @Override
@@ -87,6 +94,20 @@ public class SqlitePetSelectionRepository implements PetSelectionRepository {
         } catch (SQLException e) {
             logger.severe("clear selection sorgusunda hata: " + e.getMessage());
             throw new PetPersistenceException("Pet seçimi temizlenemedi.", e);
+        }
+    }
+
+    @Override
+    public synchronized void updateFollowMode(UUID ownerId, PetFollowMode followMode) {
+        DatabaseThreadGuard.requireDatabaseThread();
+        String sql = "UPDATE player_selected_pets SET follow_mode = ? WHERE owner_id = ?;";
+        try (PreparedStatement ps = connectionProvider.getConnection().prepareStatement(sql)) {
+            ps.setString(1, followMode != null ? followMode.name() : PetFollowMode.FOLLOW.name());
+            ps.setString(2, ownerId.toString());
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            logger.severe("updateFollowMode sorgusunda hata: " + e.getMessage());
+            throw new PetPersistenceException("Pet takip modu kaydedilemedi.", e);
         }
     }
 

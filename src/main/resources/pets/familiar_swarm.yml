@@ -1,0 +1,26 @@
+schema-version: 1
+display-name: "<light_purple>Familiar Swarm</light_purple>"
+description:
+  - "<light_purple>Etrafınızda formasyonda dönen üç minik ruh ateşi.</light_purple>"
+gui-material: ALLIUM
+permission: companionpets.pet.familiarswarm
+representation:
+  type: MULTI_ENTITY
+  item-material: ALLIUM
+  child-count: 3
+  child-material: POPPY
+  scale:
+    x: 0.6
+    y: 0.6
+    z: 0.6
+movement:
+  type: FORMATION
+  teleport-distance: 24.0
+  update-interval-ticks: 5
+progression:
+  enabled: true
+  maximum-level: 100
+nameplate:
+  enabled: true
+  format:
+    - "<light_purple>{pet_name}</light_purple>"
