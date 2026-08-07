@@ -241,8 +241,11 @@ public class PetRuntimeCoordinator {
             Player owner = ownerLookup.find(active.getOwnerId());
             if (owner == null || !owner.isOnline()) continue;
 
-            // Smart Chunk Unload Suspend: skip tick if owner location/chunk is unloaded to save CPU
-            if (owner.getWorld() != null && owner.getLocation() != null && owner.getLocation().getChunk() != null && !owner.getLocation().getChunk().isLoaded()) {
+            // Skip the tick while the owner's chunk is unloaded. Must use isChunkLoaded():
+            // getChunk() is the *loading* accessor, so the old check both forced a chunk
+            // load and could then never see an unloaded chunk.
+            if (owner.getLocation() != null && owner.getLocation().getWorld() != null
+                    && !owner.getLocation().isChunkLoaded()) {
                 continue;
             }
 
@@ -277,14 +280,31 @@ public class PetRuntimeCoordinator {
         }
     }
 
+    /** Default leash for the runaway guard when the definition does not set one. */
+    static final double DEFAULT_RUNAWAY_DISTANCE = 50.0;
+
+    /**
+     * The runaway threshold: the pet's own {@code movement.teleport-distance} when it is
+     * larger than the default, otherwise the default. Movement controllers do their own
+     * teleporting well inside this — the guard only catches pets that escaped entirely.
+     */
+    static double runawayDistance(ActivePet active) {
+        PetMovementDefinition movement = active != null ? active.getMovementDefinition() : null;
+        double configured = movement != null ? movement.teleportDistance() : 0.0;
+        return Math.max(DEFAULT_RUNAWAY_DISTANCE, configured);
+    }
+
     private void tickPet(ActivePet active, Player owner) {
         Entity entity = active.getSpawnedEntity();
         if (entity == null || !entity.isValid()) return;
 
-        // Max Distance Teleport Guard: if pet is > 50 blocks away, auto teleport next to owner
+        // Runaway guard: snap the pet back if it drifts absurdly far. The threshold honours
+        // the pet's own movement.teleport-distance — a hard 50 blocks would silently cap any
+        // definition that deliberately configures a longer leash.
         if (entity.getWorld() != null && owner.getWorld() != null && entity.getWorld().equals(owner.getWorld()) && entity.getLocation() != null && owner.getLocation() != null) {
             try {
-                if (entity.getLocation().distanceSquared(owner.getLocation()) > 2500.0) {
+                double limit = runawayDistance(active);
+                if (entity.getLocation().distanceSquared(owner.getLocation()) > limit * limit) {
                     entity.teleport(SafePetLocationFinder.findSafeLocation(owner.getLocation()));
                     return;
                 }
