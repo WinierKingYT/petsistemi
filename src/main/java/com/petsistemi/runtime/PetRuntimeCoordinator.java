@@ -15,11 +15,14 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import java.util.logging.Level;
 
 public class PetRuntimeCoordinator {
 
@@ -46,6 +49,9 @@ public class PetRuntimeCoordinator {
      * child entities that were spawned but never registered.
      */
     private final Map<UUID, ActivePet> pendingSpawns = new HashMap<>();
+
+    /** Pets whose tick failure has already been logged; cleared once they tick cleanly again. */
+    private final Set<UUID> tickFailureLogged = new HashSet<>();
 
     private volatile PetRecoveryHandler recoveryHandler;
     private volatile PetIdleSleepController idleSleepController;
@@ -210,38 +216,73 @@ public class PetRuntimeCoordinator {
      * falling back to the legacy behavior controller.
      */
     public synchronized void tickAll() {
-        for (ActivePet active : new ArrayList<>(activeRegistry.getAllActive())) {
-            Player owner = Bukkit.getPlayer(active.getOwnerId());
+        tickEach(new ArrayList<>(activeRegistry.getAllActive()), Bukkit::getPlayer);
+    }
+
+    /**
+     * Ticks every pet in isolation. A controller that throws must not stop the pets
+     * queued behind it — otherwise one broken pet silently freezes everyone else's.
+     * Failures are logged once per pet and re-armed when that pet ticks cleanly again.
+     *
+     * <p>{@code ownerLookup} is a seam so the loop can be driven without a live server.</p>
+     */
+    synchronized void tickEach(List<ActivePet> pets, OwnerLookup ownerLookup) {
+        for (ActivePet active : pets) {
+            Player owner = ownerLookup.find(active.getOwnerId());
             if (owner == null || !owner.isOnline()) continue;
 
-            Entity entity = active.getSpawnedEntity();
-            if (entity == null || !entity.isValid()) continue;
-
-            int interval = active.getUpdateIntervalTicks();
-            if (interval > 0) {
-                active.incrementTickAccumulator();
-                if (active.getTickAccumulator() < interval) continue;
-                active.setTickAccumulator(0);
+            try {
+                tickPet(active, owner);
+                tickFailureLogged.remove(active.getPetId());
+            } catch (Exception e) {
+                reportTickFailure(active, e);
             }
+        }
+    }
 
-            PetMovementController movement = resolveMovement(active);
-            if (movement != null) {
-                movement.tick(active, entity, owner);
-            } else if (entity instanceof LivingEntity living && behaviorController != null) {
-                behaviorController.tick(active, living, owner);
-            }
+    /** Resolves the owner of a pet; {@link Bukkit#getPlayer(UUID)} in production. */
+    @FunctionalInterface
+    interface OwnerLookup {
+        Player find(UUID ownerId);
+    }
 
-            PetTransformController transforms = transformController;
-            if (transforms != null) {
-                transforms.tick(owner, active, entity);
-            }
+    private void tickPet(ActivePet active, Player owner) {
+        Entity entity = active.getSpawnedEntity();
+        if (entity == null || !entity.isValid()) return;
 
-            PetIdleSleepController idle = idleSleepController;
-            if (idle != null) {
-                idle.tick(owner, active, entity);
-            }
+        int interval = active.getUpdateIntervalTicks();
+        if (interval > 0) {
+            active.incrementTickAccumulator();
+            if (active.getTickAccumulator() < interval) return;
+            active.setTickAccumulator(0);
+        }
 
-            tickVisual(active, entity, owner);
+        PetMovementController movement = resolveMovement(active);
+        if (movement != null) {
+            movement.tick(active, entity, owner);
+        } else if (entity instanceof LivingEntity living && behaviorController != null) {
+            behaviorController.tick(active, living, owner);
+        }
+
+        PetTransformController transforms = transformController;
+        if (transforms != null) {
+            transforms.tick(owner, active, entity);
+        }
+
+        PetIdleSleepController idle = idleSleepController;
+        if (idle != null) {
+            idle.tick(owner, active, entity);
+        }
+
+        tickVisual(active, entity, owner);
+    }
+
+    private void reportTickFailure(ActivePet active, Exception e) {
+        if (plugin == null || plugin.getLogger() == null) return;
+        if (tickFailureLogged.add(active.getPetId())) {
+            plugin.getLogger().log(Level.WARNING,
+                    "Pet tick hatası — bu pet atlandı, diğerleri etkilenmedi (ownerId=" + active.getOwnerId()
+                            + ", petId=" + active.getPetId() + ", movement=" + active.getMovementType() + ")", e);
         }
     }
 
@@ -322,31 +363,37 @@ public class PetRuntimeCoordinator {
         List<ActivePet> activeList = new ArrayList<>(activeRegistry.getAllActive());
         for (ActivePet active : activeList) {
             UUID ownerId = active.getOwnerId();
-            Player owner = Bukkit.getPlayer(ownerId);
-            Entity entity = active.getSpawnedEntity();
+            // One pet's failure must not abort the sweep for the rest.
+            try {
+                Player owner = Bukkit.getPlayer(ownerId);
+                Entity entity = active.getSpawnedEntity();
 
-            if (owner == null || !owner.isOnline()) {
-                despawnRuntime(ownerId);
-                continue;
-            }
+                if (owner == null || !owner.isOnline()) {
+                    despawnRuntime(ownerId);
+                    continue;
+                }
 
-            if (entity == null || !entity.isValid() || entity.isDead()) {
-                despawnRuntime(ownerId);
-                // Stage 7: attempt recovery instead of leaving the pet unspawned
-                PetRecoveryHandler handler = recoveryHandler;
-                if (handler != null) {
-                    try {
+                if (entity == null || !entity.isValid() || entity.isDead()) {
+                    despawnRuntime(ownerId);
+                    // Stage 7: attempt recovery instead of leaving the pet unspawned
+                    PetRecoveryHandler handler = recoveryHandler;
+                    if (handler != null) {
                         handler.attemptRecovery(active, owner);
-                    } catch (Exception e) {
-                        if (plugin != null)
-                            plugin.getLogger().warning("Watchdog kurtarma hatası (ownerId=" + ownerId + "): " + e.getMessage());
                     }
+                }
+            } catch (Exception e) {
+                if (plugin != null && plugin.getLogger() != null) {
+                    plugin.getLogger().log(Level.WARNING,
+                            "Watchdog hatası (ownerId=" + ownerId + ") — bu pet atlandı", e);
                 }
             }
         }
     }
 
     private void cleanupRuntime(ActivePet active, Entity entity) {
+        if (active != null) {
+            tickFailureLogged.remove(active.getPetId());
+        }
         PetMovementController movement = resolveMovement(active);
         if (movement != null) {
             movement.remove(active, entity);

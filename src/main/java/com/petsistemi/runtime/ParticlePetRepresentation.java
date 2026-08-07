@@ -59,7 +59,9 @@ public class ParticlePetRepresentation implements PetRepresentationController {
         double offset = rep.particleOffset() > 0.0 ? rep.particleOffset() : 0.3;
         double speed = rep.particleSpeed() > 0.0 ? rep.particleSpeed() : 0.02;
 
-        owner.getWorld().spawnParticle(particle, owner.getLocation().add(0.0, 1.0, 0.0),
+        // The aura is the pet's body: it must render wherever the movement controller
+        // put the marker, otherwise movement.type/height are visually inert.
+        primaryEntity.getWorld().spawnParticle(particle, primaryEntity.getLocation(),
                 count, offset, offset, offset, speed);
     }
 

@@ -150,8 +150,13 @@ public class GroundFollowMovement implements PetMovementController {
         }
     }
 
-    /** @return [teleportDistSq, stopDistSq, startDistSq, followSpeed] */
-    private double[] distances(ActivePet activePet) {
+    /**
+     * Resolves the effective follow geometry. Precedence: per-pet {@code movement}
+     * overrides > {@code config.yml runtime.*} > constructor defaults.
+     *
+     * @return [teleportDistSq, stopDistSq, startDistSq, followSpeed]
+     */
+    double[] distances(ActivePet activePet) {
         double teleportDistSq = defaultTeleportDistanceSquared;
         double stopDistSq     = defaultStopDistanceSquared;
         double startDistSq    = defaultStartFollowDistanceSquared;
