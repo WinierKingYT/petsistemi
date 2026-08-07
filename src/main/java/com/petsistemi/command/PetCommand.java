@@ -330,14 +330,16 @@ public class PetCommand implements CommandExecutor, TabCompleter {
                 return;
             }
 
-            CompletableFuture<?> renameFuture = petService instanceof AsyncPetService async ? async.renameAsync(player.getUniqueId(), match.pet.petId(), newName) : CompletableFuture.completedFuture(petService.rename(player.getUniqueId(), match.pet.petId(), newName));
+            String targetName = (newName.equalsIgnoreCase("reset") || newName.equalsIgnoreCase("sifirla") || newName.equalsIgnoreCase("default")) ? null : newName;
+            CompletableFuture<?> renameFuture = petService instanceof AsyncPetService async ? async.renameAsync(player.getUniqueId(), match.pet.petId(), targetName) : CompletableFuture.completedFuture(petService.rename(player.getUniqueId(), match.pet.petId(), targetName));
 
             renameFuture.thenAccept(res -> plugin.getServer().getScheduler().runTask(plugin, () -> {
                 if (!player.isOnline()) return;
                 boolean success = res instanceof com.petsistemi.api.result.PetRenameResult r && r.success();
                 String msg = res instanceof com.petsistemi.api.result.PetRenameResult r ? r.message() : "İsim değiştirme başarısız.";
                 if (success) {
-                    send(player, "command.pet-renamed", "<green>Petinizin ismi '" + newName + "' olarak güncellendi!</green>", PlaceholderMap.of("name", newName));
+                    String display = targetName != null ? targetName : match.pet.definitionId();
+                    send(player, "command.pet-renamed", "<green>Petinizin ismi '" + display + "' olarak güncellendi!</green>", PlaceholderMap.of("name", display));
                 } else {
                     send(player, "command.rename-failed", "<red>İsim değiştirilemedi: " + msg + "</red>", PlaceholderMap.of("error", msg));
                 }

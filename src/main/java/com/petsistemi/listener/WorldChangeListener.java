@@ -66,6 +66,16 @@ public class WorldChangeListener implements Listener {
         if (event.getFrom().getWorld() != null
                 && to.getWorld() != null
                 && !event.getFrom().getWorld().equals(to.getWorld())) {
+            Player player = event.getPlayer();
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                if (!player.isOnline()) return;
+                if (coordinator != null) {
+                    coordinator.despawnRuntime(player.getUniqueId());
+                }
+                if (operationService != null) {
+                    operationService.restoreSelectedPetAsync(player);
+                }
+            }, 2L);
             return;
         }
 

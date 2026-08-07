@@ -147,6 +147,14 @@ public class GroundFollowMovement implements PetMovementController {
                     lastTargets.put(petId, ownerLoc.clone());
                 }
             }
+
+            // Water swimming buoyancy
+            if (living.isInWater() && owner.isInWater()) {
+                Vector v = living.getVelocity();
+                if (v.getY() < 0.05) {
+                    living.setVelocity(v.setY(0.08));
+                }
+            }
         }
     }
 
