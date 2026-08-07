@@ -101,8 +101,12 @@ public class PetInspectMenu {
                 text(messageService, "gui.pet-id-line", "<dark_gray>ID: <pet_id></dark_gray>", PlaceholderMap.of("pet_id", pet.petId().toString().substring(0, 8))))));
 
         Material typeMaterial = PetMenuIcons.resolve(def, pet.definitionId());
-        String typeLabel = def != null ? def.displayName() : pet.definitionId();
-        inv.setItem(12, createItem(typeMaterial, Component.text(typeLabel, NamedTextColor.LIGHT_PURPLE, TextDecoration.BOLD), List.of(
+        // display-name is admin-authored MiniMessage; rendering it as literal text would
+        // print the tags (e.g. "<gold>Kurt Dostu</gold>") straight into the menu.
+        Component typeComponent = def != null
+                ? net.kyori.adventure.text.minimessage.MiniMessage.miniMessage().deserialize(def.displayName())
+                : Component.text(pet.definitionId(), NamedTextColor.LIGHT_PURPLE, TextDecoration.BOLD);
+        inv.setItem(12, createItem(typeMaterial, typeComponent, List.of(
                 text(messageService, "inspect.type-line", "<gray>Tür: </gray><white><type></white>", PlaceholderMap.of("type", pet.definitionId())))));
 
         long xpPerLevel = xpPerLevelFromSnapshot(configSnapshot);

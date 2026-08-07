@@ -63,9 +63,9 @@ public class TextDisplayPetRepresentation implements PetRepresentationController
     }
 
     static Component textFor(PetInstance pet, PetDefinition definition) {
-        String petName = pet.customName() != null ? pet.customName() : definition.displayName();
-        String petNameMini = LegacyColorTranslator.toMiniMessageString(petName);
-        return MiniMessage.miniMessage().deserialize(petNameMini);
+        // Same trust split as the nameplate: player names are escaped, admin display-names
+        // keep their MiniMessage markup.
+        return MiniMessage.miniMessage().deserialize(PetNameplateRenderer.nameMarkup(pet, definition));
     }
 
     @Override

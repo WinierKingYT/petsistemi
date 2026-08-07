@@ -14,6 +14,30 @@ public final class PetNameplateRenderer {
 
     private PetNameplateRenderer() {}
 
+    /**
+     * Resolves the pet's name as MiniMessage markup, ready to be embedded in a template.
+     *
+     * <p>The two name sources are <b>not</b> equally trusted. A player-chosen
+     * {@code customName} is escaped, so a pet name can never inject MiniMessage tags
+     * (colors, gradients, or click/hover events) into a nameplate. The definition's
+     * {@code display-name} comes from an admin-authored {@code pets/*.yml} and is
+     * documented as MiniMessage-capable, so its markup is passed through; legacy
+     * {@code &}/{@code §} codes are still translated for older definition files.</p>
+     */
+    public static String nameMarkup(PetInstance pet, PetDefinition definition) {
+        String customName = pet.customName();
+        if (customName != null) {
+            return com.petsistemi.util.LegacyColorTranslator.toMiniMessageString(customName);
+        }
+        String displayName = definition.displayName();
+        if (displayName == null) {
+            return "";
+        }
+        return com.petsistemi.util.LegacyColorTranslator.hasCodes(displayName)
+                ? com.petsistemi.util.LegacyColorTranslator.toMiniMessageString(displayName)
+                : displayName;
+    }
+
     public static void updateName(Entity entity, PetInstance pet, PetDefinition definition) {
         if (entity == null) return;
         if (!definition.nameplateEnabled()) {
@@ -21,8 +45,7 @@ public final class PetNameplateRenderer {
             return;
         }
 
-        String petName = pet.customName() != null ? pet.customName() : definition.displayName();
-        String petNameMini = com.petsistemi.util.LegacyColorTranslator.toMiniMessageString(petName);
+        String petNameMini = nameMarkup(pet, definition);
 
         List<String> lines = definition.nameplateFormat();
         List<Component> components = new ArrayList<>();
