@@ -215,9 +215,6 @@ public class PetRuntimeCoordinator {
         Optional<ActivePet> activeOpt = activeRegistry.getByOwner(ownerId);
         if (activeOpt.isPresent()) {
             ActivePet active = activeOpt.get();
-            if (hitboxController != null) {
-                hitboxController.removeHitbox(active.getPetId());
-            }
             cleanupRuntime(active, active.getSpawnedEntity());
             activeRegistry.unregister(ownerId);
         }
@@ -229,9 +226,6 @@ public class PetRuntimeCoordinator {
      * falling back to the legacy behavior controller.
      */
     public synchronized void tickAll() {
-        if (buffController != null) {
-            buffController.tick(activeRegistry, definitionRegistry);
-        }
         tickEach(new ArrayList<>(activeRegistry.getAllActive()), Bukkit::getPlayer);
     }
 
@@ -253,6 +247,7 @@ public class PetRuntimeCoordinator {
             }
 
             try {
+                applyBuffs(active, owner);
                 tickPet(active, owner);
                 tickFailureLogged.remove(active.getPetId());
             } catch (Exception e) {
@@ -265,6 +260,21 @@ public class PetRuntimeCoordinator {
     @FunctionalInterface
     interface OwnerLookup {
         Player find(UUID ownerId);
+    }
+
+    /**
+     * Buffs are owner-facing and must not be skipped by a pet's movement update-interval,
+     * so they run before {@link #tickPet} — but still inside the per-pet isolation.
+     */
+    private void applyBuffs(ActivePet active, Player owner) {
+        PetBuffController buffs = buffController;
+        if (buffs == null || definitionRegistry == null) {
+            return;
+        }
+        PetDefinition definition = definitionRegistry.find(active.getDefinitionId()).orElse(null);
+        if (definition != null) {
+            buffs.apply(active, owner, definition);
+        }
     }
 
     private void tickPet(ActivePet active, Player owner) {
@@ -392,6 +402,16 @@ public class PetRuntimeCoordinator {
             }
         }
         pendingSpawns.clear();
+
+        // Belt and braces: sweep any hitbox whose pet was no longer registered.
+        InteractionHitboxController hitboxes = hitboxController;
+        if (hitboxes != null) {
+            try {
+                hitboxes.removeAll();
+            } catch (Exception e) {
+                if (plugin != null) plugin.getLogger().warning("Shutdown sırasında hitbox temizleme uyarısı: " + e.getMessage());
+            }
+        }
     }
 
     public synchronized void runWatchdogCheck() {
@@ -428,6 +448,13 @@ public class PetRuntimeCoordinator {
     private void cleanupRuntime(ActivePet active, Entity entity) {
         if (active != null) {
             tickFailureLogged.remove(active.getPetId());
+            // Hitbox removal belongs here, not in despawnRuntime alone: shutdown goes
+            // through forceCleanupAll -> cleanupRuntime and would otherwise leave every
+            // hitbox behind in the world.
+            InteractionHitboxController hitboxes = hitboxController;
+            if (hitboxes != null) {
+                hitboxes.removeHitbox(active.getPetId());
+            }
         }
         PetMovementController movement = resolveMovement(active);
         if (movement != null) {

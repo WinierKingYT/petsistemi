@@ -1,9 +1,7 @@
 package com.petsistemi.runtime;
 
-import com.petsistemi.definition.PetDefinitionRegistry;
 import com.petsistemi.domain.PetBuffDefinition;
 import com.petsistemi.domain.PetDefinition;
-import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
 import org.bukkit.potion.PotionEffect;
 
@@ -14,43 +12,37 @@ import java.util.List;
  */
 public class PetBuffController {
 
-    public void tick(ActivePetRegistry activePetRegistry, PetDefinitionRegistry definitionRegistry) {
-        if (activePetRegistry == null || definitionRegistry == null) return;
+    /**
+     * Applies one pet's passive buffs to its owner.
+     *
+     * <p>Deliberately per-pet rather than a self-driven sweep: the runtime tick loop
+     * isolates each pet in its own try/catch, so a buff failure on one pet must not be
+     * able to abort the tick for everyone else.</p>
+     */
+    public void apply(ActivePet pet, Player owner, PetDefinition definition) {
+        if (pet == null || owner == null || definition == null || !owner.isOnline()) {
+            return;
+        }
 
-        for (ActivePet pet : activePetRegistry.getAllActive()) {
-            if (pet == null || !pet.isValid() || pet.getOwnerId() == null) {
-                continue;
-            }
+        List<PetBuffDefinition> buffs = definition.buffs();
+        if (buffs == null || buffs.isEmpty()) {
+            return;
+        }
 
-            PetDefinition def = definitionRegistry.find(pet.getDefinitionId()).orElse(null);
-            if (def == null) continue;
+        int petLevel = pet.getLevel();
+        for (PetBuffDefinition buff : buffs) {
+            if (buff == null || buff.effectType() == null) continue;
+            if (petLevel < buff.minLevel()) continue;
 
-            List<PetBuffDefinition> buffs = def.buffs();
-            if (buffs == null || buffs.isEmpty()) {
-                continue;
-            }
-
-            Player owner = Bukkit.getPlayer(pet.getOwnerId());
-            if (owner == null || !owner.isOnline()) {
-                continue;
-            }
-
-            int petLevel = pet.getLevel();
-
-            for (PetBuffDefinition buff : buffs) {
-                if (buff == null || buff.effectType() == null) continue;
-                if (petLevel >= buff.minLevel()) {
-                    // Re-apply potion effect with ambient and icon flags
-                    PotionEffect effect = new PotionEffect(
-                            buff.effectType(),
-                            buff.durationTicks(),
-                            buff.amplifier(),
-                            true, // ambient
-                            true  // particles & icon visible
-                    );
-                    owner.addPotionEffect(effect);
-                }
-            }
+            // Re-apply potion effect with ambient and icon flags
+            PotionEffect effect = new PotionEffect(
+                    buff.effectType(),
+                    buff.durationTicks(),
+                    buff.amplifier(),
+                    true, // ambient
+                    true  // particles & icon visible
+            );
+            owner.addPotionEffect(effect);
         }
     }
 }

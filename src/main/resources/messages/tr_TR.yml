@@ -68,6 +68,7 @@ gui:
 riding:
   enter: "<green><name> üzerine bindiniz! İnmek için tekrar Shift + sağ tık yapın.</green>"
   exit: "<yellow><name> üzerinden indiniz.</yellow>"
+  no-permission: "<red><name> petine binme yetkiniz yok.</red>"
 
 inspect:
   not-found: "<red>Bu pet veritabanında bulunamadı.</red>"

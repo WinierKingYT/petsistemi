@@ -47,6 +47,19 @@ public class ActivePetRegistry {
         return Optional.empty();
     }
 
+    /** Resolves a pet by its persistent pet id (e.g. after an interaction hitbox lookup). */
+    public synchronized Optional<ActivePet> getByPetId(UUID petId) {
+        if (petId == null) {
+            return Optional.empty();
+        }
+        for (ActivePet pet : activePetsByOwner.values()) {
+            if (petId.equals(pet.getPetId())) {
+                return Optional.of(pet);
+            }
+        }
+        return Optional.empty();
+    }
+
     public synchronized Collection<ActivePet> getAllActive() {
         return List.copyOf(activePetsByOwner.values());
     }

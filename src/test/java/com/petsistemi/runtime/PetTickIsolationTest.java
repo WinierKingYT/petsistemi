@@ -89,6 +89,50 @@ class PetTickIsolationTest {
                 .orElse(null);
     }
 
+    /**
+     * Buffs used to run in their own sweep outside the isolation, so a single failing
+     * buff aborted the whole tick — every pet's movement included.
+     */
+    @Test
+    void throwingBuffControllerDoesNotStopMovementForOtherPets() {
+        ActivePet first = addPet();
+        ActivePet boom = addPet();
+        ActivePet last = addPet();
+
+        com.petsistemi.domain.PetDefinition definition = new com.petsistemi.domain.PetDefinition(
+                "wolf", "Kurt", List.of(), "WOLF", false, false, true, false, true,
+                true, 100, false, List.of("{pet_name}"));
+        com.petsistemi.definition.PetDefinitionRegistry definitions =
+                new com.petsistemi.definition.PetDefinitionRegistry() {
+                    @Override public java.util.Optional<com.petsistemi.domain.PetDefinition> find(String id) {
+                        return java.util.Optional.of(definition);
+                    }
+                    @Override public java.util.Collection<com.petsistemi.domain.PetDefinition> getAll() {
+                        return List.of(definition);
+                    }
+                    @Override public void reload() {}
+                };
+
+        PetBuffController explodingBuffs = new PetBuffController() {
+            @Override
+            public void apply(ActivePet pet, Player owner, com.petsistemi.domain.PetDefinition def) {
+                if (pet.getPetId().equals(boom.getPetId())) {
+                    throw new IllegalStateException("buff bilerek patlatıldı");
+                }
+            }
+        };
+
+        PetRuntimeCoordinator coordinator = new PetRuntimeCoordinator(
+                null, definitions, registry, null, null, null, movementRegistry);
+        coordinator.setBuffController(explodingBuffs);
+
+        coordinator.tickEach(List.of(first, boom, last), lookup());
+
+        assertTrue(movement.ticked.contains(first.getPetId()));
+        assertTrue(movement.ticked.contains(last.getPetId()), "buff hatası sonraki petleri durdurmamalı");
+        assertEquals(2, movement.ticked.size(), "yalnızca buff'ı patlayan pet atlanmalı");
+    }
+
     @Test
     void throwingPetDoesNotStopTheOthers() {
         ActivePet first = addPet();
