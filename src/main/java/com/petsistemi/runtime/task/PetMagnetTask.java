@@ -27,6 +27,9 @@ public class PetMagnetTask implements Runnable {
             Player owner = Bukkit.getPlayer(activePet.getOwnerId());
             if (owner == null || !owner.isOnline()) continue;
 
+            // Full inventory guard: don't pull items if player has no free slots
+            if (owner.getInventory().firstEmpty() == -1) continue;
+
             Entity entity = activePet.getSpawnedEntity();
             if (entity == null || !entity.isValid() || entity.isDead()) continue;
 

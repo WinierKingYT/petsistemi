@@ -108,6 +108,13 @@ public class PetProtectionListener implements Listener {
         }
     }
 
+    @EventHandler(priority = org.bukkit.event.EventPriority.LOWEST)
+    public void onProjectileHit(org.bukkit.event.entity.ProjectileHitEvent event) {
+        if (event.getHitEntity() != null && activeRegistry.getByAnyEntity(event.getHitEntity().getUniqueId()).isPresent()) {
+            event.setCancelled(true);
+        }
+    }
+
     /**
      * Single entry point for right-clicks on anything belonging to a pet: the pet body,
      * a tracked child (e.g. a swarm member), or an invisible interaction hitbox.

@@ -80,6 +80,12 @@ public class FlyingFollowMovement implements PetMovementController {
             return;
         }
 
+        // Fast tracking for Elytra gliding or vehicle riding
+        if ((owner.isGliding() || owner.isInsideVehicle()) && distSq > 9.0) {
+            smoothTeleport(entity, target);
+            return;
+        }
+
         // Exponential approach: followSpeed is the approach factor per update (at 20-tick cadence).
         double k = Math.min(1.0, followSpeed * 4.0);
         Location next = petLoc.clone().add(delta.multiply(k));

@@ -106,10 +106,19 @@ public class PetCommand implements CommandExecutor, TabCompleter {
             case "mode" -> handleMode(player, args);
             case "emote" -> handleEmote(player, args);
             case "stats" -> handleStats(player);
+            case "toggle" -> handleToggle(player);
             default -> sendHelp(player);
         }
 
         return true;
+    }
+
+    private void handleToggle(Player player) {
+        if (activeRegistry != null && activeRegistry.getByOwner(player.getUniqueId()).isPresent()) {
+            handleDismiss(player);
+        } else {
+            send(player, "command.toggle-hint", "<yellow>Aktif bir petiniz yok. Çağırmak için: /pet summon <ad></yellow>", null);
+        }
     }
 
     private void sendHelp(Player player) {
@@ -443,7 +452,7 @@ public class PetCommand implements CommandExecutor, TabCompleter {
         }
 
         if (args.length == 1) {
-            return Arrays.asList("dismiss", "emote", "info", "list", "mode", "rename", "stats", "summon").stream()
+            return Arrays.asList("dismiss", "emote", "info", "list", "mode", "rename", "stats", "summon", "toggle").stream()
                     .filter(sub -> sub.startsWith(args[0].toLowerCase(java.util.Locale.ROOT)))
                     .sorted()
                     .collect(Collectors.toList());
