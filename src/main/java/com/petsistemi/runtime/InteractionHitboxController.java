@@ -16,7 +16,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Manages Paper {@link Interaction} entities attached to non-mob pets (ITEM_DISPLAY, PARTICLE, etc.)
- * so that players can right-click them to open inspect GUI or trigger emotes/reactions.
+ * when explicitly enabled. Defaults to disabled to prevent invisible hitbox clutter in crowded areas.
  */
 public class InteractionHitboxController {
 
@@ -27,7 +27,6 @@ public class InteractionHitboxController {
 
     public InteractionHitboxController(JavaPlugin plugin) {
         this.plugin = plugin;
-        // Same key OrphanCleanerTask scans for, so a stray hitbox is sweepable.
         this.petIdKey = new NamespacedKey(plugin, "pet_id");
     }
 
@@ -41,9 +40,9 @@ public class InteractionHitboxController {
         if (def == null) return;
 
         RuntimeRepresentationType repType = def.representationOrEntity().type();
-        PetHitboxDefinition hitboxDef = def.hitbox() != null ? def.hitbox() : PetHitboxDefinition.DEFAULT;
+        PetHitboxDefinition hitboxDef = def.hitbox() != null ? def.hitbox() : PetHitboxDefinition.DISABLED;
 
-        // Regular living entities already have native collision/interaction.
+        // Non-entity pets only spawn a hitbox if explicitly enabled in YAML
         if (repType == RuntimeRepresentationType.ENTITY || !hitboxDef.enabled()) {
             removeHitbox(pet.getPetId());
             return;
@@ -53,8 +52,6 @@ public class InteractionHitboxController {
         Interaction interaction = activeHitboxes.get(pet.getPetId());
 
         if (interaction == null || !interaction.isValid()) {
-            // Drop the stale mapping first: the dead entity's id would otherwise sit in
-            // hitboxToPetId forever, since removeHitbox() only reaches valid entities.
             forgetHitbox(pet.getPetId());
             try {
                 UUID petId = pet.getPetId();
@@ -62,16 +59,12 @@ public class InteractionHitboxController {
                     entity.setInteractionWidth(hitboxDef.width());
                     entity.setInteractionHeight(hitboxDef.height());
                     entity.setResponsive(true);
-                    // Runtime-owned, exactly like every other pet entity: never written into
-                    // a chunk, and tagged so OrphanCleanerTask can sweep any stray that
-                    // outlives the plugin (e.g. after a crash).
                     entity.setPersistent(false);
                     entity.getPersistentDataContainer().set(petIdKey, PersistentDataType.STRING, petId.toString());
                 });
                 activeHitboxes.put(petId, interaction);
                 hitboxToPetId.put(interaction.getUniqueId(), petId);
             } catch (Throwable t) {
-                // If Interaction entity is unavailable in current paper API environment
                 return;
             }
         } else {
@@ -85,14 +78,12 @@ public class InteractionHitboxController {
         if (interaction == null) {
             return;
         }
-        // Unmap unconditionally — an already-dead entity still owns a hitboxToPetId entry.
         hitboxToPetId.remove(interaction.getUniqueId());
         if (interaction.isValid()) {
             interaction.remove();
         }
     }
 
-    /** Forgets the bookkeeping for a pet's hitbox without touching the entity itself. */
     private void forgetHitbox(UUID petId) {
         Interaction stale = activeHitboxes.remove(petId);
         if (stale != null) {
@@ -104,27 +95,22 @@ public class InteractionHitboxController {
         return hitboxToPetId.get(interactionEntityId);
     }
 
-    /** Removes every tracked hitbox; called on plugin shutdown so none survive into the world. */
     public void removeAll() {
         for (Interaction interaction : activeHitboxes.values()) {
             if (interaction != null && interaction.isValid()) {
                 try {
                     interaction.remove();
-                } catch (Exception ignored) {
-                    // A single stubborn entity must not abort the sweep.
-                }
+                } catch (Exception ignored) {}
             }
         }
         activeHitboxes.clear();
         hitboxToPetId.clear();
     }
 
-    /** Number of hitboxes currently tracked; used by tests to assert nothing leaks. */
     int trackedCount() {
         return activeHitboxes.size();
     }
 
-    /** Number of entity→pet mappings currently held; must never outgrow {@link #trackedCount()}. */
     int mappingCount() {
         return hitboxToPetId.size();
     }
