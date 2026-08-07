@@ -26,10 +26,14 @@ jobs:
       run: chmod +x gradlew
 
     - name: Build with Gradle
-      run: ./gradlew clean test shadowJar
+      run: ./gradlew clean build
 
+    # Version is never hardcoded here: a version bump used to leave this step matching
+    # nothing, and upload-artifact only warns by default — CI stayed green while
+    # publishing no jar at all. `if-no-files-found: error` makes that fail loudly.
     - name: Upload Release Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: PetSistemi-0.1.0-alpha.1
-        path: build/libs/PetSistemi-0.1.0-alpha.1.jar
+        name: PetSistemi
+        path: build/libs/PetSistemi-*.jar
+        if-no-files-found: error

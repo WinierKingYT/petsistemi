@@ -40,6 +40,14 @@ tasks.processResources {
     }
 }
 
+// The plain jar would otherwise be `petsistemi-<v>.jar`, which differs from the shaded
+// `PetSistemi-<v>.jar` only by case: on Windows they are the same file and overwrite each
+// other, on Linux they sit side by side and a release glob can pick the unshaded one
+// (no bundled SQLite driver). A classifier keeps the two artifacts unambiguous everywhere.
+tasks.jar {
+    archiveClassifier.set("thin")
+}
+
 tasks.shadowJar {
     archiveBaseName.set("PetSistemi")
     archiveClassifier.set("")
