@@ -1,4 +1,4 @@
-# PetSistemi 🐾 (v0.1.0-alpha.1)
+# PetSistemi 🐾 (v0.2.0-alpha.1)
 
 Advanced, modular Paper 1.20.4 Minecraft Pet System plugin written in Java 17.
 

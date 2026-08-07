@@ -1,8 +1,8 @@
-# PETSİSTEMİ 0.1.0-ALPHA.1 ROADMAP EXECUTION TRACKER
+# PETSİSTEMİ ROADMAP EXECUTION TRACKER
 
 - **Başlangıç Commit:** `71c915c`
-- **Mevcut Branch:** `main`
-- **Hedef Sürüm:** `0.1.0-alpha.1`
+- **Mevcut Sürüm:** `0.2.0-alpha.1`
+- **Milestone 0-13:** `COMPLETED` (`0.1.0-alpha.1` ile)
 
 ---
 
@@ -42,8 +42,14 @@ kataloğu ve Faz A/B/C yol haritası.
 - **Faz 0 (tamamlandı)**: İlk genişleme paketi — ENTITY+GROUND_FOLLOW, ITEM_DISPLAY+FLYING_FOLLOW,
   ITEM_DISPLAY+ORBIT, DISPLAY+SHOULDER/ANCHORED, DISPLAY+TRAIL, SWARM+FORMATION; idle/sleep,
   reaction çekirdeği, level-scale, mode persistence (V8).
-- **Faz A**: Per-pet `states:` şeması, dönüşümler + çevre varyantları, per-pet reaction/emote,
-  ECHO/SHADOW_TRAIL/ROAM_NEAR_OWNER/MIRROR hareketleri, SWARM/COMPOSITE ayrımı, interaction
-  hitbox, kişilik, stage'li visual progression.
+- **Faz A (kısmen tamamlandı — `0.2.0-alpha.1`)**:
+  - ✅ Per-pet `states:` şeması (`sleepy_cat`)
+  - ✅ Dönüşümler + çevre varyantları (`wisplight`)
+  - ✅ Per-pet reaction/emote şeması + `/pet emote`
+  - ✅ ECHO / SHADOW_TRAIL / ROAM_NEAR_OWNER / MIRROR hareketleri
+  - ⬜ SWARM (RANDOM_CLOUD) ve COMPOSITE (role) ayrımı — #9/#10
+  - ⬜ Interaction hitbox (PARTICLE petler) — #31
+  - ⬜ Kişilik profilleri — #25
+  - ⬜ Stage'li visual progression — #26
 - **Faz B**: Orta seviye sistemler (bkz. VISION.md §4).
 - **Faz C**: Yüksek riskli sistemler (binek, pet evi, packet görünürlük, evrim) — core stabil olunca.
