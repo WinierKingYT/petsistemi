@@ -49,10 +49,12 @@ public final class PetNameValidator {
             trimmed = strippedText;
         }
 
-        if (allowColor) {
-            trimmed = LegacyColorConverter.convertLegacyToMiniMessage(trimmed);
-        }
-
+        // Deliberately no legacy->MiniMessage conversion here. This is a UX pre-check; the
+        // authoritative rules live in DefaultPetService#validateNameInput, which is driven by
+        // naming.allow-colors and rejects '<'/'>' outright. Converting "&cAd" to "<red>Ad"
+        // here made every coloured GUI rename fail that later check — so holding the colour
+        // permission broke renaming instead of enabling it. Legacy codes are passed through
+        // untouched; the nameplate renderer already translates them.
         return ValidationResult.success(trimmed);
     }
 }

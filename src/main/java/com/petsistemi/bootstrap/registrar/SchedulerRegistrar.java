@@ -103,7 +103,9 @@ public final class SchedulerRegistrar {
         // 7. Orphan Cleaner Task (every 10 minutes)
         BukkitTask orphanCleanerTask = Bukkit.getScheduler().runTaskTimer(
                 context.plugin(),
-                new com.petsistemi.task.OrphanCleanerTask(context.plugin(), context.activePetRegistry()),
+                // Must ask the coordinator, not the registry: a pet mid-summon is spawned
+                // before it is registered, and sweeping on the registry alone deletes it.
+                new com.petsistemi.task.OrphanCleanerTask(context.plugin(), context.coordinator()::isKnownPet),
                 1200L, 12000L
         );
         context.taskRegistry().registerNamed("orphanCleanerTask", orphanCleanerTask);

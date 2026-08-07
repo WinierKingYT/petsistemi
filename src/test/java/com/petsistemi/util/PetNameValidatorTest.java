@@ -34,4 +34,41 @@ class PetNameValidatorTest {
         assertTrue(res.valid());
         assertEquals("Pamuk", res.sanitizedName());
     }
+
+    /**
+     * This is a UX pre-check; DefaultPetService#validateNameInput is authoritative and
+     * rejects '<'/'>' outright. Emitting MiniMessage tags here made every coloured GUI
+     * rename fail that later check — holding the colour permission broke renaming.
+     */
+    @Test
+    @DisplayName("Doğrulayıcı çıktısı asla MiniMessage etiketi üretmez")
+    void sanitizedNameNeverContainsAngleBrackets() {
+        for (String input : new String[]{"&cKızıl", "&6&lAltın", "&#FF00FFMor", "Pamuk"}) {
+            var res = PetNameValidator.validate(null, input);
+            assertTrue(res.valid(), () -> "reddedilmemeli: " + input);
+            assertFalse(res.sanitizedName().contains("<"),
+                    () -> input + " -> " + res.sanitizedName() + " ('<' servis doğrulayıcısında reddedilir)");
+            assertFalse(res.sanitizedName().contains(">"),
+                    () -> input + " -> " + res.sanitizedName());
+        }
+    }
+
+    @Test
+    @DisplayName("Legacy renk kodları olduğu gibi geçer, dönüştürülmez")
+    void legacyCodesArePassedThroughUntouched() {
+        var res = PetNameValidator.validate(null, "&cKızıl");
+
+        assertTrue(res.valid());
+        assertEquals("&cKızıl", res.sanitizedName(),
+                "dönüşüm burada değil, isim etiketi katmanında yapılır");
+    }
+
+    @Test
+    @DisplayName("Uzunluk etiketler soyulduktan sonra ölçülür")
+    void lengthIsMeasuredOnStrippedText() {
+        // Tags themselves must not eat the player's character budget.
+        var res = PetNameValidator.validate(null, "<red>Ad</red>");
+
+        assertTrue(res.valid(), "etiketler uzunluk sınırını tüketmemeli");
+    }
 }

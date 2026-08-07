@@ -395,6 +395,29 @@ public class PetRuntimeCoordinator {
         }
     }
 
+    /**
+     * True when a pet id belongs to a live pet <em>or</em> to one that is mid-summon.
+     *
+     * <p>The orphan sweeper must consult this rather than the active registry alone: a pet's
+     * entity is spawned on the main thread but only registered after its DB commit lands a
+     * few ticks later. Anything sweeping on the registry alone can delete a pet that is
+     * still being summoned.</p>
+     */
+    public synchronized boolean isKnownPet(UUID petId) {
+        if (petId == null) {
+            return false;
+        }
+        if (activeRegistry.getByPetId(petId).isPresent()) {
+            return true;
+        }
+        for (ActivePet pending : pendingSpawns.values()) {
+            if (pending != null && petId.equals(pending.getPetId())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public Optional<ActivePet> getRuntimePet(UUID ownerId) {
         if (ownerId == null) return Optional.empty();
         return activeRegistry.getByOwner(ownerId);
