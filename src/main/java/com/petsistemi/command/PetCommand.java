@@ -389,12 +389,34 @@ public class PetCommand implements CommandExecutor, TabCompleter {
     private enum SearchStatus { FOUND, NOT_FOUND, AMBIGUOUS }
     private record SearchResult(SearchStatus status, PetSnapshot pet) {}
 
-    private CompletableFuture<SearchResult> resolveOwnedPetByShortId(Player player, String shortId) {
+    private CompletableFuture<SearchResult> resolveOwnedPetByShortId(Player player, String input) {
         CompletableFuture<List<PetSnapshot>> petsFuture = petService instanceof AsyncPetService async ? async.getOwnedPetsAsync(player.getUniqueId()).thenApply(ArrayList::new) : CompletableFuture.completedFuture(new ArrayList<>(petService.getOwnedPets(player.getUniqueId())));
 
         return petsFuture.thenApply(list -> {
+            String cleanInput = input.trim().toLowerCase(java.util.Locale.ROOT);
+
+            // 1. Exact match on custom name, definition ID or UUID
+            List<PetSnapshot> exactMatches = list.stream()
+                    .filter(p -> {
+                        String custom = p.customName() != null ? net.kyori.adventure.text.minimessage.MiniMessage.miniMessage().stripTags(p.customName()).toLowerCase(java.util.Locale.ROOT) : "";
+                        String def = p.definitionId() != null ? p.definitionId().toLowerCase(java.util.Locale.ROOT) : "";
+                        String uuid = p.petId().toString().toLowerCase(java.util.Locale.ROOT);
+                        return custom.equalsIgnoreCase(cleanInput) || def.equalsIgnoreCase(cleanInput) || uuid.equalsIgnoreCase(cleanInput);
+                    })
+                    .toList();
+
+            if (exactMatches.size() == 1) {
+                return new SearchResult(SearchStatus.FOUND, exactMatches.get(0));
+            }
+
+            // 2. Prefix match on custom name, definition ID or UUID
             List<PetSnapshot> matches = list.stream()
-                    .filter(p -> p.petId().toString().toLowerCase(java.util.Locale.ROOT).startsWith(shortId.toLowerCase(java.util.Locale.ROOT)))
+                    .filter(p -> {
+                        String custom = p.customName() != null ? net.kyori.adventure.text.minimessage.MiniMessage.miniMessage().stripTags(p.customName()).toLowerCase(java.util.Locale.ROOT) : "";
+                        String def = p.definitionId() != null ? p.definitionId().toLowerCase(java.util.Locale.ROOT) : "";
+                        String uuid = p.petId().toString().toLowerCase(java.util.Locale.ROOT);
+                        return custom.startsWith(cleanInput) || def.startsWith(cleanInput) || uuid.startsWith(cleanInput);
+                    })
                     .toList();
 
             if (matches.isEmpty()) {
@@ -442,6 +464,7 @@ public class PetCommand implements CommandExecutor, TabCompleter {
                 }
                 return options.stream()
                         .filter(m -> m.startsWith(args[1].toLowerCase(java.util.Locale.ROOT)))
+                        .sorted()
                         .collect(Collectors.toList());
             }
             if (sub.equals("emote")) {
@@ -452,6 +475,7 @@ public class PetCommand implements CommandExecutor, TabCompleter {
                         if (definition != null && definition.emotes() != null) {
                             return definition.emotes().keySet().stream()
                                     .filter(name -> name.startsWith(args[1].toLowerCase(java.util.Locale.ROOT)))
+                                    .sorted()
                                     .collect(Collectors.toList());
                         }
                     }
@@ -459,13 +483,24 @@ public class PetCommand implements CommandExecutor, TabCompleter {
                 return Collections.emptyList();
             }
             if (sub.equals("summon") || sub.equals("info") || sub.equals("rename")) {
-                // Cache-only tab completion: never block the main thread on a DB query.
+                // Cache-only tab completion: show names and definition types for clean UX
                 if (profileCache != null) {
                     Optional<PlayerPetProfile> profile = profileCache.getProfile(player.getUniqueId());
                     if (profile.isPresent()) {
-                        return profile.get().pets().values().stream()
-                                .map(p -> p.petId().toString().substring(0, 6))
-                                .filter(id -> id.startsWith(args[1].toLowerCase(java.util.Locale.ROOT)))
+                        List<String> suggestions = new ArrayList<>();
+                        for (PetSnapshot p : profile.get().pets().values()) {
+                            if (p.customName() != null && !p.customName().isBlank()) {
+                                suggestions.add(net.kyori.adventure.text.minimessage.MiniMessage.miniMessage().stripTags(p.customName()));
+                            }
+                            if (p.definitionId() != null) {
+                                suggestions.add(p.definitionId());
+                            }
+                            suggestions.add(p.petId().toString().substring(0, 6));
+                        }
+                        return suggestions.stream()
+                                .filter(id -> id.toLowerCase(java.util.Locale.ROOT).startsWith(args[1].toLowerCase(java.util.Locale.ROOT)))
+                                .distinct()
+                                .sorted()
                                 .collect(Collectors.toList());
                     }
                 }

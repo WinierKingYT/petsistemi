@@ -60,6 +60,8 @@ public class PaperPetEntityController implements PetEntityController, PetReprese
         if (entity instanceof LivingEntity living) {
             living.setRemoveWhenFarAway(false);
             living.setCanPickupItems(false);
+            living.setCollidable(false);
+            living.setInvulnerable(true);
         }
 
         // PDC tags
