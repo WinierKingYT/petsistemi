@@ -94,7 +94,11 @@ public final class SchedulerRegistrar {
         if (context.adminPersistenceService() != null) {
             BukkitTask autoBackupTask = Bukkit.getScheduler().runTaskTimerAsynchronously(
                     context.plugin(),
-                    new com.petsistemi.task.AutoBackupTask(context.plugin(), context.adminPersistenceService()),
+                    new com.petsistemi.task.AutoBackupTask(context.plugin(), context.adminPersistenceService(),
+                            context.configSnapshot() != null && context.configSnapshot().get() != null
+                                    && context.configSnapshot().get().configuration() != null
+                                    ? context.configSnapshot().get().configuration().database().maxBackups()
+                                    : 5),
                     43200L, 432000L
             );
             context.taskRegistry().registerNamed("autoBackupTask", autoBackupTask);

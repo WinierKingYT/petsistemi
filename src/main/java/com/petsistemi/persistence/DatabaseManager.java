@@ -10,6 +10,16 @@ import java.sql.Statement;
 
 public class DatabaseManager implements ConnectionProvider {
 
+    /**
+     * Canonical database file name. Anything that reads or backs up the database must use
+     * this rather than its own literal — a mismatched copy meant the scheduled auto-backup
+     * pointed at a file that never existed and silently backed up nothing.
+     */
+    public static final String DATABASE_FILE_NAME = "database.db";
+
+    /** Canonical backup folder, shared by migration backups, /petadmin backup and auto-backup. */
+    public static final String BACKUP_DIR_NAME = "database-backups";
+
     private final JavaPlugin plugin;
     private final File dbFile;
     private Connection connection;
@@ -19,7 +29,17 @@ public class DatabaseManager implements ConnectionProvider {
             throw new IllegalArgumentException("JavaPlugin parameter cannot be null. Use a test ConnectionProvider implementation for unit tests.");
         }
         this.plugin = plugin;
-        this.dbFile = new File(plugin.getDataFolder(), "database.db");
+        this.dbFile = databaseFile(plugin);
+    }
+
+    /** Resolves the database file inside a plugin's data folder. */
+    public static File databaseFile(JavaPlugin plugin) {
+        return new File(plugin.getDataFolder(), DATABASE_FILE_NAME);
+    }
+
+    /** Resolves the backup folder inside a plugin's data folder. */
+    public static File backupDirectory(JavaPlugin plugin) {
+        return new File(plugin.getDataFolder(), BACKUP_DIR_NAME);
     }
 
     public File getDbFile() {

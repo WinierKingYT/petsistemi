@@ -704,7 +704,7 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
             }));
         }
 
-        File dbFile = new File(plugin.getDataFolder(), "database.db");
+        File dbFile = com.petsistemi.persistence.DatabaseManager.databaseFile(plugin);
         long dbSizeKb = dbFile.exists() ? dbFile.length() / 1024 : 0;
         long totalMemMb = Runtime.getRuntime().totalMemory() / 1024 / 1024;
         long freeMemMb = Runtime.getRuntime().freeMemory() / 1024 / 1024;
@@ -729,8 +729,8 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
             return;
         }
 
-        File dbFile = new File(plugin.getDataFolder(), "database.db");
-        File backupDir = new File(plugin.getDataFolder(), "database-backups");
+        File dbFile = com.petsistemi.persistence.DatabaseManager.databaseFile(plugin);
+        File backupDir = com.petsistemi.persistence.DatabaseManager.backupDirectory(plugin);
         adminPersistenceService.createBackupAsync(dbFile, backupDir, 5).thenAccept(backup -> sendMessageOnMain(sender, () -> {
             if (backup != null) {
                 send(sender, "command.backup-success", "<green>WAL-safe ve doğrulanmış veritabanı yedeği alındı: " + backup.getName() + "</green>", PlaceholderMap.of("backup", backup.getName()));

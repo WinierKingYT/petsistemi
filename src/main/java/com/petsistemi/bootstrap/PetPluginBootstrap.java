@@ -42,7 +42,7 @@ public final class PetPluginBootstrap {
             MainThreadDispatcher mainThreadDispatcher = new BukkitMainThreadDispatcher(plugin);
 
             // 3. Database Backup & Migrations
-            File backupDir = new File(plugin.getDataFolder(), "database-backups");
+            File backupDir = com.petsistemi.persistence.DatabaseManager.backupDirectory(plugin);
             boolean backupEnabled = config.database().backupEnabled();
             boolean failOnBackupError = config.database().failOnBackupError();
             int maxBackups = config.database().maxBackups();
