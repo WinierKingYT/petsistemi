@@ -92,22 +92,35 @@ public class PetInspectMenu {
         OfflinePlayer owner = Bukkit.getOfflinePlayer(ownerId);
         String ownerName = owner.getName() != null ? owner.getName() : ownerId.toString().substring(0, 8);
 
+        boolean isOwner = viewer.getUniqueId().equals(ownerId);
         String displayName = pet.customName() != null ? pet.customName() : pet.definitionId();
         Component nameComponent = com.petsistemi.util.LegacyColorTranslator.hasCodes(displayName)
                 ? com.petsistemi.util.LegacyColorTranslator.toComponent(displayName)
                 : Component.text(displayName, NamedTextColor.GOLD, TextDecoration.BOLD);
-        inv.setItem(10, createItem(Material.PLAYER_HEAD, nameComponent, List.of(
+
+        List<Component> nameLore = new ArrayList<>(List.of(
                 text(messageService, "inspect.owner-line", "<gray>Sahip: </gray><white><player></white>", PlaceholderMap.of("player", ownerName)),
-                text(messageService, "gui.pet-id-line", "<dark_gray>ID: <pet_id></dark_gray>", PlaceholderMap.of("pet_id", pet.petId().toString().substring(0, 8))))));
+                text(messageService, "gui.pet-id-line", "<dark_gray>ID: <pet_id></dark_gray>", PlaceholderMap.of("pet_id", pet.petId().toString().substring(0, 8)))
+        ));
+        if (isOwner) {
+            nameLore.add(Component.text(""));
+            nameLore.add(text(messageService, "inspect.rename-hint", "<yellow>⚡ İsmi değiştirmek için tıkla</yellow>", null));
+        }
+        inv.setItem(10, createItem(plugin, pet.petId(), "rename", Material.PLAYER_HEAD, nameComponent, nameLore));
 
         Material typeMaterial = PetMenuIcons.resolve(def, pet.definitionId());
-        // display-name is admin-authored MiniMessage; rendering it as literal text would
-        // print the tags (e.g. "<gold>Kurt Dostu</gold>") straight into the menu.
         Component typeComponent = def != null
                 ? net.kyori.adventure.text.minimessage.MiniMessage.miniMessage().deserialize(def.displayName())
                 : Component.text(pet.definitionId(), NamedTextColor.LIGHT_PURPLE, TextDecoration.BOLD);
-        inv.setItem(12, createItem(typeMaterial, typeComponent, List.of(
-                text(messageService, "inspect.type-line", "<gray>Tür: </gray><white><type></white>", PlaceholderMap.of("type", pet.definitionId())))));
+
+        List<Component> typeLore = new ArrayList<>(List.of(
+                text(messageService, "inspect.type-line", "<gray>Tür: </gray><white><type></white>", PlaceholderMap.of("type", pet.definitionId()))
+        ));
+        if (isOwner) {
+            typeLore.add(Component.text(""));
+            typeLore.add(text(messageService, "inspect.mode-hint", "<yellow>⚡ Takip modunu değiştirmek için tıkla</yellow>", null));
+        }
+        inv.setItem(12, createItem(plugin, pet.petId(), "mode", typeMaterial, typeComponent, typeLore));
 
         long xpPerLevel = xpPerLevelFromSnapshot(configSnapshot);
         long xpThisLevel = Math.max(0, Math.min(pet.experience() - (long) (pet.level() - 1) * xpPerLevel, xpPerLevel));
@@ -115,7 +128,7 @@ public class PetInspectMenu {
         String filledBar = "■".repeat(progress);
         String emptyBar = "□".repeat(10 - progress);
 
-        inv.setItem(14, createItem(Material.EXPERIENCE_BOTTLE,
+        inv.setItem(14, createItem(plugin, pet.petId(), "level", Material.EXPERIENCE_BOTTLE,
                 text(messageService, "inspect.level-name", "<green><b>Seviye <level></b></green>", PlaceholderMap.of("level", String.valueOf(pet.level()))),
                 List.of(text(messageService, "gui.pet-xp-line", "<gray>XP: [</gray><green><filled></green><dark_green><empty></dark_green><gray>] </gray><aqua><current>/<needed> XP</aqua>",
                         PlaceholderMap.of("filled", filledBar).add("empty", emptyBar)
@@ -124,13 +137,20 @@ public class PetInspectMenu {
         boolean disabled = pet.availabilityState() == PetAvailabilityState.DISABLED;
         String stateKey = disabled ? "inspect.status-disabled" : (pet.spawned() ? "inspect.status-spawned" : "inspect.status-available");
         String stateFallback = disabled ? "<red><b>DEVRE DIŞI</b></red>" : (pet.spawned() ? "<green><b>ÇAĞIRILDI</b></green>" : "<yellow><b>HAZIR</b></yellow>");
-        inv.setItem(16, createItem(Material.STICK,
-                text(messageService, "inspect.status-title", "<gold>Durum</gold>", null),
-                List.of(
-                        text(messageService, stateKey, stateFallback, null),
-                        text(messageService, "inspect.selected-prefix", "<gray>Seçili: </gray>", null)
-                                .append(text(messageService, pet.selected() ? "gui.yes" : "gui.no",
-                                        pet.selected() ? "<green>Evet</green>" : "<red>Hayır</red>", null)))));
+
+        List<Component> statusLore = new ArrayList<>(List.of(
+                text(messageService, stateKey, stateFallback, null),
+                text(messageService, "inspect.selected-prefix", "<gray>Seçili: </gray>", null)
+                        .append(text(messageService, pet.selected() ? "gui.yes" : "gui.no",
+                                pet.selected() ? "<green>Evet</green>" : "<red>Hayır</red>", null))
+        ));
+        if (isOwner && pet.spawned()) {
+            statusLore.add(Component.text(""));
+            statusLore.add(text(messageService, "inspect.emote-hint", "<yellow>⚡ Emote tetiklemek için tıkla</yellow>", null));
+        }
+        inv.setItem(16, createItem(plugin, pet.petId(), "emote", Material.STICK,
+                text(messageService, "inspect.status-title", "<gold>Durum / Aksiyon</gold>", null),
+                statusLore));
 
         viewer.openInventory(inv);
     }
@@ -153,7 +173,7 @@ public class PetInspectMenu {
         return 100L;
     }
 
-    private static ItemStack createItem(Material material, Component name, List<Component> lore) {
+    private static ItemStack createItem(JavaPlugin plugin, UUID petId, String action, Material material, Component name, List<Component> lore) {
         ItemStack item = new ItemStack(material);
         ItemMeta meta = item.getItemMeta();
         if (meta != null) {
@@ -161,9 +181,21 @@ public class PetInspectMenu {
             if (lore != null && !lore.isEmpty()) {
                 meta.lore(lore);
             }
+            if (plugin != null) {
+                if (petId != null) {
+                    meta.getPersistentDataContainer().set(new org.bukkit.NamespacedKey(plugin, "pet_id"), org.bukkit.persistence.PersistentDataType.STRING, petId.toString());
+                }
+                if (action != null) {
+                    meta.getPersistentDataContainer().set(new org.bukkit.NamespacedKey(plugin, "action"), org.bukkit.persistence.PersistentDataType.STRING, action);
+                }
+            }
             item.setItemMeta(meta);
         }
         return item;
+    }
+
+    private static ItemStack createItem(Material material, Component name, List<Component> lore) {
+        return createItem(null, null, null, material, name, lore);
     }
 
     private static ItemStack createInfoItem(Material material, Component name, List<Component> lore) {

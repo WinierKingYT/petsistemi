@@ -156,7 +156,15 @@ public class DefaultPetExperienceService implements PetExperienceService, AsyncP
                                     new ExperienceResult(false, "Deneyim kazanma işlemi iptal edildi.", pet.experience(), false));
                         }
 
-                        return dbExecutor.submit(() -> computeAndPersistXp(pet, pet.experience() + actualAmount, definition))
+                        long safeNewXp;
+                        try {
+                            safeNewXp = Math.addExact(pet.experience(), actualAmount);
+                        } catch (ArithmeticException overflow) {
+                            safeNewXp = Long.MAX_VALUE - 1_000_000L;
+                        }
+
+                        final long targetXp = safeNewXp;
+                        return dbExecutor.submit(() -> computeAndPersistXp(pet, targetXp, definition))
                                 .thenCompose(resState -> applyPostDbSuccess(pet, resState));
                     });
                 })
@@ -388,6 +396,24 @@ public class DefaultPetExperienceService implements PetExperienceService, AsyncP
                 PetLevelUpEvent levelUpEvent = new PetLevelUpEvent(
                         mapToSnapshot(resState.updatedPet()), oldPet.level(), resState.newLevel());
                 Bukkit.getPluginManager().callEvent(levelUpEvent);
+
+                PetDefinition def = getDefinition(resState.updatedPet());
+                if (def != null && def.levelRewards() != null) {
+                    org.bukkit.entity.Player owner = Bukkit.getPlayer(oldPet.ownerId());
+                    for (com.petsistemi.domain.PetLevelRewardDefinition reward : def.levelRewards()) {
+                        if (resState.newLevel() >= reward.level() && oldPet.level() < reward.level()) {
+                            if (reward.message() != null && owner != null && owner.isOnline()) {
+                                owner.sendMessage(net.kyori.adventure.text.minimessage.MiniMessage.miniMessage().deserialize(reward.message()));
+                            }
+                            if (reward.commands() != null) {
+                                for (String cmd : reward.commands()) {
+                                    String formattedCmd = cmd.replace("{player}", owner != null ? owner.getName() : "");
+                                    Bukkit.dispatchCommand(Bukkit.getConsoleSender(), formattedCmd);
+                                }
+                            }
+                        }
+                    }
+                }
             }
         };
 

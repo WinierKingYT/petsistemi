@@ -173,6 +173,25 @@ public class PetProgressionListener implements Listener {
         }
     }
 
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onPlayerFish(org.bukkit.event.player.PlayerFishEvent event) {
+        if (event.getState() != org.bukkit.event.player.PlayerFishEvent.State.CAUGHT_FISH) return;
+        Player player = event.getPlayer();
+        Optional<ActivePet> activeOpt = activePetRegistry.getByOwner(player.getUniqueId());
+        if (activeOpt.isEmpty()) return;
+
+        dispatchXpAsync(activeOpt.get().getPetId(), 10L, ExperienceSource.MOB_KILL);
+    }
+
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onCraftItem(org.bukkit.event.inventory.CraftItemEvent event) {
+        if (!(event.getWhoClicked() instanceof Player player)) return;
+        Optional<ActivePet> activeOpt = activePetRegistry.getByOwner(player.getUniqueId());
+        if (activeOpt.isEmpty()) return;
+
+        dispatchXpAsync(activeOpt.get().getPetId(), 2L, ExperienceSource.BLOCK_BREAK);
+    }
+
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
         distanceAccumulator.remove(event.getPlayer().getUniqueId());

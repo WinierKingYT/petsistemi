@@ -81,6 +81,7 @@ public class AtomicPetDefinitionRegistry implements PetDefinitionRegistry {
                         errorsPerFile.put(file.getName(), errors);
                     } else if (parsed.definition() != null) {
                         definitions.put(id, parsed.definition());
+                        PetConfigValidator.validateAndLog(parsed.definition(), plugin != null ? plugin.getLogger() : null);
                     }
                 } catch (Exception e) {
                     errorsPerFile.put(file.getName(), List.of("Ayrıştırma hatası: " + e.getMessage()));
@@ -170,7 +171,8 @@ public class AtomicPetDefinitionRegistry implements PetDefinitionRegistry {
             "arcane_crystal.yml", "floating_book.yml", "shoulder_orb.yml", "ghost_scribe.yml",
             "familiar_swarm.yml", "void_cube.yml", "spirit_flame.yml",
             "sleepy_cat.yml", "wisplight.yml",
-            "shadow_wisp.yml", "mirror_doll.yml", "echo_phantom.yml", "roam_fox.yml");
+            "shadow_wisp.yml", "mirror_doll.yml", "echo_phantom.yml", "roam_fox.yml",
+            "phoenix.yml", "swarm_bees.yml");
 
     private void saveDefaultPetFiles(File petsFolder) {
         for (String defFile : DEFAULT_PET_FILES) {

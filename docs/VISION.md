@@ -52,21 +52,21 @@ Tüm sistemler dört aile üzerine kurulur:
 
 | # | Sistem | Durum | Not |
 |---|---|---|---|
-| 9 | Sürü peti (SWARM) | 🟡 | `MULTI_ENTITY + FORMATION` var (`familiar_swarm`: 1 birincil + 3 çocuk). Dedicated SWARM (RANDOM_CLOUD, radius, separation) planlandı |
-| 10 | Lider + yavru (COMPOSITE) | 🟡 | MULTI_ENTITY çocukları var; role (PRIMARY/FOLLOWER) + follow-part + offset şeması planlandı |
+| 9 | Sürü peti (SWARM) | ✅ | `SWARM_CLOUD` hareket motoru; 1 birincil + N çocuk birim organik yörüngesel bulut halinde döner (`swarm_bees` örneği) |
+| 10 | Lider + yavru (COMPOSITE) | ✅ | MULTI_ENTITY çocukları var; dinamik çocuk entity takip ve dinlenme visual senkronizasyonu |
 | 11 | Formasyon (FORMATION) | ✅ | V/çizgi/daire; `spacing`, `rotate-with-owner` |
-| 31 | Interaction hitbox | ⬜ | PARTICLE petler için görünmez `Interaction` entity + sağ tık aksiyonları |
+| 31 | Interaction hitbox | ✅ | Display/Particle petleri için görünmez Paper `Interaction` entity + sağ tık aksiyonu (`PetHitboxDefinition`) |
 
 ### D. Dönüşüm / çevre sistemleri
 
 | # | Sistem | Durum | Not |
 |---|---|---|---|
-| 4 | Dönüşen pet (transformations) | 🟡 | `transforms:` şeması: `when` (owner-state) + `apply` (görsel override) çalışıyor; aynı PetInstance korunur. Entity tipi değişimi (respawn) Faz B'de |
-| 5 | Element/çevre peti (environment-variants) | 🟡 | `when`: biome, world, time-of-day (DAY/NIGHT), weather; `wisplight` örneği. Yükseklik/ışık koşulları planlandı |
-| 18 | Su-kara formu | ⬜ | #4'ün özel hali |
+| 4 | Dönüşen pet (transformations) | ✅ | `transforms:` şeması: `when` + `apply` görsel ve `entityType` override desteği |
+| 5 | Element/çevre peti (environment-variants) | ✅ | `when`: biome, world, time-of-day, weather, `minY/maxY`, `minLight/maxLight`; `wisplight` örneği |
+| 18 | Su-kara formu | ✅ | Su/kara durumuna göre `entityType` ve visual override dönüşümü |
 | 19 | Araç davranışı (vehicle-behavior) | ⬜ | HORSE/BOAT/MINECART/ELYTRA başına hareket |
-| 26 | Büyüyen görsel (visual-progression) | 🟡 | Level-scale var (growth/max-multiplier). Stage'li model/boyut değişimi (minimum-level → model/scale) planlandı |
-| 27 | Evrim (evolution) | ⬜ | definitionId değişimi; GUI + migration yükü; #26'dan sonra |
+| 26 | Büyüyen görsel (visual-progression) | ✅ | Level-scale var (growth/max-multiplier). Seviye bazlı evrim (`PetEvolutionDefinition`) |
+| 27 | Evrim (evolution) | ✅ | `evolutions:` şeması ile seviye eşiğine ulaşıldığında hedef tanıma geçiş |
 | 28 | Mevsimsel varyant | ⬜ | Sunucu temasından seçilir, tick'te tarih kontrolü yok |
 
 ### E. Ortaya çıkma / görünürlük
@@ -85,9 +85,9 @@ Tüm sistemler dört aile üzerine kurulur:
 | 20 | Mini oyuncu (HUMANOID_MODEL) | ⬜ | Önce display model; NMS fake-player sonra |
 | 21 | Binek pet (MOUNT) | ⬜ | Araç kontrolü, anti-cheat, passenger yönetimi; core stabil olunca |
 | 22 | Taşınabilir yuva (home) | ⬜ | Persistence + chunk yönetimi büyütür; 2. büyük milestone |
-| 23 | Duygu tepkileri (reactions) | ✅ | OWNER_DAMAGE (growl + VILLAGER_ANGRY), LEVEL_UP (VILLAGER_HAPPY), rest/wake sesleri — global feature. Per-pet `reactions:` şeması (`enabled/sound/particle/particle-count/volume`; null → global default) `sleepy_cat` ile |
-| 25 | Kişilik (personality) | ⬜ | LOYAL/CURIOUS/SHY/ENERGETIC/SLEEPY parametreleri |
-| 32 | Mod değiştirme (allowed-modes) | 🟡 | FOLLOW/STAY/WANDER persist ediliyor (V8, `/pet mode`). `allowed-modes` (SHOULDER/ORBIT...) + instance-level mode planlandı |
+| 23 | Duygu tepkileri (reactions) | ✅ | OWNER_DAMAGE, LEVEL_UP, REST_START/REST_END ses/parçacık tepkileri |
+| 25 | Kişilik (personality) | ✅ | LOYAL, CURIOUS, SHY, ENERGETIC, SLEEPY kişilik tipleri (`PetPersonalityType`) |
+| 32 | Mod değiştirme (allowed-modes) | ✅ | FOLLOW/STAY/WANDER persist ediliyor, `stayLocation` demirleme ve `allowed-modes` yetki kısıtlaması |
 
 ---
 

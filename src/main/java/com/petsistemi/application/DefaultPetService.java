@@ -144,7 +144,18 @@ public class DefaultPetService implements PetService, AsyncPetService {
         int maxPets = (configSnapshot != null && configSnapshot.get() != null && configSnapshot.get().configuration() != null)
                 ? configSnapshot.get().configuration().limits().maximumOwnedPets() : 5;
 
-        return dbExecutor.submit(() -> insertPetDb(ownerId, definition, maxPets)).thenCompose(state -> {
+        Player onlinePlayer = Bukkit.getPlayer(ownerId);
+        if (onlinePlayer != null) {
+            for (int i = 50; i >= 1; i--) {
+                if (onlinePlayer.hasPermission("petsistemi.limit." + i) || onlinePlayer.hasPermission("companionpets.limit." + i)) {
+                    maxPets = i;
+                    break;
+                }
+            }
+        }
+
+        final int finalMaxPets = maxPets;
+        return dbExecutor.submit(() -> insertPetDb(ownerId, definition, finalMaxPets)).thenCompose(state -> {
             if (!state.success()) {
                 return CompletableFuture.completedFuture(new PetGiveResult(false, state.message(), null));
             }

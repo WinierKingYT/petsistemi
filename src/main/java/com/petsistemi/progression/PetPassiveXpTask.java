@@ -57,7 +57,7 @@ public class PetPassiveXpTask implements Runnable {
 
             if (Bukkit.getServer() != null) {
                 Player owner = Bukkit.getPlayer(ownerId);
-                if (owner != null && !owner.isOnline()) {
+                if (owner != null && (!owner.isOnline() || owner.isDead())) {
                     continue;
                 }
             }

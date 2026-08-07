@@ -57,6 +57,8 @@ public class PetRuntimeCoordinator {
     private volatile PetIdleSleepController idleSleepController;
     private volatile PetTransformController transformController;
     private volatile PetEmoteController emoteController;
+    private volatile InteractionHitboxController hitboxController;
+    private volatile PetBuffController buffController;
 
     public PetRuntimeCoordinator(JavaPlugin plugin,
                                  PetDefinitionRegistry definitionRegistry,
@@ -100,6 +102,14 @@ public class PetRuntimeCoordinator {
     /** Wires the emote controller (set after construction). */
     public void setEmoteController(PetEmoteController emoteController) {
         this.emoteController = emoteController;
+    }
+
+    public void setHitboxController(InteractionHitboxController hitboxController) {
+        this.hitboxController = hitboxController;
+    }
+
+    public void setBuffController(PetBuffController buffController) {
+        this.buffController = buffController;
     }
 
     /**
@@ -205,6 +215,9 @@ public class PetRuntimeCoordinator {
         Optional<ActivePet> activeOpt = activeRegistry.getByOwner(ownerId);
         if (activeOpt.isPresent()) {
             ActivePet active = activeOpt.get();
+            if (hitboxController != null) {
+                hitboxController.removeHitbox(active.getPetId());
+            }
             cleanupRuntime(active, active.getSpawnedEntity());
             activeRegistry.unregister(ownerId);
         }
@@ -216,6 +229,9 @@ public class PetRuntimeCoordinator {
      * falling back to the legacy behavior controller.
      */
     public synchronized void tickAll() {
+        if (buffController != null) {
+            buffController.tick(activeRegistry, definitionRegistry);
+        }
         tickEach(new ArrayList<>(activeRegistry.getAllActive()), Bukkit::getPlayer);
     }
 
@@ -230,6 +246,11 @@ public class PetRuntimeCoordinator {
         for (ActivePet active : pets) {
             Player owner = ownerLookup.find(active.getOwnerId());
             if (owner == null || !owner.isOnline()) continue;
+
+            // Smart Chunk Unload Suspend: skip tick if owner location/chunk is unloaded to save CPU
+            if (owner.getWorld() != null && owner.getLocation() != null && owner.getLocation().getChunk() != null && !owner.getLocation().getChunk().isLoaded()) {
+                continue;
+            }
 
             try {
                 tickPet(active, owner);
@@ -249,6 +270,20 @@ public class PetRuntimeCoordinator {
     private void tickPet(ActivePet active, Player owner) {
         Entity entity = active.getSpawnedEntity();
         if (entity == null || !entity.isValid()) return;
+
+        // Max Distance Teleport Guard: if pet is > 50 blocks away, auto teleport next to owner
+        if (entity.getWorld() != null && owner.getWorld() != null && entity.getWorld().equals(owner.getWorld()) && entity.getLocation() != null && owner.getLocation() != null) {
+            try {
+                if (entity.getLocation().distanceSquared(owner.getLocation()) > 2500.0) {
+                    entity.teleport(SafePetLocationFinder.findSafeLocation(owner.getLocation()));
+                    return;
+                }
+            } catch (Exception ignored) {}
+        }
+
+        if (hitboxController != null) {
+            hitboxController.updateHitbox(active, definitionRegistry);
+        }
 
         int interval = active.getUpdateIntervalTicks();
         if (interval > 0) {

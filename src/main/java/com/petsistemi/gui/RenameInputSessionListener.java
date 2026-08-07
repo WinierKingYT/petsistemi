@@ -65,7 +65,19 @@ public class RenameInputSessionListener implements Listener {
             return;
         }
 
-        CompletableFuture<?> renameFuture = petService instanceof AsyncPetService async ? async.renameAsync(player.getUniqueId(), petId, input) : CompletableFuture.completedFuture(petService.rename(player.getUniqueId(), petId, input));
+        com.petsistemi.util.PetNameValidator.ValidationResult valResult = com.petsistemi.util.PetNameValidator.validate(player, input);
+        if (!valResult.valid()) {
+            plugin.getServer().getScheduler().runTask(plugin, () -> {
+                if (player.isOnline()) {
+                    send(player, "command.rename-failed", "<red>İsim değiştirilemedi: " + valResult.errorMessage() + "</red>", PlaceholderMap.of("error", valResult.errorMessage()));
+                    PetListMenu.open(player, petService, 0, plugin, definitionRegistry, configSnapshot, messageService);
+                }
+            });
+            return;
+        }
+
+        String finalName = valResult.sanitizedName();
+        CompletableFuture<?> renameFuture = petService instanceof AsyncPetService async ? async.renameAsync(player.getUniqueId(), petId, finalName) : CompletableFuture.completedFuture(petService.rename(player.getUniqueId(), petId, finalName));
 
         renameFuture.whenComplete((res, ex) -> {
             plugin.getServer().getScheduler().runTask(plugin, () -> {

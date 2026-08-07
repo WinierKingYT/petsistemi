@@ -12,8 +12,22 @@ public record PetVisualOverride(
         String particleType,
         Integer particleCount,
         Boolean glowing,
-        Boolean baby
+        Boolean baby,
+        String entityType
 ) {
+
+    public PetVisualOverride(
+            String itemMaterial,
+            String blockMaterial,
+            Integer customModelData,
+            PetVector3 scale,
+            String particleType,
+            Integer particleCount,
+            Boolean glowing,
+            Boolean baby
+    ) {
+        this(itemMaterial, blockMaterial, customModelData, scale, particleType, particleCount, glowing, baby, null);
+    }
 
     public boolean hasAny() {
         return itemMaterial != null
@@ -23,6 +37,7 @@ public record PetVisualOverride(
                 || particleType != null
                 || particleCount != null
                 || glowing != null
-                || baby != null;
+                || baby != null
+                || entityType != null;
     }
 }

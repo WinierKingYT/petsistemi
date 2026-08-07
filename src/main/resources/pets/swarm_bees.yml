@@ -1,0 +1,26 @@
+schema-version: 1
+id: swarm_bees
+display-name: "<yellow><bold>Arı Sürüsü</bold></yellow>"
+description:
+  - "<gray>Sahibinin etrafında dönen sihirli arı sürüsü.</gray>"
+
+gui-material: HONEYCOMB
+permission: "petsistemi.pet.swarmbees"
+
+representation:
+  type: MULTI_ENTITY
+  entity-type: BEE
+  child-count: 3
+  item-material: HONEYCOMB
+  baby: true
+
+movement:
+  type: SWARM_CLOUD
+  follow-distance: 2.0
+  follow-speed: 1.2
+
+personality: CURIOUS
+
+allowed-modes:
+  - FOLLOW
+  - STAY

@@ -97,4 +97,14 @@ public class MessageService {
             sender.sendMessage(getComponent(key, fallback, placeholders));
         }
     }
+
+    public void sendActionBar(org.bukkit.entity.Player player, String key, String fallback, PlaceholderMap placeholders) {
+        if (player != null && player.isOnline()) {
+            player.sendActionBar(getComponent(key, fallback, placeholders));
+        }
+    }
+
+    public void sendActionBar(org.bukkit.entity.Player player, String key, String fallback) {
+        sendActionBar(player, key, fallback, null);
+    }
 }

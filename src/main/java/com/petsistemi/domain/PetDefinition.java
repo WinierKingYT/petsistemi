@@ -25,8 +25,46 @@ public record PetDefinition(
         /** GUI listesinde kullanılan material adı ({@code gui-material}); null → id'ye göre varsayılan. */
         String guiMaterial,
         /** Bu peti kullanma yetkisi ({@code permission}); null → kısıtlama yok. */
-        String permission
+        String permission,
+        List<PetBuffDefinition> buffs,
+        PetPersonalityType personality,
+        List<PetEvolutionDefinition> evolutions,
+        PetHitboxDefinition hitbox,
+        List<PetLevelRewardDefinition> levelRewards,
+        List<PetFollowMode> allowedModes,
+        PetSpawnStyleDefinition spawnStyle,
+        PetMountDefinition mount,
+        PetPresenceDefinition presence
 ) {
+
+    /** Backward-compatible canonical overload without new fields. */
+    public PetDefinition(
+            String id,
+            String displayName,
+            List<String> description,
+            String entityType,
+            boolean baby,
+            boolean glowing,
+            boolean invulnerable,
+            boolean silent,
+            boolean gravity,
+            boolean progressionEnabled,
+            int maxLevel,
+            boolean nameplateEnabled,
+            List<String> nameplateFormat,
+            PetRepresentationDefinition representation,
+            PetMovementDefinition movement,
+            PetStatesDefinition states,
+            java.util.List<PetTransformDefinition> transforms,
+            java.util.Map<PetReactionType, PetReactionDefinition> reactions,
+            java.util.Map<String, PetEmoteDefinition> emotes,
+            String guiMaterial,
+            String permission
+    ) {
+        this(id, displayName, description, entityType, baby, glowing, invulnerable, silent, gravity,
+                progressionEnabled, maxLevel, nameplateEnabled, nameplateFormat, representation, movement,
+                states, transforms, reactions, emotes, guiMaterial, permission, null, PetPersonalityType.DEFAULT, null, null, null, null, null, null, null);
+    }
 
     /** Backward-compatible constructor — defaults to a classic ENTITY pet with legacy flags. */
     public PetDefinition(
@@ -162,6 +200,6 @@ public record PetDefinition(
         return new PetDefinition(id, displayName, description, entityType, baby, glowing, invulnerable,
                 silent, gravity, progressionEnabled, maxLevel, nameplateEnabled, nameplateFormat,
                 representationOrEntity().applyOverride(transform.apply()), movement, states, transforms, reactions, emotes,
-                guiMaterial, permission);
+                guiMaterial, permission, buffs, personality, evolutions, hitbox, levelRewards, allowedModes, spawnStyle, mount, presence);
     }
 }

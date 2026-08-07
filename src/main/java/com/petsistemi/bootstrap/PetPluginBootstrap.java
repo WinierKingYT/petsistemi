@@ -65,7 +65,7 @@ public final class PetPluginBootstrap {
             PetRepository petRepository = new SqlitePetRepository(databaseManager, plugin.getLogger());
             PetSelectionRepository selectionRepository = new SqlitePetSelectionRepository(databaseManager, plugin.getLogger());
             PlayerPetProfileCache profileCache = new PlayerPetProfileCache(petRepository, selectionRepository);
-            AuditLogger auditLogger = new AuditLogger(databaseManager, plugin.getLogger());
+            AuditLogger auditLogger = new AuditLogger(databaseManager, plugin.getLogger(), plugin.getDataFolder());
 
             // 6. Runtime Components & Operations
             PaperPetEntityController paperEntityController = new PaperPetEntityController(plugin);
@@ -97,14 +97,17 @@ public final class PetPluginBootstrap {
             movementRegistry.register(com.petsistemi.domain.PetMovementType.SHADOW_TRAIL, new ShadowTrailMovement());
             movementRegistry.register(com.petsistemi.domain.PetMovementType.ROAM_NEAR_OWNER, new RoamNearOwnerMovement());
             movementRegistry.register(com.petsistemi.domain.PetMovementType.MIRROR, new MirrorMovement());
+            movementRegistry.register(com.petsistemi.domain.PetMovementType.SWARM_CLOUD, new SwarmCloudMovement());
 
             PetRuntimeCoordinator coordinator = new PetRuntimeCoordinator(
                     plugin, definitionRegistry, activePetRegistry, entityController, behaviorController,
                     representationRegistry, movementRegistry
             );
-
             PetReactionEngine reactionEngine = new PetReactionEngine(configSnapshot);
             PetEmoteController emoteController = new PetEmoteController(reactionEngine);
+            InteractionHitboxController hitboxController = new InteractionHitboxController(plugin);
+            PetBuffController buffController = new PetBuffController();
+
             PetIdleSleepController idleSleepController = new PetIdleSleepController(
                     configSnapshot, definitionRegistry, representationRegistry, reactionEngine);
             PetTransformController transformController = new PetTransformController(
@@ -113,6 +116,8 @@ public final class PetPluginBootstrap {
             idleSleepController.setTransformController(transformController);
             coordinator.setIdleSleepController(idleSleepController);
             coordinator.setEmoteController(emoteController);
+            coordinator.setHitboxController(hitboxController);
+            coordinator.setBuffController(buffController);
 
             PetRuntimeOperationService operationService = new PetRuntimeOperationService(
                     plugin, petRepository, selectionRepository, definitionRegistry, coordinator, profileCache, dbExecutor, mainThreadDispatcher
@@ -131,10 +136,22 @@ public final class PetPluginBootstrap {
                     plugin, petRepository, definitionRegistry, activePetRegistry, entityController, new com.petsistemi.progression.ConfigBackedLinearExperienceCurve(configSnapshot), dbExecutor, mainThreadDispatcher, profileCache, configSnapshot
             );
 
-            // 8. Task Registry
+            // 8. PlaceholderAPI Integration
+            if (plugin.getServer().getPluginManager().isPluginEnabled("PlaceholderAPI")) {
+                try {
+                    new com.petsistemi.integration.papi.PetPapiExpansion(plugin, petService).register();
+                    plugin.getLogger().info("PlaceholderAPI entegrasyonu (PetPapiExpansion) başarıyla yüklendi.");
+                } catch (Throwable t) {
+                    plugin.getLogger().warning("PlaceholderAPI yüklenirken hata oluştu: " + t.getMessage());
+                }
+            }
+
+            // 9. Task Registry
             TaskRegistry taskRegistry = new TaskRegistry();
 
             plugin.getLogger().info("PetSistemi önyükleme başarıyla tamamlandı.");
+
+            AdminPersistenceService adminPersistenceService = new AdminPersistenceService(dbExecutor, databaseManager, plugin.getLogger());
 
             return new PetPluginContext(
                     plugin,
@@ -159,7 +176,10 @@ public final class PetPluginBootstrap {
                     taskRegistry,
                     configSnapshot,
                     reactionEngine,
-                    emoteController
+                    emoteController,
+                    hitboxController,
+                    buffController,
+                    adminPersistenceService
             );
         } catch (Throwable t) {
             plugin.getLogger().severe("PetSistemi önyüklemesi sırasında kritik hata oluştu! Kaynaklar temizleniyor: " + t.getMessage());

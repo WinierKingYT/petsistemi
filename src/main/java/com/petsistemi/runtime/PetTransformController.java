@@ -121,19 +121,32 @@ public class PetTransformController {
             return false;
         }
         if (condition.biome() != null) {
+            if (owner.getLocation() == null || owner.getLocation().getBlock() == null) return false;
             Biome biome = owner.getLocation().getBlock().getBiome();
             if (biome == null || !biome.name().equalsIgnoreCase(condition.biome())) {
                 return false;
             }
         }
-        if (condition.world() != null && !owner.getWorld().getName().equals(condition.world())) {
+        if (condition.world() != null && (owner.getWorld() == null || !owner.getWorld().getName().equals(condition.world()))) {
             return false;
         }
-        if (condition.timeOfDay() != null && !timeMatches(condition.timeOfDay(), owner.getWorld().getTime())) {
+        if (condition.timeOfDay() != null && (owner.getWorld() == null || !timeMatches(condition.timeOfDay(), owner.getWorld().getTime()))) {
             return false;
         }
-        if (condition.weather() != null && !weatherMatches(condition.weather(), owner.getWorld())) {
+        if (condition.weather() != null && (owner.getWorld() == null || !weatherMatches(condition.weather(), owner.getWorld()))) {
             return false;
+        }
+        if (condition.minY() != null || condition.maxY() != null) {
+            if (owner.getLocation() == null) return false;
+            int y = owner.getLocation().getBlockY();
+            if (condition.minY() != null && y < condition.minY()) return false;
+            if (condition.maxY() != null && y > condition.maxY()) return false;
+        }
+        if (condition.minLight() != null || condition.maxLight() != null) {
+            if (owner.getLocation() == null || owner.getLocation().getBlock() == null) return false;
+            int light = owner.getLocation().getBlock().getLightLevel();
+            if (condition.minLight() != null && light < condition.minLight()) return false;
+            if (condition.maxLight() != null && light > condition.maxLight()) return false;
         }
         return true;
     }

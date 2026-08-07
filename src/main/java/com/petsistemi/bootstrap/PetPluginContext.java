@@ -34,5 +34,40 @@ public record PetPluginContext(
         TaskRegistry taskRegistry,
         java.util.concurrent.atomic.AtomicReference<com.petsistemi.config.RuntimeConfigurationSnapshot> configSnapshot,
         PetReactionEngine reactionEngine,
-        PetEmoteController emoteController
-) {}
+        PetEmoteController emoteController,
+        InteractionHitboxController hitboxController,
+        PetBuffController buffController,
+        AdminPersistenceService adminPersistenceService
+) {
+    public PetPluginContext(
+            JavaPlugin plugin,
+            PluginConfiguration config,
+            MessageService messageService,
+            ConnectionProvider connectionProvider,
+            DatabaseExecutor dbExecutor,
+            MainThreadDispatcher mainThreadDispatcher,
+            PetRepository petRepository,
+            PetSelectionRepository selectionRepository,
+            PlayerPetProfileCache profileCache,
+            AuditLogger auditLogger,
+            PetDefinitionRegistry definitionRegistry,
+            ActivePetRegistry activePetRegistry,
+            PetEntityController entityController,
+            PetBehaviorController behaviorController,
+            PetRuntimeCoordinator coordinator,
+            PetRuntimeOperationService operationService,
+            PetService petService,
+            PetExperienceService experienceService,
+            PlayerInputSessionManager sessionManager,
+            TaskRegistry taskRegistry,
+            java.util.concurrent.atomic.AtomicReference<com.petsistemi.config.RuntimeConfigurationSnapshot> configSnapshot,
+            PetReactionEngine reactionEngine,
+            PetEmoteController emoteController
+    ) {
+        this(plugin, config, messageService, connectionProvider, dbExecutor, mainThreadDispatcher,
+                petRepository, selectionRepository, profileCache, auditLogger, definitionRegistry,
+                activePetRegistry, entityController, behaviorController, coordinator, operationService,
+                petService, experienceService, sessionManager, taskRegistry, configSnapshot, reactionEngine,
+                emoteController, null, null, null);
+    }
+}

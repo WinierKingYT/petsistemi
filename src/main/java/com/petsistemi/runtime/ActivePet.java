@@ -20,6 +20,7 @@ public final class ActivePet implements PetRuntimeHandle {
     private Entity spawnedEntity;
     private PetRuntimeState runtimeState;
     private PetFollowMode followMode = PetFollowMode.FOLLOW;
+    private org.bukkit.Location stayLocation;
 
     private final String definitionId;
     private int level;
@@ -115,6 +116,14 @@ public final class ActivePet implements PetRuntimeHandle {
 
     public void setFollowMode(PetFollowMode followMode) {
         this.followMode = followMode != null ? followMode : PetFollowMode.FOLLOW;
+    }
+
+    public org.bukkit.Location getStayLocation() {
+        return stayLocation;
+    }
+
+    public void setStayLocation(org.bukkit.Location stayLocation) {
+        this.stayLocation = stayLocation;
     }
 
     /** True while the pet is in the idle/sleep visual state (driven by {@link PetIdleSleepController}). */

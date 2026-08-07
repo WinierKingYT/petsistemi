@@ -132,3 +132,9 @@ permissions:
   companionpets.pet.roamfox:
     description: Gezgin Tilki petini kullanma yetkisi.
     default: true
+  petsistemi.pet.phoenix:
+    description: Zümrüdü Anka petini kullanma yetkisi.
+    default: true
+  petsistemi.pet.swarmbees:
+    description: Arı Sürüsü petini kullanma yetkisi.
+    default: true

@@ -15,5 +15,6 @@ public enum PetMovementType {
     ECHO,
     SHADOW_TRAIL,
     ROAM_NEAR_OWNER,
-    MIRROR
+    MIRROR,
+    SWARM_CLOUD
 }

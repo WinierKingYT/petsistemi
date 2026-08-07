@@ -23,5 +23,9 @@ public final class ListenerRegistrar {
         Bukkit.getPluginManager().registerEvents(new com.petsistemi.listener.PetRuntimeSyncListener(context.activePetRegistry(), context.coordinator()), context.plugin());
         Bukkit.getPluginManager().registerEvents(new com.petsistemi.listener.PetReactionListener(
                 context.activePetRegistry(), context.reactionEngine(), context.definitionRegistry()), context.plugin());
+        Bukkit.getPluginManager().registerEvents(new com.petsistemi.listener.PetInteractionListener(
+                context.plugin(), context.petService(), context.activePetRegistry(), context.hitboxController(),
+                context.definitionRegistry(), context.configSnapshot(), context.messageService()), context.plugin());
+        Bukkit.getPluginManager().registerEvents(new com.petsistemi.listener.PlayerProfilePrewarmListener(context.petService()), context.plugin());
     }
 }

@@ -72,12 +72,33 @@ public class PaperPetEntityController implements PetEntityController, PetReprese
         // Nameplate rendering
         updateName(entity, pet, definition);
 
+        // Entry spawn animation (PORTAL/particle & sound)
+        if (definition != null && definition.spawnStyle() != null) {
+            com.petsistemi.domain.PetSpawnStyleDefinition style = definition.spawnStyle();
+            if (style.entryParticle() != null) {
+                try {
+                    org.bukkit.Particle p = org.bukkit.Particle.valueOf(style.entryParticle().toUpperCase());
+                    owner.getWorld().spawnParticle(p, owner.getLocation().add(0, 0.5, 0), Math.max(1, style.entryParticleCount()), 0.4, 0.5, 0.4, 0.05);
+                } catch (Exception ignored) {}
+            }
+            if (style.entrySound() != null) {
+                try {
+                    org.bukkit.Sound s = org.bukkit.Sound.valueOf(style.entrySound().toUpperCase());
+                    owner.playSound(owner.getLocation(), s, 1.0f, 1.0f);
+                } catch (Exception ignored) {}
+            }
+        }
+
         return entity;
     }
 
     @Override
     public void remove(Entity entity) {
         if (entity != null && entity.isValid()) {
+            try {
+                entity.getWorld().spawnParticle(org.bukkit.Particle.SMOKE_LARGE, entity.getLocation().add(0, 0.5, 0), 20, 0.3, 0.4, 0.3, 0.05);
+                entity.getWorld().playSound(entity.getLocation(), org.bukkit.Sound.ENTITY_ITEM_BREAK, 1.0f, 1.0f);
+            } catch (Exception ignored) {}
             entity.remove();
         }
     }

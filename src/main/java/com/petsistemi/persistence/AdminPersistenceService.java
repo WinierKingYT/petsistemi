@@ -62,4 +62,19 @@ public class AdminPersistenceService {
             }
         });
     }
+
+    public CompletableFuture<Boolean> vacuumDatabaseAsync() {
+        return dbExecutor.submit(() -> {
+            try (Connection conn = connectionProvider.getConnection();
+                 Statement stmt = conn.createStatement()) {
+                stmt.execute("VACUUM;");
+                stmt.execute("ANALYZE;");
+                logger.info("Veritabanı optimizasyonu (VACUUM & ANALYZE) başarıyla uygulandı.");
+                return true;
+            } catch (Exception e) {
+                logger.warning("VACUUM optimizasyonu çalıştırılamadı: " + e.getMessage());
+                return false;
+            }
+        });
+    }
 }

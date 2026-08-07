@@ -26,7 +26,18 @@ public class PetSistemiPlugin extends JavaPlugin {
             ListenerRegistrar.register(context);
             SchedulerRegistrar.register(context);
 
-            getLogger().info("PetSistemi v" + getDescription().getVersion() + " başarıyla aktif edildi!");
+            if (context != null && context.petService() != null) {
+                new com.petsistemi.listener.PlayerProfilePrewarmListener(context.petService()).prewarmAllOnlinePlayers();
+            }
+
+            getLogger().info("\n" +
+                    "  ____  _____ _____   ____ ___ ____ _____ _____ __  __ ___ \n" +
+                    " |  _ \\| ____|_   _| / ___|_ _|  ___|_   _| ____|  \\/  |_ _|\n" +
+                    " | |_) |  _|   | |   \\___ \\| | | |_    | | |  _| | |\\/| || | \n" +
+                    " |  __/| |___  | |    ___) | | |  _|   | | | |___| |  | || | \n" +
+                    " |_|   |_____| |_|   |____/___|_|     |_| |_____|_|  |_|___| \n" +
+                    "                                                             \n" +
+                    "  PetSistemi v" + getDescription().getVersion() + " :: Başarıyla Aktif Edildi!");
         } catch (Exception e) {
             getLogger().log(Level.SEVERE, "PetSistemi başlatılamadı! Devre dışı bırakılıyor...", e);
             getServer().getPluginManager().disablePlugin(this);
@@ -56,7 +67,13 @@ public class PetSistemiPlugin extends JavaPlugin {
                 context.dbExecutor().close();
             }
 
-            // 5. Clear Caches & Sessions
+            // 5. Clear Caches, Open GUI Inventories & Sessions
+            for (org.bukkit.entity.Player p : getServer().getOnlinePlayers()) {
+                if (p.getOpenInventory() != null && p.getOpenInventory().getTopInventory() != null
+                        && p.getOpenInventory().getTopInventory().getHolder() instanceof com.petsistemi.gui.PetMenuHolder) {
+                    p.closeInventory();
+                }
+            }
             if (context.profileCache() != null) {
                 context.profileCache().clearAll();
             }

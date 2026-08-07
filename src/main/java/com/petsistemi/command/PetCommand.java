@@ -91,19 +91,21 @@ public class PetCommand implements CommandExecutor, TabCompleter {
         }
 
         if (args.length == 0) {
-            com.petsistemi.gui.PetListMenu.open(player, petService, 0, plugin, definitionRegistry, configSnapshot, messageService);
+            com.petsistemi.gui.PetListMenu.open(player, petService, plugin, definitionRegistry, configSnapshot, messageService);
             return true;
         }
 
         String sub = args[0].toLowerCase();
         switch (sub) {
             case "list" -> handleList(player);
+            case "menu", "gui" -> com.petsistemi.gui.PetListMenu.open(player, petService, plugin, definitionRegistry, configSnapshot, messageService);
             case "summon" -> handleSummon(player, args);
             case "dismiss" -> handleDismiss(player);
             case "info" -> handleInfo(player, args);
             case "rename" -> handleRename(player, args);
             case "mode" -> handleMode(player, args);
             case "emote" -> handleEmote(player, args);
+            case "stats" -> handleStats(player);
             default -> sendHelp(player);
         }
 
@@ -180,17 +182,18 @@ public class PetCommand implements CommandExecutor, TabCompleter {
                 return;
             }
 
-            send(player, "command.pets-header", "<gold>=== Evcil Hayvanlarınız ===</gold>", null);
+            send(player, "command.pets-header", "<gold>=== Evcil Hayvanlarınız (Çağırmak için üzerine tıklayın) ===</gold>", null);
             int i = 1;
             for (PetSnapshot pet : pets) {
                 String shortId = pet.petId().toString().substring(0, 6);
                 String name = pet.customName() != null ? pet.customName() : pet.definitionId();
-                send(player, "command.pet-list-line",
-                        "<yellow>" + i + ". " + name + " (ID: " + shortId + ") - Seviye " + pet.level() + "</yellow>",
-                        PlaceholderMap.of("index", String.valueOf(i))
-                                .add("name", name)
-                                .add("pet_id", shortId)
-                                .add("level", String.valueOf(pet.level())));
+                String statusStr = pet.spawned() ? "<green>[Çağrıldı]</green>" : (pet.selected() ? "<yellow>[Seçili]</yellow>" : "<gray>[Dışarıda]</gray>");
+                String interactiveLine = "<yellow>" + i + ". </yellow>" +
+                        "<click:run_command:'/pet summon " + shortId + "'>" +
+                        "<hover:show_text:'<gold>" + name + "</gold><newline><gray>ID: " + shortId + "<newline>Seviye: " + pet.level() + "<newline>XP: " + pet.experience() + "<newline><yellow>⚡ Çağırmak için tıkla!</yellow>'>" +
+                        "<gold><u>" + name + "</u></gold></hover></click> " +
+                        "<gray>(ID: " + shortId + ", Lvl: " + pet.level() + ")</gray> " + statusStr;
+                player.sendMessage(net.kyori.adventure.text.minimessage.MiniMessage.miniMessage().deserialize(interactiveLine));
                 i++;
             }
         }));
@@ -220,7 +223,7 @@ public class PetCommand implements CommandExecutor, TabCompleter {
                 String msg = res instanceof com.petsistemi.api.result.PetSummonResult r ? r.message() : "Çağırma başarısız.";
                 if (success) {
                     String name = match.pet.customName() != null ? match.pet.customName() : match.pet.definitionId();
-                    send(player, "command.pet-summoned", "<green>" + name + " başarıyla çağırıldı!</green>", PlaceholderMap.of("name", name));
+                    sendActionBar(player, "command.pet-summoned", "<green>🐾 " + name + " başarıyla çağırıldı!</green>", PlaceholderMap.of("name", name));
                 } else {
                     send(player, "command.summon-failed", "<red>" + msg + "</red>", PlaceholderMap.of("error", msg));
                 }
@@ -236,7 +239,7 @@ public class PetCommand implements CommandExecutor, TabCompleter {
             boolean success = res instanceof com.petsistemi.api.result.PetDismissResult r && r.success();
             String msg = res instanceof com.petsistemi.api.result.PetDismissResult r ? r.message() : "Gönderme başarısız.";
             if (success) {
-                send(player, "command.pet-dismissed", "<yellow>Petiniz kaldırıldı.</yellow>", null);
+                sendActionBar(player, "command.pet-dismissed", "<yellow>🐾 Petiniz geri gönderildi.</yellow>", null);
             } else {
                 send(player, "command.dismiss-failed", "<red>" + msg + "</red>", PlaceholderMap.of("error", msg));
             }
@@ -272,21 +275,27 @@ public class PetCommand implements CommandExecutor, TabCompleter {
     }
 
     private void displayInfo(Player player, PetSnapshot pet) {
-        String customName = pet.customName() != null ? pet.customName() : "Yok";
-        send(player, "command.info-line",
-                "<gold>=== Pet Bilgisi ===</gold>" +
-                "<newline><yellow>Tür ID: " + pet.definitionId() + "</yellow>" +
-                "<newline><yellow>Özel İsim: " + customName + "</yellow>" +
-                "<newline><yellow>Seviye: " + pet.level() + "</yellow>" +
-                "<newline><yellow>Deneyim: " + pet.experience() + "</yellow>" +
-                "<newline><yellow>Durum: " + pet.availabilityState().name() + "</yellow>" +
-                "<newline><yellow>Pet UUID: " + pet.petId() + "</yellow>",
-                PlaceholderMap.of("definition", pet.definitionId())
-                        .add("name", customName)
-                        .add("level", String.valueOf(pet.level()))
-                        .add("experience", String.valueOf(pet.experience()))
-                        .add("state", pet.availabilityState().name())
-                        .add("pet_id", pet.petId().toString()));
+        String customName = pet.customName() != null ? pet.customName() : pet.definitionId();
+        long currentXp = pet.experience();
+        long reqXp = (pet.level() + 1) * 100L;
+        double ratio = Math.min(1.0, Math.max(0.0, (double) currentXp / (double) reqXp));
+        int totalBars = 20;
+        int filledBars = (int) (ratio * totalBars);
+        String filled = "█".repeat(Math.max(0, filledBars));
+        String empty = "░".repeat(Math.max(0, totalBars - filledBars));
+        String progressBar = "<gradient:#ff9900:#ff0055>[" + filled + "</gradient><gray>" + empty + "]</gray> " + (int)(ratio * 100) + "%";
+
+        String statusBadge = pet.spawned() ? "<green>⚡ Çağrıldı (Aktif)</green>" : (pet.selected() ? "<yellow>⭐ Seçili (Depoda)</yellow>" : "<gray>💤 Pasif</gray>");
+
+        String infoMsg = "<gold>==================== Pet Bilgisi ====================</gold>" +
+                "<newline><yellow>🐾 Pet:</yellow> <bold>" + customName + "</bold> <gray>(" + pet.definitionId() + ")</gray>" +
+                "<newline><yellow>⭐ Seviye:</yellow> <gold>" + pet.level() + "</gold>" +
+                "<newline><yellow>📈 İlerleme:</yellow> " + progressBar + " <gray>(" + currentXp + " / " + reqXp + " XP)</gray>" +
+                "<newline><yellow>⚡ Durum:</yellow> " + statusBadge +
+                "<newline><yellow>🆔 Pet UUID:</yellow> <gray>" + pet.petId() + "</gray>" +
+                "<newline><gold>===================================================</gold>";
+
+        player.sendMessage(net.kyori.adventure.text.minimessage.MiniMessage.miniMessage().deserialize(infoMsg));
     }
 
     private void handleRename(Player player, String[] args) {
@@ -351,6 +360,14 @@ public class PetCommand implements CommandExecutor, TabCompleter {
         }
 
         ActivePet activePet = active.get();
+        if (definitionRegistry != null) {
+            PetDefinition def = definitionRegistry.find(activePet.getDefinitionId()).orElse(null);
+            if (def != null && def.allowedModes() != null && !def.allowedModes().isEmpty() && !def.allowedModes().contains(mode)) {
+                send(player, "mode.not-allowed", "<red>Bu pet için '" + mode.name().toLowerCase() + "' modu izin verilen bir mod değildir.</red>", null);
+                return;
+            }
+        }
+
         activePet.setFollowMode(mode);
         if (activePet.getSpawnedEntity() instanceof Mob mob) {
             mob.getPathfinder().stopPathfinding();
@@ -389,6 +406,14 @@ public class PetCommand implements CommandExecutor, TabCompleter {
         });
     }
 
+    private void sendActionBar(Player player, String key, String fallback, PlaceholderMap placeholders) {
+        if (messageService != null) {
+            messageService.sendActionBar(player, key, fallback, placeholders);
+        } else if (player != null) {
+            player.sendActionBar(com.petsistemi.message.MiniMessageRenderer.render(fallback, placeholders));
+        }
+    }
+
     @Override
     public @Nullable List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String alias, @NotNull String[] args) {
         if (!(sender instanceof Player player) || !player.hasPermission("companionpets.use")) {
@@ -396,15 +421,26 @@ public class PetCommand implements CommandExecutor, TabCompleter {
         }
 
         if (args.length == 1) {
-            return Arrays.asList("list", "summon", "dismiss", "info", "rename", "mode", "emote").stream()
+            return Arrays.asList("dismiss", "emote", "info", "list", "mode", "rename", "stats", "summon").stream()
                     .filter(sub -> sub.startsWith(args[0].toLowerCase()))
+                    .sorted()
                     .collect(Collectors.toList());
         }
 
         if (args.length == 2) {
             String sub = args[0].toLowerCase();
             if (sub.equals("mode")) {
-                return Arrays.asList("follow", "stay", "wander").stream()
+                List<String> options = List.of("follow", "stay", "wander");
+                if (definitionRegistry != null && activeRegistry != null) {
+                    Optional<ActivePet> active = activeRegistry.getByOwner(player.getUniqueId());
+                    if (active.isPresent()) {
+                        PetDefinition def = definitionRegistry.find(active.get().getDefinitionId()).orElse(null);
+                        if (def != null && def.allowedModes() != null && !def.allowedModes().isEmpty()) {
+                            options = def.allowedModes().stream().map(m -> m.name().toLowerCase()).toList();
+                        }
+                    }
+                }
+                return options.stream()
                         .filter(m -> m.startsWith(args[1].toLowerCase()))
                         .collect(Collectors.toList());
             }
@@ -438,5 +474,30 @@ public class PetCommand implements CommandExecutor, TabCompleter {
         }
 
         return Collections.emptyList();
+    }
+
+    private void handleStats(Player player) {
+        CompletableFuture<List<PetSnapshot>> petsFuture = petService instanceof AsyncPetService async ? async.getOwnedPetsAsync(player.getUniqueId()).thenApply(ArrayList::new) : CompletableFuture.completedFuture(new ArrayList<>(petService.getOwnedPets(player.getUniqueId())));
+
+        petsFuture.thenAccept(pets -> plugin.getServer().getScheduler().runTask(plugin, () -> {
+            if (!player.isOnline()) return;
+            if (pets.isEmpty()) {
+                send(player, "command.no-pets", "<gray>Herhangi bir pete sahip değilsiniz.</gray>", null);
+                return;
+            }
+
+            long totalXp = pets.stream().mapToLong(PetSnapshot::experience).sum();
+            int maxLvl = pets.stream().mapToInt(PetSnapshot::level).max().orElse(1);
+            long activeCount = pets.stream().filter(PetSnapshot::spawned).count();
+
+            String statsMsg = "<gold>==================== Pet İstatistikleriniz ====================</gold>" +
+                    "<newline><yellow>🐾 Toplam Sahiplenilen Pet:</yellow> <gold>" + pets.size() + "</gold>" +
+                    "<newline><yellow>⚡ Şu Anda Aktif Pet:</yellow> <green>" + activeCount + " adet</green>" +
+                    "<newline><yellow>⭐ En Yüksek Pet Seviyesi:</yellow> <gold>Seviye " + maxLvl + "</gold>" +
+                    "<newline><yellow>📈 Toplam Kazanılan XP:</yellow> <aqua>" + totalXp + " XP</aqua>" +
+                    "<newline><gold>==============================================================</gold>";
+
+            player.sendMessage(net.kyori.adventure.text.minimessage.MiniMessage.miniMessage().deserialize(statsMsg));
+        }));
     }
 }

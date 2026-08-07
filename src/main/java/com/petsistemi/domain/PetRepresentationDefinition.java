@@ -74,7 +74,8 @@ public record PetRepresentationDefinition(
         boolean glow = override.glowing() != null ? override.glowing() : glowing;
         boolean babyFlag = override.baby() != null ? override.baby() : baby;
         PetVector3 s = override.scale() != null ? override.scale() : scale;
-        return new PetRepresentationDefinition(type, entityType, babyFlag, glow, invulnerable, silent, gravity,
+        String eType = override.entityType() != null ? override.entityType() : entityType;
+        return new PetRepresentationDefinition(type, eType, babyFlag, glow, invulnerable, silent, gravity,
                 item, cmd, s, particle, count, particleOffset, particleSpeed, childCount, childMaterial);
     }
 }

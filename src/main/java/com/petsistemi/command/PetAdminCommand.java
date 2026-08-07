@@ -52,6 +52,7 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
     private final ActivePetRegistry activeRegistry;
     private final PetRepository repository;
     private final PetSelectionRepository selectionRepository;
+    private final ConnectionProvider connectionProvider;
     private final AdminPersistenceService adminPersistenceService;
     private final AuditLogger auditLogger;
     private final PetRuntimeCoordinator coordinator;
@@ -130,6 +131,7 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
         this.activeRegistry = activeRegistry;
         this.repository = repository;
         this.selectionRepository = selectionRepository;
+        this.connectionProvider = connectionProvider;
         this.adminPersistenceService = (context != null && context.dbExecutor() != null && connectionProvider != null)
                 ? new AdminPersistenceService(context.dbExecutor(), connectionProvider, plugin != null ? plugin.getLogger() : java.util.logging.Logger.getLogger("PetAdminCommand"))
                 : null;
@@ -217,6 +219,18 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
                 if (!checkPerm(sender, "companionpets.admin.enable")) return true;
                 handleEnable(sender, args);
             }
+            case "giveall" -> {
+                if (!checkPerm(sender, "companionpets.admin.giveall")) return true;
+                handleGiveAll(sender, args);
+            }
+            case "benchmark" -> {
+                if (!checkPerm(sender, "companionpets.admin.benchmark")) return true;
+                handleBenchmark(sender);
+            }
+            case "vacuum" -> {
+                if (!checkPerm(sender, "companionpets.admin.vacuum")) return true;
+                handleVacuum(sender);
+            }
             default -> sendHelp(sender);
         }
 
@@ -254,8 +268,16 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
     }
 
     private void sendHelpLine(CommandSender sender, String cmd, String desc) {
-        send(sender, "admin.help-line", "<dark_gray>  </dark_gray><yellow>" + cmd + "</yellow><gray> — " + desc + "</gray>",
-                PlaceholderMap.of("command", cmd).add("description", desc));
+        if (sender instanceof Player player) {
+            String interactiveLine = "<dark_gray>  ● </dark_gray>" +
+                    "<click:suggest_command:'" + cmd + "'>" +
+                    "<hover:show_text:'<gold>" + cmd + "</gold><newline><gray>" + desc + "<newline><yellow>⚡ Komutu hazırlamak için tıkla!</yellow>'>" +
+                    "<yellow><u>" + cmd + "</u></yellow></hover></click> <gray>— " + desc + "</gray>";
+            player.sendMessage(net.kyori.adventure.text.minimessage.MiniMessage.miniMessage().deserialize(interactiveLine));
+        } else {
+            send(sender, "admin.help-line", "<dark_gray>  </dark_gray><yellow>" + cmd + "</yellow><gray> — " + desc + "</gray>",
+                    PlaceholderMap.of("command", cmd).add("description", desc));
+        }
     }
 
     private void send(CommandSender sender, String key, String fallback, PlaceholderMap placeholders) {
@@ -268,31 +290,56 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
 
     private void handleGive(CommandSender sender, String[] args) {
         if (args.length < 3) {
-            send(sender, "admin.usage", "<red>Kullanım: /petadmin give <oyuncu> <tur_id></red>", PlaceholderMap.of("usage", "/petadmin give <oyuncu> <tur_id>"));
+            send(sender, "admin.usage", "<red>Kullanım: /petadmin give <oyuncu> <tur_id> [miktar]</red>", PlaceholderMap.of("usage", "/petadmin give <oyuncu> <tur_id> [miktar]"));
             return;
         }
         OfflinePlayer target = Bukkit.getOfflinePlayer(args[1]);
         String defId = args[2].toLowerCase();
         String targetName = target.getName() != null ? target.getName() : target.getUniqueId().toString().substring(0, 8);
+        int quantity = 1;
+        if (args.length >= 4) {
+            try { quantity = Math.max(1, Integer.parseInt(args[3])); } catch (Exception ignored) {}
+        }
 
-        CompletableFuture<PetGiveResult> future = petService instanceof AsyncPetService async ? async.givePetAsync(target.getUniqueId(), defId) : CompletableFuture.completedFuture(petService.givePet(target.getUniqueId(), defId));
-
-        future.thenAccept(result -> sendMessageOnMain(sender, () -> {
-            if (result.success() && result.petSnapshot() != null) {
-                UUID petId = result.petSnapshot().petId();
-                send(sender, "admin.divider", "<dark_gray>-----------------------------------------</dark_gray>", null);
-                send(sender, "admin.pet-given-header", "<green><b>✔ Pet başarıyla verildi!</b></green>", null);
-                send(sender, "admin.pet-given-player", "<gray>  Oyuncu: </gray><aqua>" + targetName + "</aqua>", PlaceholderMap.of("player", targetName));
-                send(sender, "admin.pet-given-type", "<gray>  Tür: </gray><gold>" + defId.toUpperCase() + "</gold>", PlaceholderMap.of("definition", defId.toUpperCase()));
-                send(sender, "admin.pet-given-id", "<gray>  Pet ID: </gray><yellow>" + petId + "</yellow>", PlaceholderMap.of("pet_id", petId.toString()));
-                send(sender, "admin.divider", "<dark_gray>-----------------------------------------</dark_gray>", null);
-                if (auditLogger != null) {
-                    auditLogger.logAction("GIVE_PET", sender.getName(), target.getUniqueId(), petId, "Tür: " + defId);
+        for (int i = 0; i < quantity; i++) {
+            CompletableFuture<PetGiveResult> future = petService instanceof AsyncPetService async ? async.givePetAsync(target.getUniqueId(), defId) : CompletableFuture.completedFuture(petService.givePet(target.getUniqueId(), defId));
+            future.thenAccept(result -> sendMessageOnMain(sender, () -> {
+                if (result.success() && result.petSnapshot() != null) {
+                    UUID petId = result.petSnapshot().petId();
+                    send(sender, "admin.pet-given-header", "<green><b>✔ Pet verilme başarılı: " + targetName + " -> " + defId.toUpperCase() + "</b></green>", null);
+                    if (auditLogger != null) {
+                        auditLogger.logAction("GIVE_PET", sender.getName(), target.getUniqueId(), petId, "Tür: " + defId);
+                    }
+                } else {
+                    send(sender, "admin.pet-give-failed", "<red>✖ Pet verilemedi: " + result.message() + "</red>", PlaceholderMap.of("error", result.message()));
                 }
-            } else {
-                send(sender, "admin.pet-give-failed", "<red>✖ Pet verilemedi: " + result.message() + "</red>", PlaceholderMap.of("error", result.message()));
+            }));
+        }
+    }
+
+    private void handleGiveAll(CommandSender sender, String[] args) {
+        if (args.length < 2) {
+            send(sender, "admin.usage", "<red>Kullanım: /petadmin giveall <tur_id> [miktar]</red>", PlaceholderMap.of("usage", "/petadmin giveall <tur_id> [miktar]"));
+            return;
+        }
+        String defId = args[1].toLowerCase();
+        int quantity = 1;
+        if (args.length >= 3) {
+            try { quantity = Math.max(1, Integer.parseInt(args[2])); } catch (Exception ignored) {}
+        }
+
+        int playerCount = 0;
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            playerCount++;
+            for (int i = 0; i < quantity; i++) {
+                if (petService instanceof AsyncPetService async) {
+                    async.givePetAsync(p.getUniqueId(), defId);
+                } else {
+                    petService.givePet(p.getUniqueId(), defId);
+                }
             }
-        }));
+        }
+        send(sender, "admin.giveall-success", "<green>✔ Toplam " + playerCount + " çevrimiçi oyuncuya " + quantity + " adet '" + defId.toUpperCase() + "' peti verilme talimatı gönderildi!</green>", null);
     }
 
     private void handleRemove(CommandSender sender, String[] args) {
@@ -557,6 +604,9 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
                 com.petsistemi.config.RuntimeReloadService.performReload(context, plugin, messageService, atomicRegistry);
 
         if (result.success()) {
+            if (context != null && context.petService() != null) {
+                new com.petsistemi.listener.PlayerProfilePrewarmListener(context.petService()).prewarmAllOnlinePlayers();
+            }
             send(sender, "command.reload-success", "<green>PetSistemi yapılandırması ve pet tanımları atomik olarak hatasız yeniden yüklendi!</green>", null);
             if (auditLogger != null) {
                 auditLogger.logAction("RELOAD", sender.getName(), null, null, "Atomik reload başarıyla tamamlandı");
@@ -807,7 +857,7 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
 
     @Override
     public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String alias, @NotNull String[] args) {
-        List<String> allSubs = Arrays.asList("give", "remove", "list", "info", "addxp", "setxp", "setlevel", "summon", "dismiss", "reload", "inspect", "health", "backup", "reconcile", "disable", "enable");
+        List<String> allSubs = Arrays.asList("give", "giveall", "remove", "list", "info", "addxp", "setxp", "setlevel", "summon", "dismiss", "reload", "inspect", "health", "backup", "reconcile", "disable", "enable", "benchmark", "vacuum");
 
         List<String> allowedSubs = allSubs.stream()
                 .filter(sub -> sender.hasPermission("companionpets.admin") || sender.hasPermission("companionpets.admin." + sub))
@@ -820,6 +870,7 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
         if (args.length == 1) {
             return allowedSubs.stream()
                     .filter(sub -> sub.startsWith(args[0].toLowerCase()))
+                    .sorted()
                     .collect(Collectors.toList());
         }
 
@@ -853,5 +904,52 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
         }
 
         return Collections.emptyList();
+    }
+
+    private void handleBenchmark(CommandSender sender) {
+        send(sender, "admin.divider", "<dark_gray>-----------------------------------------</dark_gray>", null);
+        send(sender, "admin.benchmark-starting", "<yellow>📊 PetSistemi Performans Benchmark Başlatılıyor...</yellow>", null);
+
+        long startDb = System.nanoTime();
+        boolean dbOk = false;
+        if (connectionProvider != null) {
+            try (java.sql.Connection conn = connectionProvider.getConnection()) {
+                dbOk = conn != null && !conn.isClosed() && conn.isValid(2);
+            } catch (Exception ignored) {}
+        }
+        double dbMs = (System.nanoTime() - startDb) / 1_000_000.0;
+
+        int activeCount = activeRegistry != null ? activeRegistry.getAllActive().size() : 0;
+        int defCount = definitionRegistry != null ? definitionRegistry.getAll().size() : 0;
+
+        long startCoord = System.nanoTime();
+        if (coordinator != null) {
+            coordinator.tickAll();
+        }
+        double coordMs = (System.nanoTime() - startCoord) / 1_000_000.0;
+
+        String report = "<gold>=== Benchmark Sonuçları ===</gold>" +
+                "<newline><gray>● Veritabanı Yanıt Süresi (DB Ping): </gray><green>" + String.format("%.2f", dbMs) + " ms</green> <gray>(" + (dbOk ? "OK" : "N/A") + ")</gray>" +
+                "<newline><gray>● Runtime Tick İşleme Süresi: </gray><aqua>" + String.format("%.2f", coordMs) + " ms</aqua>" +
+                "<newline><gray>● Yüklü Tanımlar: </gray><yellow>" + defCount + "</yellow>" +
+                "<newline><gray>● Aktif Canlı Petler: </gray><green>" + activeCount + "</green>";
+
+        sender.sendMessage(net.kyori.adventure.text.minimessage.MiniMessage.miniMessage().deserialize(report));
+        send(sender, "admin.divider", "<dark_gray>-----------------------------------------</dark_gray>", null);
+    }
+
+    private void handleVacuum(CommandSender sender) {
+        if (adminPersistenceService == null) {
+            send(sender, "admin.vacuum-failed", "<red>Veritabanı servisleri aktif değil.</red>", null);
+            return;
+        }
+        send(sender, "admin.vacuum-starting", "<yellow>⚡ Veritabanı VACUUM & ANALYZE optimizasyonu başlatılıyor...</yellow>", null);
+        adminPersistenceService.vacuumDatabaseAsync().thenAccept(success -> sendMessageOnMain(sender, () -> {
+            if (success) {
+                send(sender, "admin.vacuum-success", "<green>✔ Veritabanı optimizasyonu (VACUUM & ANALYZE) başarıyla tamamlandı!</green>", null);
+            } else {
+                send(sender, "admin.vacuum-failed", "<red>✖ VACUUM optimizasyonu çalıştırılamadı (sadece SQLite destekler).</red>", null);
+            }
+        }));
     }
 }

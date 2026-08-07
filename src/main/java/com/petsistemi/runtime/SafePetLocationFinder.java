@@ -42,6 +42,8 @@ public class SafePetLocationFinder {
 
     public static boolean isSafeLocation(Location loc) {
         if (loc == null || loc.getWorld() == null) return false;
+        if (loc.getY() < loc.getWorld().getMinHeight() + 2) return false;
+        if (loc.getWorld().getEnvironment() == org.bukkit.World.Environment.NETHER && loc.getY() >= 127) return false;
 
         Block feet = loc.getBlock();
         Block head = feet.getRelative(0, 1, 0);

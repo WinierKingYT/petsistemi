@@ -1,0 +1,67 @@
+schema-version: 1
+id: phoenix
+display-name: "<gold><bold>Zümrüdü Anka</bold></gold>"
+description:
+  - "<gray>Alevlerden doğan efsanevi Anka kuşu.</gray>"
+  - "<yellow>Seviye atladıkça büyür ve sahibine direnç sağlar.</yellow>"
+
+gui-material: FIRE_CHARGE
+permission: "petsistemi.pet.phoenix"
+
+representation:
+  type: ITEM_DISPLAY
+  item-material: FIRE_CHARGE
+  custom-model-data: 1005
+  scale: { x: 1.2, y: 1.2, z: 1.2 }
+  particle-type: FLAME
+  particle-count: 5
+
+movement:
+  type: FLYING_FOLLOW
+  follow-distance: 3.5
+  height-offset: 1.8
+  follow-speed: 1.4
+
+personality: ENERGETIC
+
+hitbox:
+  enabled: true
+  width: 0.8
+  height: 1.0
+
+allowed-modes:
+  - FOLLOW
+  - STAY
+  - WANDER
+
+buffs:
+  - type: FIRE_RESISTANCE
+    amplifier: 0
+    duration-seconds: 10
+  - type: SPEED
+    amplifier: 0
+    duration-seconds: 10
+
+progression:
+  enabled: true
+  maximum-level: 100
+  level-rewards:
+    - level: 5
+      commands:
+        - "give {player} diamond 1"
+      message: "<gold>Anka Kuşun 5. Seviyeye Ulaştı! Ödülün verildi.</gold>"
+
+evolutions:
+  - min-level: 20
+    target-id: "phoenix"
+    display-name: "<red><bold>Kadim Anka</bold></red>"
+    scale: { x: 1.8, y: 1.8, z: 1.8 }
+
+transforms:
+  night:
+    when:
+      time-of-day: NIGHT
+    apply:
+      representation:
+        particle-type: SOUL_FIRE_FLAME
+        glowing: true

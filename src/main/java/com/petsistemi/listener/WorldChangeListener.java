@@ -80,4 +80,20 @@ public class WorldChangeListener implements Listener {
             });
         });
     }
+
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onRespawn(org.bukkit.event.player.PlayerRespawnEvent event) {
+        Player player = event.getPlayer();
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (!player.isOnline()) return;
+            activeRegistry.getByOwner(player.getUniqueId()).ifPresent(active -> {
+                Entity entity = active.getSpawnedEntity();
+                if (entity != null && entity.isValid() && !entity.isDead()) {
+                    entity.teleport(SafePetLocationFinder.findSafeLocation(event.getRespawnLocation()));
+                } else if (operationService != null) {
+                    operationService.restoreSelectedPetAsync(player);
+                }
+            });
+        }, 5L);
+    }
 }

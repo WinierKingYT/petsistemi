@@ -33,7 +33,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 public class PetMenuListener implements Listener {
 
-    private static final long CLICK_COOLDOWN_MS = 500L;
+    private static final long CLICK_COOLDOWN_MS = 250L;
 
     private final JavaPlugin plugin;
     private final PetRuntimeOperationService operationService;
@@ -133,12 +133,16 @@ public class PetMenuListener implements Listener {
 
         ItemMeta meta = clicked.getItemMeta();
         NamespacedKey key = new NamespacedKey(plugin, "pet_id");
+        NamespacedKey actionKey = new NamespacedKey(plugin, "action");
+
         if (!meta.getPersistentDataContainer().has(key, PersistentDataType.STRING)) {
             processingPlayers.remove(uuid);
             return;
         }
 
         String petIdStr = meta.getPersistentDataContainer().get(key, PersistentDataType.STRING);
+        String actionStr = meta.getPersistentDataContainer().get(actionKey, PersistentDataType.STRING);
+
         if (petIdStr == null) {
             processingPlayers.remove(uuid);
             return;
@@ -149,6 +153,63 @@ public class PetMenuListener implements Listener {
             petId = UUID.fromString(petIdStr);
         } catch (IllegalArgumentException e) {
             send(player, "command.invalid-pet-data", "<red>Geçersiz pet verisi.</red>");
+            processingPlayers.remove(uuid);
+            return;
+        }
+
+        // Handle Inspect Menu Specific Actions
+        if ("PET_INSPECT".equals(holder.menuType()) && actionStr != null) {
+            player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 0.7f, 1.2f);
+            switch (actionStr) {
+                case "rename" -> {
+                    player.closeInventory();
+                    if (sessionManager != null) {
+                        sessionManager.startRenameSession(player.getUniqueId(), petId);
+                        send(player, "command.rename-prompt", "<yellow>Lütfen chat ekranına yeni pet ismini yazın ('iptal' yazarak iptal edebilirsiniz):</yellow>");
+                    }
+                }
+                case "mode" -> {
+                    player.closeInventory();
+                    player.performCommand("pet mode");
+                }
+                case "emote" -> {
+                    com.petsistemi.domain.PetDefinition def = null;
+                    if (definitionRegistry != null) {
+                        def = definitionRegistry.getAll().stream().findFirst().orElse(null);
+                    }
+                    if (def != null && def.emotes() != null && !def.emotes().isEmpty()) {
+                        PetEmoteMenu.open(player, petId, plugin, definitionRegistry, configSnapshot, messageService, def);
+                    } else {
+                        player.closeInventory();
+                        player.performCommand("pet emote happy");
+                    }
+                }
+            }
+            processingPlayers.remove(uuid);
+            return;
+        }
+
+        if ("PET_EMOTE".equals(holder.menuType())) {
+            player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 0.7f, 1.2f);
+            NamespacedKey emoteKey = new NamespacedKey(plugin, "emote_name");
+            String emoteName = meta.getPersistentDataContainer().get(emoteKey, PersistentDataType.STRING);
+            if (emoteName != null) {
+                player.closeInventory();
+                player.performCommand("pet emote " + emoteName);
+            }
+            processingPlayers.remove(uuid);
+            return;
+        }
+
+        if ("PET_LIST_ALL".equals(holder.menuType())) {
+            player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 0.7f, 1.2f);
+            if (event.isRightClick()) {
+                PetInspectMenu.open(player, petService, petId, player.getUniqueId(), plugin, definitionRegistry, configSnapshot, messageService);
+            } else {
+                String shortId = petId.toString().substring(0, 6);
+                player.closeInventory();
+                player.performCommand("pet summon " + shortId);
+            }
             processingPlayers.remove(uuid);
             return;
         }

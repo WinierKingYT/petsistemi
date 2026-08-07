@@ -159,7 +159,7 @@ public final class PetDefinitionValidator {
 
         switch (type) {
             case GROUND_FOLLOW, FLYING_FOLLOW, HOVER, SHOULDER, ANCHORED, TRAIL, FORMATION,
-                    TELEPORT_ONLY, STATIC_NEAR_OWNER, ECHO, SHADOW_TRAIL, ROAM_NEAR_OWNER, MIRROR -> {}
+                    TELEPORT_ONLY, STATIC_NEAR_OWNER, ECHO, SHADOW_TRAIL, ROAM_NEAR_OWNER, MIRROR, SWARM_CLOUD -> {}
             case ORBIT -> {
                 if (mov.orbit() == null || mov.orbit().radius() <= 0.0) {
                     errors.add("ORBIT hareketi için movement.orbit.radius 0'dan büyük olmalıdır.");

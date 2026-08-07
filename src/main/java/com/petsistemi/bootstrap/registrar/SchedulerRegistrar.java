@@ -89,6 +89,24 @@ public final class SchedulerRegistrar {
         } else {
             context.taskRegistry().cancelNamed("particleTask");
         }
+
+        // 6. Auto Backup Task (every 6 hours)
+        if (context.adminPersistenceService() != null) {
+            BukkitTask autoBackupTask = Bukkit.getScheduler().runTaskTimerAsynchronously(
+                    context.plugin(),
+                    new com.petsistemi.task.AutoBackupTask(context.plugin(), context.adminPersistenceService()),
+                    43200L, 432000L
+            );
+            context.taskRegistry().registerNamed("autoBackupTask", autoBackupTask);
+        }
+
+        // 7. Orphan Cleaner Task (every 10 minutes)
+        BukkitTask orphanCleanerTask = Bukkit.getScheduler().runTaskTimer(
+                context.plugin(),
+                new com.petsistemi.task.OrphanCleanerTask(context.plugin(), context.activePetRegistry()),
+                1200L, 12000L
+        );
+        context.taskRegistry().registerNamed("orphanCleanerTask", orphanCleanerTask);
     }
 
     public static void reevaluateFeatureTasks(PetPluginContext context) {

@@ -18,6 +18,11 @@ public class PetParticleTask implements Runnable {
 
     @Override
     public void run() {
+        double tps = Bukkit.getTPS().length > 0 ? Bukkit.getTPS()[0] : 20.0;
+        if (tps < 18.0 && System.currentTimeMillis() % 2000 > 1000) {
+            return; // Adaptive particle throttling when server TPS drops below 18.0
+        }
+
         for (ActivePet activePet : activePetRegistry.getAllActive()) {
             // Display representations manage their own visuals (e.g. PARTICLE auras);
             // the legacy def-based aura applies to classic ENTITY pets only.

@@ -2,13 +2,19 @@ package com.petsistemi.definition;
 
 import com.petsistemi.domain.PetAnchorDefinition;
 import com.petsistemi.domain.PetAnchorPosition;
+import com.petsistemi.domain.PetBuffDefinition;
 import com.petsistemi.domain.PetDefinition;
+import com.petsistemi.domain.PetEmoteDefinition;
+import com.petsistemi.domain.PetEvolutionDefinition;
+import com.petsistemi.domain.PetHitboxDefinition;
+import com.petsistemi.domain.PetIdleAnimation;
 import com.petsistemi.domain.PetMovementDefinition;
 import com.petsistemi.domain.PetMovementType;
 import com.petsistemi.domain.PetOrbitDefinition;
+import com.petsistemi.domain.PetOwnerState;
+import com.petsistemi.domain.PetPersonalityType;
 import com.petsistemi.domain.PetReactionDefinition;
 import com.petsistemi.domain.PetReactionType;
-import com.petsistemi.domain.PetEmoteDefinition;
 import com.petsistemi.domain.PetRepresentationDefinition;
 import com.petsistemi.domain.PetStateDefinition;
 import com.petsistemi.domain.PetStatesDefinition;
@@ -16,12 +22,11 @@ import com.petsistemi.domain.PetTimeOfDay;
 import com.petsistemi.domain.PetTransformCondition;
 import com.petsistemi.domain.PetTransformDefinition;
 import com.petsistemi.domain.PetVector3;
-import com.petsistemi.domain.PetIdleAnimation;
-import com.petsistemi.domain.PetOwnerState;
 import com.petsistemi.domain.PetVisualOverride;
 import com.petsistemi.domain.PetWeather;
 import com.petsistemi.domain.RuntimeRepresentationType;
 import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.potion.PotionEffectType;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -57,6 +62,15 @@ public final class PetDefinitionYamlParser {
             List<PetTransformDefinition> transforms = parseTransforms(yaml, errors);
             Map<PetReactionType, PetReactionDefinition> reactions = parseReactions(yaml, errors);
             Map<String, PetEmoteDefinition> emotes = parseEmotes(yaml, errors);
+            List<PetBuffDefinition> buffs = parseBuffs(yaml, errors);
+            PetPersonalityType personality = parsePersonality(yaml, errors);
+            List<PetEvolutionDefinition> evolutions = parseEvolutions(yaml, errors);
+            PetHitboxDefinition hitbox = parseHitbox(yaml, errors);
+            List<com.petsistemi.domain.PetLevelRewardDefinition> levelRewards = parseLevelRewards(yaml, errors);
+            List<com.petsistemi.domain.PetFollowMode> allowedModes = parseAllowedModes(yaml, errors);
+            com.petsistemi.domain.PetSpawnStyleDefinition spawnStyle = parseSpawnStyle(yaml, errors);
+            com.petsistemi.domain.PetMountDefinition mount = parseMount(yaml, errors);
+            com.petsistemi.domain.PetPresenceDefinition presence = parsePresence(yaml, errors);
 
             PetDefinition def = new PetDefinition(
                     id,
@@ -79,7 +93,16 @@ public final class PetDefinitionYamlParser {
                     reactions,
                     emotes,
                     trimToNull(yaml.getString("gui-material")),
-                    trimToNull(yaml.getString("permission"))
+                    trimToNull(yaml.getString("permission")),
+                    buffs,
+                    personality,
+                    evolutions,
+                    hitbox,
+                    levelRewards,
+                    allowedModes,
+                    spawnStyle,
+                    mount,
+                    presence
             );
             return new Parsed(def, errors);
         } catch (Exception e) {
@@ -254,7 +277,11 @@ public final class PetDefinitionYamlParser {
                         PetTimeOfDay.class, errors, "transforms." + key + ".when.time-of-day");
                 PetWeather weather = parseEnum(yaml.getString(base + ".when.weather"),
                         PetWeather.class, errors, "transforms." + key + ".when.weather");
-                condition = new PetTransformCondition(ownerState, biome, world, timeOfDay, weather);
+                Integer minY = yaml.isSet(base + ".when.min-y") ? yaml.getInt(base + ".when.min-y") : null;
+                Integer maxY = yaml.isSet(base + ".when.max-y") ? yaml.getInt(base + ".when.max-y") : null;
+                Integer minLight = yaml.isSet(base + ".when.min-light") ? yaml.getInt(base + ".when.min-light") : null;
+                Integer maxLight = yaml.isSet(base + ".when.max-light") ? yaml.getInt(base + ".when.max-light") : null;
+                condition = new PetTransformCondition(ownerState, biome, world, timeOfDay, weather, minY, maxY, minLight, maxLight);
             }
 
             PetVisualOverride apply = null;
@@ -268,8 +295,9 @@ public final class PetDefinitionYamlParser {
                 Integer particleCount = yaml.isSet(repBase + ".particle-count") ? Math.max(0, yaml.getInt(repBase + ".particle-count")) : null;
                 Boolean glowing = yaml.isSet(repBase + ".glowing") ? yaml.getBoolean(repBase + ".glowing") : null;
                 Boolean baby = yaml.isSet(repBase + ".baby") ? yaml.getBoolean(repBase + ".baby") : null;
+                String entityType = yaml.getString(repBase + ".entity-type");
                 apply = new PetVisualOverride(itemMaterial, blockMaterial, customModelData, scale,
-                        particleType, particleCount, glowing, baby);
+                        particleType, particleCount, glowing, baby, entityType);
             }
             transforms.add(new PetTransformDefinition(condition, apply));
         }
@@ -294,6 +322,138 @@ public final class PetDefinitionYamlParser {
             idle = new PetStateDefinition(afterTicks, animation);
         }
         return new PetStatesDefinition(moving, idle);
+    }
+
+    private static List<PetBuffDefinition> parseBuffs(YamlConfiguration yaml, List<String> errors) {
+        if (!yaml.isList("buffs") && !yaml.isConfigurationSection("buffs")) {
+            return null;
+        }
+        List<PetBuffDefinition> buffs = new ArrayList<>();
+        List<Map<?, ?>> list = yaml.getMapList("buffs");
+        for (Map<?, ?> map : list) {
+            String effectStr = map.get("effect") != null ? map.get("effect").toString() : null;
+            if (effectStr == null || effectStr.isBlank()) {
+                continue;
+            }
+            PotionEffectType type = PotionEffectType.getByName(effectStr.toUpperCase().trim());
+            if (type == null) {
+                errors.add("Geçersiz buff etki türü: " + effectStr);
+                continue;
+            }
+            int amp = map.get("amplifier") instanceof Number n ? n.intValue() : 0;
+            int minLvl = map.get("min-level") instanceof Number n ? n.intValue() : 1;
+            int duration = map.get("duration-ticks") instanceof Number n ? n.intValue() : 60;
+            buffs.add(new PetBuffDefinition(type, amp, minLvl, duration));
+        }
+        return buffs.isEmpty() ? null : buffs;
+    }
+
+    private static PetPersonalityType parsePersonality(YamlConfiguration yaml, List<String> errors) {
+        String raw = yaml.getString("personality");
+        if (raw == null || raw.isBlank()) {
+            return PetPersonalityType.DEFAULT;
+        }
+        return PetPersonalityType.fromString(raw);
+    }
+
+    private static List<PetEvolutionDefinition> parseEvolutions(YamlConfiguration yaml, List<String> errors) {
+        if (!yaml.isList("evolutions")) {
+            return null;
+        }
+        List<PetEvolutionDefinition> evolutions = new ArrayList<>();
+        List<Map<?, ?>> list = yaml.getMapList("evolutions");
+        for (Map<?, ?> map : list) {
+            int minLvl = map.get("min-level") instanceof Number n ? n.intValue() : 1;
+            String targetId = map.get("target-id") != null ? map.get("target-id").toString() : null;
+            String nameOverride = map.get("display-name") != null ? map.get("display-name").toString() : null;
+            PetVector3 scale = null;
+            if (map.get("scale") instanceof Map<?, ?> scaleMap) {
+                double x = scaleMap.get("x") instanceof Number n ? n.doubleValue() : 1.0;
+                double y = scaleMap.get("y") instanceof Number n ? n.doubleValue() : 1.0;
+                double z = scaleMap.get("z") instanceof Number n ? n.doubleValue() : 1.0;
+                scale = new PetVector3(x, y, z);
+            }
+            evolutions.add(new PetEvolutionDefinition(minLvl, targetId, nameOverride, scale));
+        }
+        return evolutions.isEmpty() ? null : evolutions;
+    }
+
+    private static PetHitboxDefinition parseHitbox(YamlConfiguration yaml, List<String> errors) {
+        if (!yaml.isConfigurationSection("hitbox")) {
+            return PetHitboxDefinition.DEFAULT;
+        }
+        boolean enabled = yaml.getBoolean("hitbox.enabled", true);
+        float width = (float) yaml.getDouble("hitbox.width", 0.6);
+        float height = (float) yaml.getDouble("hitbox.height", 0.8);
+        return new PetHitboxDefinition(enabled, width, height);
+    }
+
+    private static List<com.petsistemi.domain.PetLevelRewardDefinition> parseLevelRewards(YamlConfiguration yaml, List<String> errors) {
+        if (!yaml.isList("progression.level-rewards")) {
+            return null;
+        }
+        List<com.petsistemi.domain.PetLevelRewardDefinition> rewards = new ArrayList<>();
+        List<Map<?, ?>> list = yaml.getMapList("progression.level-rewards");
+        for (Map<?, ?> map : list) {
+            int level = map.get("level") instanceof Number n ? n.intValue() : 1;
+            List<String> cmds = new ArrayList<>();
+            if (map.get("commands") instanceof List<?> cList) {
+                for (Object o : cList) {
+                    if (o != null) cmds.add(o.toString());
+                }
+            }
+            String msg = map.get("message") != null ? map.get("message").toString() : null;
+            rewards.add(new com.petsistemi.domain.PetLevelRewardDefinition(level, cmds, msg));
+        }
+        return rewards.isEmpty() ? null : rewards;
+    }
+
+    private static List<com.petsistemi.domain.PetFollowMode> parseAllowedModes(YamlConfiguration yaml, List<String> errors) {
+        if (!yaml.isList("allowed-modes")) {
+            return null;
+        }
+        List<com.petsistemi.domain.PetFollowMode> modes = new ArrayList<>();
+        List<String> list = yaml.getStringList("allowed-modes");
+        for (String str : list) {
+            com.petsistemi.domain.PetFollowMode mode = parseEnum(str, com.petsistemi.domain.PetFollowMode.class, errors, "allowed-modes");
+            if (mode != null) modes.add(mode);
+        }
+        return modes.isEmpty() ? null : modes;
+    }
+
+    private static com.petsistemi.domain.PetSpawnStyleDefinition parseSpawnStyle(YamlConfiguration yaml, List<String> errors) {
+        if (!yaml.isConfigurationSection("spawn-style")) {
+            return com.petsistemi.domain.PetSpawnStyleDefinition.DEFAULT;
+        }
+        String type = yaml.getString("spawn-style.type", "PORTAL");
+        String entryParticle = yaml.getString("spawn-style.entry-particle", "PORTAL");
+        int entryCount = yaml.getInt("spawn-style.entry-particle-count", 25);
+        String entrySound = yaml.getString("spawn-style.entry-sound", "ENTITY_ENDERMAN_TELEPORT");
+        String exitParticle = yaml.getString("spawn-style.exit-particle", "SMOKE_LARGE");
+        int exitCount = yaml.getInt("spawn-style.exit-particle-count", 20);
+        String exitSound = yaml.getString("spawn-style.exit-sound", "ENTITY_ITEM_BREAK");
+        return new com.petsistemi.domain.PetSpawnStyleDefinition(type, entryParticle, entryCount, entrySound, exitParticle, exitCount, exitSound);
+    }
+
+    private static com.petsistemi.domain.PetMountDefinition parseMount(YamlConfiguration yaml, List<String> errors) {
+        if (!yaml.isConfigurationSection("mount")) {
+            return com.petsistemi.domain.PetMountDefinition.DISABLED;
+        }
+        boolean enabled = yaml.getBoolean("mount.enabled", false);
+        String perm = yaml.getString("mount.permission");
+        double speed = yaml.getDouble("mount.speed-multiplier", 1.2);
+        boolean allowFly = yaml.getBoolean("mount.allow-fly", false);
+        return new com.petsistemi.domain.PetMountDefinition(enabled, perm, speed, allowFly);
+    }
+
+    private static com.petsistemi.domain.PetPresenceDefinition parsePresence(YamlConfiguration yaml, List<String> errors) {
+        if (!yaml.isConfigurationSection("presence")) {
+            return com.petsistemi.domain.PetPresenceDefinition.ALWAYS;
+        }
+        String mode = yaml.getString("presence.mode", "ALWAYS");
+        List<String> triggers = yaml.getStringList("presence.triggers");
+        int duration = yaml.getInt("presence.visible-duration-seconds", 10);
+        return new com.petsistemi.domain.PetPresenceDefinition(mode, triggers, duration);
     }
 
     private static String trimToNull(String raw) {
