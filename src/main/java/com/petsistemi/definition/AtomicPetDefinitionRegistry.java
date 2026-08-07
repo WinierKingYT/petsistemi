@@ -69,7 +69,7 @@ public class AtomicPetDefinitionRegistry implements PetDefinitionRegistry {
                 try {
                     YamlConfiguration yaml = YamlConfiguration.loadConfiguration(file);
                     int schemaVersion = yaml.getInt("schema-version", 1);
-                    String id = file.getName().replace(".yml", "").replace(".yaml", "").toLowerCase();
+                    String id = file.getName().replace(".yml", "").replace(".yaml", "").toLowerCase(java.util.Locale.ROOT);
 
                     PetDefinitionYamlParser.Parsed parsed = PetDefinitionYamlParser.parse(id, yaml);
                     List<String> errors = new java.util.ArrayList<>(parsed.errors());
@@ -116,7 +116,7 @@ public class AtomicPetDefinitionRegistry implements PetDefinitionRegistry {
     @Override
     public Optional<PetDefinition> find(String id) {
         if (id == null) return Optional.empty();
-        return Optional.ofNullable(registry.get(id.toLowerCase()));
+        return Optional.ofNullable(registry.get(id.toLowerCase(java.util.Locale.ROOT)));
     }
 
     @Override

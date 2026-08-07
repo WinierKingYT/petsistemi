@@ -70,7 +70,7 @@ public class ParticlePetRepresentation implements PetRepresentationController {
             return DEFAULT_PARTICLE;
         }
         try {
-            return Particle.valueOf(raw.trim().toUpperCase());
+            return Particle.valueOf(raw.trim().toUpperCase(java.util.Locale.ROOT));
         } catch (IllegalArgumentException e) {
             return null;
         }

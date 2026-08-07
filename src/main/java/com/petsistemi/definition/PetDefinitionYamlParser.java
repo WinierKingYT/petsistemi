@@ -250,7 +250,7 @@ public final class PetDefinitionYamlParser {
             String particle = yaml.getString(base + ".particle");
             int particleCount = Math.max(0, yaml.getInt(base + ".particle-count", 0));
             int cooldownSeconds = Math.max(0, yaml.getInt(base + ".cooldown-seconds", 0));
-            emotes.put(key.toLowerCase(), new PetEmoteDefinition(enabled, sound, particle, particleCount, cooldownSeconds));
+            emotes.put(key.toLowerCase(java.util.Locale.ROOT), new PetEmoteDefinition(enabled, sound, particle, particleCount, cooldownSeconds));
         }
         return emotes.isEmpty() ? null : emotes;
     }
@@ -335,7 +335,7 @@ public final class PetDefinitionYamlParser {
             if (effectStr == null || effectStr.isBlank()) {
                 continue;
             }
-            PotionEffectType type = PotionEffectType.getByName(effectStr.toUpperCase().trim());
+            PotionEffectType type = PotionEffectType.getByName(effectStr.toUpperCase(java.util.Locale.ROOT).trim());
             if (type == null) {
                 errors.add("Geçersiz buff etki türü: " + effectStr);
                 continue;
@@ -485,7 +485,7 @@ public final class PetDefinitionYamlParser {
             return null;
         }
         try {
-            return Enum.valueOf(enumType, raw.trim().toUpperCase());
+            return Enum.valueOf(enumType, raw.trim().toUpperCase(java.util.Locale.ROOT));
         } catch (IllegalArgumentException e) {
             errors.add("Geçersiz " + path + ": '" + raw + "'. Desteklenen değerler: " + enumNames(enumType));
             return null;

@@ -40,7 +40,7 @@ public class PetParticleTask implements Runnable {
             World world = entity.getWorld();
             if (!world.equals(owner.getWorld())) continue;
 
-            String defId = activePet.getDefinitionId() != null ? activePet.getDefinitionId().toLowerCase() : "";
+            String defId = activePet.getDefinitionId() != null ? activePet.getDefinitionId().toLowerCase(java.util.Locale.ROOT) : "";
 
             Particle particle;
             try {

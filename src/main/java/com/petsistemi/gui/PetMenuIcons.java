@@ -19,7 +19,7 @@ final class PetMenuIcons {
                 return configured;
             }
         }
-        return switch (definitionId != null ? definitionId.toLowerCase() : "") {
+        return switch (definitionId != null ? definitionId.toLowerCase(java.util.Locale.ROOT) : "") {
             case "wolf" -> Material.WOLF_SPAWN_EGG;
             case "cat" -> Material.CAT_SPAWN_EGG;
             case "allay" -> Material.ALLAY_SPAWN_EGG;

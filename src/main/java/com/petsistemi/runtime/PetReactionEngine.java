@@ -117,7 +117,7 @@ public class PetReactionEngine {
     private static Sound parseSound(String raw) {
         if (raw == null || raw.isBlank()) return null;
         try {
-            return Sound.valueOf(raw.trim().toUpperCase());
+            return Sound.valueOf(raw.trim().toUpperCase(java.util.Locale.ROOT));
         } catch (IllegalArgumentException e) {
             return null;
         }

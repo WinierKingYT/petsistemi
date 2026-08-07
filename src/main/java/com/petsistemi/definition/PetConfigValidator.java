@@ -22,7 +22,7 @@ public final class PetConfigValidator {
 
         // Material check
         if (def.guiMaterial() != null) {
-            String matName = def.guiMaterial().trim().toUpperCase();
+            String matName = def.guiMaterial().trim().toUpperCase(java.util.Locale.ROOT);
             Material mat = Material.matchMaterial(matName);
             if (mat == null) {
                 warnings.add("Geçersiz GUI materyali: '" + def.guiMaterial() + "'. Varsayılan materyal kullanılacak.");
@@ -32,7 +32,7 @@ public final class PetConfigValidator {
         // Particle check
         if (def.representationOrEntity() != null && def.representationOrEntity().particleType() != null) {
             try {
-                Particle.valueOf(def.representationOrEntity().particleType().trim().toUpperCase());
+                Particle.valueOf(def.representationOrEntity().particleType().trim().toUpperCase(java.util.Locale.ROOT));
             } catch (IllegalArgumentException e) {
                 warnings.add("Geçersiz parçacık türü: '" + def.representationOrEntity().particleType() + "'.");
             }

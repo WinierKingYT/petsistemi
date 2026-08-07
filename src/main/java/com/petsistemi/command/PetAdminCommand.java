@@ -153,7 +153,7 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
             return true;
         }
 
-        String sub = args[0].toLowerCase();
+        String sub = args[0].toLowerCase(java.util.Locale.ROOT);
         switch (sub) {
             case "give" -> {
                 if (!checkPerm(sender, "companionpets.admin.give")) return true;
@@ -294,7 +294,7 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
             return;
         }
         OfflinePlayer target = Bukkit.getOfflinePlayer(args[1]);
-        String defId = args[2].toLowerCase();
+        String defId = args[2].toLowerCase(java.util.Locale.ROOT);
         String targetName = target.getName() != null ? target.getName() : target.getUniqueId().toString().substring(0, 8);
         int quantity = 1;
         if (args.length >= 4) {
@@ -306,7 +306,7 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
             future.thenAccept(result -> sendMessageOnMain(sender, () -> {
                 if (result.success() && result.petSnapshot() != null) {
                     UUID petId = result.petSnapshot().petId();
-                    send(sender, "admin.pet-given-header", "<green><b>✔ Pet verilme başarılı: " + targetName + " -> " + defId.toUpperCase() + "</b></green>", null);
+                    send(sender, "admin.pet-given-header", "<green><b>✔ Pet verilme başarılı: " + targetName + " -> " + defId.toUpperCase(java.util.Locale.ROOT) + "</b></green>", null);
                     if (auditLogger != null) {
                         auditLogger.logAction("GIVE_PET", sender.getName(), target.getUniqueId(), petId, "Tür: " + defId);
                     }
@@ -322,7 +322,7 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
             send(sender, "admin.usage", "<red>Kullanım: /petadmin giveall <tur_id> [miktar]</red>", PlaceholderMap.of("usage", "/petadmin giveall <tur_id> [miktar]"));
             return;
         }
-        String defId = args[1].toLowerCase();
+        String defId = args[1].toLowerCase(java.util.Locale.ROOT);
         int quantity = 1;
         if (args.length >= 3) {
             try { quantity = Math.max(1, Integer.parseInt(args[2])); } catch (Exception ignored) {}
@@ -339,7 +339,7 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
                 }
             }
         }
-        send(sender, "admin.giveall-success", "<green>✔ Toplam " + playerCount + " çevrimiçi oyuncuya " + quantity + " adet '" + defId.toUpperCase() + "' peti verilme talimatı gönderildi!</green>", null);
+        send(sender, "admin.giveall-success", "<green>✔ Toplam " + playerCount + " çevrimiçi oyuncuya " + quantity + " adet '" + defId.toUpperCase(java.util.Locale.ROOT) + "' peti verilme talimatı gönderildi!</green>", null);
     }
 
     private void handleRemove(CommandSender sender, String[] args) {
@@ -397,8 +397,8 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
                     String stateLabel = pet.availabilityState() == PetAvailabilityState.DISABLED
                             ? "KAPALI" : (pet.spawned() ? "AKTIF" : "HAZIR");
                     send(sender, "admin.list-line",
-                            "<gold>  ● </gold><light_purple>[" + pet.definitionId().toUpperCase() + "] </light_purple><white>" + name + "</white><yellow> Lv." + pet.level() + "</yellow> [" + stateLabel + "] <dark_gray>#" + pet.petId().toString().substring(0, 8) + "</dark_gray>",
-                            PlaceholderMap.of("definition", pet.definitionId().toUpperCase())
+                            "<gold>  ● </gold><light_purple>[" + pet.definitionId().toUpperCase(java.util.Locale.ROOT) + "] </light_purple><white>" + name + "</white><yellow> Lv." + pet.level() + "</yellow> [" + stateLabel + "] <dark_gray>#" + pet.petId().toString().substring(0, 8) + "</dark_gray>",
+                            PlaceholderMap.of("definition", pet.definitionId().toUpperCase(java.util.Locale.ROOT))
                                     .add("name", name)
                                     .add("level", String.valueOf(pet.level()))
                                     .add("state", stateLabel)
@@ -843,7 +843,7 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
 
         return ownedFuture.thenApply(pets -> {
             List<PetSnapshot> matches = pets.stream()
-                    .filter(p -> p.petId().toString().toLowerCase().startsWith(input.toLowerCase()))
+                    .filter(p -> p.petId().toString().toLowerCase(java.util.Locale.ROOT).startsWith(input.toLowerCase(java.util.Locale.ROOT)))
                     .toList();
 
             if (matches.isEmpty()) {
@@ -869,27 +869,27 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
 
         if (args.length == 1) {
             return allowedSubs.stream()
-                    .filter(sub -> sub.startsWith(args[0].toLowerCase()))
+                    .filter(sub -> sub.startsWith(args[0].toLowerCase(java.util.Locale.ROOT)))
                     .sorted()
                     .collect(Collectors.toList());
         }
 
         if (args.length == 2) {
-            String sub = args[0].toLowerCase();
+            String sub = args[0].toLowerCase(java.util.Locale.ROOT);
             if (sub.equals("give") || sub.equals("remove") || sub.equals("list") || sub.equals("addxp") || sub.equals("setxp") || sub.equals("setlevel") || sub.equals("summon") || sub.equals("dismiss")) {
                 return Bukkit.getOnlinePlayers().stream()
                         .map(Player::getName)
-                        .filter(name -> name.toLowerCase().startsWith(args[1].toLowerCase()))
+                        .filter(name -> name.toLowerCase(java.util.Locale.ROOT).startsWith(args[1].toLowerCase(java.util.Locale.ROOT)))
                         .collect(Collectors.toList());
             }
         }
 
         if (args.length == 3) {
-            String sub = args[0].toLowerCase();
+            String sub = args[0].toLowerCase(java.util.Locale.ROOT);
             if (sub.equals("give")) {
                 return definitionRegistry.getAll().stream()
                         .map(PetDefinition::id)
-                        .filter(id -> id.startsWith(args[2].toLowerCase()))
+                        .filter(id -> id.startsWith(args[2].toLowerCase(java.util.Locale.ROOT)))
                         .collect(Collectors.toList());
             }
             if (sub.equals("remove") || sub.equals("addxp") || sub.equals("setxp") || sub.equals("setlevel") || sub.equals("summon")) {
@@ -897,7 +897,7 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
                 if (target != null) {
                     return petService.getOwnedPets(target.getUniqueId()).stream()
                             .map(p -> p.petId().toString().substring(0, 6))
-                            .filter(id -> id.startsWith(args[2].toLowerCase()))
+                            .filter(id -> id.startsWith(args[2].toLowerCase(java.util.Locale.ROOT)))
                             .collect(Collectors.toList());
                 }
             }

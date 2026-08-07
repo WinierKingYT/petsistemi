@@ -121,7 +121,7 @@ public final class PetDefinitionValidator {
         EntityType type = null;
         if (entityType != null) {
             try {
-                type = EntityType.valueOf(entityType.toUpperCase());
+                type = EntityType.valueOf(entityType.toUpperCase(java.util.Locale.ROOT));
             } catch (Exception ignored) {}
         }
 
@@ -139,7 +139,7 @@ public final class PetDefinitionValidator {
     private static Particle parseParticle(String raw) {
         if (raw == null || raw.isBlank()) return null;
         try {
-            return Particle.valueOf(raw.trim().toUpperCase());
+            return Particle.valueOf(raw.trim().toUpperCase(java.util.Locale.ROOT));
         } catch (IllegalArgumentException e) {
             return null;
         }
@@ -241,7 +241,7 @@ public final class PetDefinitionValidator {
             }
             if (transform.condition() != null && transform.condition().biome() != null) {
                 try {
-                    org.bukkit.block.Biome.valueOf(transform.condition().biome().trim().toUpperCase());
+                    org.bukkit.block.Biome.valueOf(transform.condition().biome().trim().toUpperCase(java.util.Locale.ROOT));
                 } catch (IllegalArgumentException e) {
                     errors.add(path + " bilinmeyen when.biome: " + transform.condition().biome());
                 }
@@ -294,7 +294,7 @@ public final class PetDefinitionValidator {
     private static org.bukkit.Sound parseSound(String raw) {
         if (raw == null || raw.isBlank()) return null;
         try {
-            return org.bukkit.Sound.valueOf(raw.trim().toUpperCase());
+            return org.bukkit.Sound.valueOf(raw.trim().toUpperCase(java.util.Locale.ROOT));
         } catch (IllegalArgumentException e) {
             return null;
         }

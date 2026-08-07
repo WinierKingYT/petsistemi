@@ -40,7 +40,7 @@ public class PetEmoteController {
         if (emotes == null || emoteName == null) {
             return EmoteOutcome.unknown();
         }
-        PetEmoteDefinition emote = emotes.get(emoteName.toLowerCase());
+        PetEmoteDefinition emote = emotes.get(emoteName.toLowerCase(java.util.Locale.ROOT));
         if (emote == null) {
             return EmoteOutcome.unknown();
         }
@@ -51,7 +51,7 @@ public class PetEmoteController {
         long now = clock.getAsLong();
         long cooldownMs = Math.max(0L, emote.cooldownSeconds()) * 1000L;
         if (cooldownMs > 0L) {
-            Long last = cooldown(ownerId).get(emoteName.toLowerCase());
+            Long last = cooldown(ownerId).get(emoteName.toLowerCase(java.util.Locale.ROOT));
             if (last != null) {
                 long remainingMs = last + cooldownMs - now;
                 if (remainingMs > 0L) {
@@ -64,7 +64,7 @@ public class PetEmoteController {
             reactionEngine.playEmote(petEntity, emote);
         }
         if (cooldownMs > 0L) {
-            cooldown(ownerId).put(emoteName.toLowerCase(), now);
+            cooldown(ownerId).put(emoteName.toLowerCase(java.util.Locale.ROOT), now);
         }
         return EmoteOutcome.played();
     }

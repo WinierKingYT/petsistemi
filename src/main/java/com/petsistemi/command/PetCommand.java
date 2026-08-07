@@ -95,7 +95,7 @@ public class PetCommand implements CommandExecutor, TabCompleter {
             return true;
         }
 
-        String sub = args[0].toLowerCase();
+        String sub = args[0].toLowerCase(java.util.Locale.ROOT);
         switch (sub) {
             case "list" -> handleList(player);
             case "menu", "gui" -> com.petsistemi.gui.PetListMenu.open(player, petService, plugin, definitionRegistry, configSnapshot, messageService);
@@ -152,8 +152,8 @@ public class PetCommand implements CommandExecutor, TabCompleter {
 
         switch (outcome.result()) {
             case PLAYED -> send(player, "emote.played",
-                    "<green>Petiniz '" + args[1].toLowerCase() + "' emotesini oynattı!</green>",
-                    PlaceholderMap.of("emote", args[1].toLowerCase()));
+                    "<green>Petiniz '" + args[1].toLowerCase(java.util.Locale.ROOT) + "' emotesini oynattı!</green>",
+                    PlaceholderMap.of("emote", args[1].toLowerCase(java.util.Locale.ROOT)));
             case COOLDOWN -> send(player, "emote.cooldown",
                     "<yellow>Bu emote henüz kullanılamaz. Kalan süre: " + outcome.remainingSeconds() + " saniye.</yellow>",
                     PlaceholderMap.of("seconds", String.valueOf(outcome.remainingSeconds())));
@@ -363,7 +363,7 @@ public class PetCommand implements CommandExecutor, TabCompleter {
         if (definitionRegistry != null) {
             PetDefinition def = definitionRegistry.find(activePet.getDefinitionId()).orElse(null);
             if (def != null && def.allowedModes() != null && !def.allowedModes().isEmpty() && !def.allowedModes().contains(mode)) {
-                send(player, "mode.not-allowed", "<red>Bu pet için '" + mode.name().toLowerCase() + "' modu izin verilen bir mod değildir.</red>", null);
+                send(player, "mode.not-allowed", "<red>Bu pet için '" + mode.name().toLowerCase(java.util.Locale.ROOT) + "' modu izin verilen bir mod değildir.</red>", null);
                 return;
             }
         }
@@ -376,13 +376,13 @@ public class PetCommand implements CommandExecutor, TabCompleter {
         if (operationService != null) {
             operationService.setFollowModeAsync(player, mode).thenAccept(persisted -> {
                 if (persisted) {
-                    send(player, "mode.set", "<green>Petinizin takip modu '" + mode.name().toLowerCase() + "' olarak ayarlandı ve kaydedildi.</green>", PlaceholderMap.of("mode", mode.name().toLowerCase()));
+                    send(player, "mode.set", "<green>Petinizin takip modu '" + mode.name().toLowerCase(java.util.Locale.ROOT) + "' olarak ayarlandı ve kaydedildi.</green>", PlaceholderMap.of("mode", mode.name().toLowerCase(java.util.Locale.ROOT)));
                 } else {
-                    send(player, "mode.persist-failed", "<yellow>Petinizin takip modu '" + mode.name().toLowerCase() + "' olarak ayarlandı, ancak kaydedilemedi (yeniden girişte sıfırlanır).</yellow>", PlaceholderMap.of("mode", mode.name().toLowerCase()));
+                    send(player, "mode.persist-failed", "<yellow>Petinizin takip modu '" + mode.name().toLowerCase(java.util.Locale.ROOT) + "' olarak ayarlandı, ancak kaydedilemedi (yeniden girişte sıfırlanır).</yellow>", PlaceholderMap.of("mode", mode.name().toLowerCase(java.util.Locale.ROOT)));
                 }
             });
         } else {
-            send(player, "mode.set", "<green>Petinizin takip modu '" + mode.name().toLowerCase() + "' olarak ayarlandı.</green>", PlaceholderMap.of("mode", mode.name().toLowerCase()));
+            send(player, "mode.set", "<green>Petinizin takip modu '" + mode.name().toLowerCase(java.util.Locale.ROOT) + "' olarak ayarlandı.</green>", PlaceholderMap.of("mode", mode.name().toLowerCase(java.util.Locale.ROOT)));
         }
     }
 
@@ -394,7 +394,7 @@ public class PetCommand implements CommandExecutor, TabCompleter {
 
         return petsFuture.thenApply(list -> {
             List<PetSnapshot> matches = list.stream()
-                    .filter(p -> p.petId().toString().toLowerCase().startsWith(shortId.toLowerCase()))
+                    .filter(p -> p.petId().toString().toLowerCase(java.util.Locale.ROOT).startsWith(shortId.toLowerCase(java.util.Locale.ROOT)))
                     .toList();
 
             if (matches.isEmpty()) {
@@ -422,13 +422,13 @@ public class PetCommand implements CommandExecutor, TabCompleter {
 
         if (args.length == 1) {
             return Arrays.asList("dismiss", "emote", "info", "list", "mode", "rename", "stats", "summon").stream()
-                    .filter(sub -> sub.startsWith(args[0].toLowerCase()))
+                    .filter(sub -> sub.startsWith(args[0].toLowerCase(java.util.Locale.ROOT)))
                     .sorted()
                     .collect(Collectors.toList());
         }
 
         if (args.length == 2) {
-            String sub = args[0].toLowerCase();
+            String sub = args[0].toLowerCase(java.util.Locale.ROOT);
             if (sub.equals("mode")) {
                 List<String> options = List.of("follow", "stay", "wander");
                 if (definitionRegistry != null && activeRegistry != null) {
@@ -436,12 +436,12 @@ public class PetCommand implements CommandExecutor, TabCompleter {
                     if (active.isPresent()) {
                         PetDefinition def = definitionRegistry.find(active.get().getDefinitionId()).orElse(null);
                         if (def != null && def.allowedModes() != null && !def.allowedModes().isEmpty()) {
-                            options = def.allowedModes().stream().map(m -> m.name().toLowerCase()).toList();
+                            options = def.allowedModes().stream().map(m -> m.name().toLowerCase(java.util.Locale.ROOT)).toList();
                         }
                     }
                 }
                 return options.stream()
-                        .filter(m -> m.startsWith(args[1].toLowerCase()))
+                        .filter(m -> m.startsWith(args[1].toLowerCase(java.util.Locale.ROOT)))
                         .collect(Collectors.toList());
             }
             if (sub.equals("emote")) {
@@ -451,7 +451,7 @@ public class PetCommand implements CommandExecutor, TabCompleter {
                         PetDefinition definition = definitionRegistry.find(active.get().getDefinitionId()).orElse(null);
                         if (definition != null && definition.emotes() != null) {
                             return definition.emotes().keySet().stream()
-                                    .filter(name -> name.startsWith(args[1].toLowerCase()))
+                                    .filter(name -> name.startsWith(args[1].toLowerCase(java.util.Locale.ROOT)))
                                     .collect(Collectors.toList());
                         }
                     }
@@ -465,7 +465,7 @@ public class PetCommand implements CommandExecutor, TabCompleter {
                     if (profile.isPresent()) {
                         return profile.get().pets().values().stream()
                                 .map(p -> p.petId().toString().substring(0, 6))
-                                .filter(id -> id.startsWith(args[1].toLowerCase()))
+                                .filter(id -> id.startsWith(args[1].toLowerCase(java.util.Locale.ROOT)))
                                 .collect(Collectors.toList());
                     }
                 }

@@ -30,7 +30,7 @@ public class PaperPetEntityController implements PetEntityController, PetReprese
     public Entity spawn(PetInstance pet, PetDefinition definition, Player owner) {
         EntityType type;
         try {
-            type = EntityType.valueOf(definition.entityType().toUpperCase());
+            type = EntityType.valueOf(definition.entityType().toUpperCase(java.util.Locale.ROOT));
         } catch (Exception e) {
             throw new IllegalArgumentException("Geçersiz veya desteklenmeyen EntityType '" + definition.entityType() + "' pet tanımında (" + definition.id() + ") tanımlanmış!");
         }
@@ -77,13 +77,13 @@ public class PaperPetEntityController implements PetEntityController, PetReprese
             com.petsistemi.domain.PetSpawnStyleDefinition style = definition.spawnStyle();
             if (style.entryParticle() != null) {
                 try {
-                    org.bukkit.Particle p = org.bukkit.Particle.valueOf(style.entryParticle().toUpperCase());
+                    org.bukkit.Particle p = org.bukkit.Particle.valueOf(style.entryParticle().toUpperCase(java.util.Locale.ROOT));
                     owner.getWorld().spawnParticle(p, owner.getLocation().add(0, 0.5, 0), Math.max(1, style.entryParticleCount()), 0.4, 0.5, 0.4, 0.05);
                 } catch (Exception ignored) {}
             }
             if (style.entrySound() != null) {
                 try {
-                    org.bukkit.Sound s = org.bukkit.Sound.valueOf(style.entrySound().toUpperCase());
+                    org.bukkit.Sound s = org.bukkit.Sound.valueOf(style.entrySound().toUpperCase(java.util.Locale.ROOT));
                     owner.playSound(owner.getLocation(), s, 1.0f, 1.0f);
                 } catch (Exception ignored) {}
             }

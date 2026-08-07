@@ -14,7 +14,7 @@ public enum PetPersonalityType {
     public static PetPersonalityType fromString(String name) {
         if (name == null) return DEFAULT;
         try {
-            return PetPersonalityType.valueOf(name.toUpperCase().trim());
+            return PetPersonalityType.valueOf(name.toUpperCase(java.util.Locale.ROOT).trim());
         } catch (IllegalArgumentException e) {
             return DEFAULT;
         }

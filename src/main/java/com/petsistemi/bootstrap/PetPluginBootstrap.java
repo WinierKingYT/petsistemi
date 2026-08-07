@@ -139,7 +139,8 @@ public final class PetPluginBootstrap {
             // 8. PlaceholderAPI Integration
             if (plugin.getServer().getPluginManager().isPluginEnabled("PlaceholderAPI")) {
                 try {
-                    new com.petsistemi.integration.papi.PetPapiExpansion(plugin, petService).register();
+                    // Cache-backed on purpose: PAPI resolves on the main thread.
+                    new com.petsistemi.integration.papi.PetPapiExpansion(plugin, profileCache).register();
                     plugin.getLogger().info("PlaceholderAPI entegrasyonu (PetPapiExpansion) başarıyla yüklendi.");
                 } catch (Throwable t) {
                     plugin.getLogger().warning("PlaceholderAPI yüklenirken hata oluştu: " + t.getMessage());

@@ -31,7 +31,7 @@ public class PetAbilityTask implements Runnable {
             if (entity == null || !entity.isValid() || !entity.getWorld().equals(owner.getWorld())) continue;
             if (entity.getLocation().distanceSquared(owner.getLocation()) > MAX_DISTANCE_SQUARED) continue;
 
-            String defId = activePet.getDefinitionId() != null ? activePet.getDefinitionId().toLowerCase() : "";
+            String defId = activePet.getDefinitionId() != null ? activePet.getDefinitionId().toLowerCase(java.util.Locale.ROOT) : "";
             int level = activePet.getLevel();
 
             applyBuffs(owner, defId, level);

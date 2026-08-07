@@ -35,11 +35,11 @@ public class PetIdResolver {
 
         List<PetInstance> ownedPets = repository.findByOwner(ownerId);
         List<UUID> matches = new ArrayList<>();
-        String lowerInput = clean.toLowerCase();
+        String lowerInput = clean.toLowerCase(java.util.Locale.ROOT);
 
         for (PetInstance pet : ownedPets) {
-            String shortId = pet.petId().toString().substring(0, 8).toLowerCase();
-            if (shortId.startsWith(lowerInput) || pet.petId().toString().toLowerCase().startsWith(lowerInput)) {
+            String shortId = pet.petId().toString().substring(0, 8).toLowerCase(java.util.Locale.ROOT);
+            if (shortId.startsWith(lowerInput) || pet.petId().toString().toLowerCase(java.util.Locale.ROOT).startsWith(lowerInput)) {
                 matches.add(pet.petId());
             }
         }
