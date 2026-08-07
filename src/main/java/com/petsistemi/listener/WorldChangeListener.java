@@ -40,11 +40,25 @@ public class WorldChangeListener implements Listener {
         this(plugin, activeRegistry, null, null);
     }
 
+    private boolean isWorldDisabled(String worldName) {
+        if (worldName == null) return false;
+        String lower = worldName.toLowerCase(java.util.Locale.ROOT);
+        return lower.contains("bedwars") || lower.contains("minigames");
+    }
+
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onWorldChange(PlayerChangedWorldEvent event) {
         Player player = event.getPlayer();
         Bukkit.getScheduler().runTask(plugin, () -> {
             if (!player.isOnline()) return;
+
+            if (isWorldDisabled(player.getWorld().getName())) {
+                if (coordinator != null) {
+                    coordinator.despawnRuntime(player.getUniqueId());
+                }
+                return;
+            }
+
             Optional<ActivePet> activeOpt = activeRegistry.getByOwner(player.getUniqueId());
             if (activeOpt.isEmpty()) return;
 

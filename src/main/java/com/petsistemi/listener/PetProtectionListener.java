@@ -115,6 +115,31 @@ public class PetProtectionListener implements Listener {
         }
     }
 
+    @EventHandler(priority = org.bukkit.event.EventPriority.MONITOR, ignoreCancelled = true)
+    public void onBedEnter(org.bukkit.event.player.PlayerBedEnterEvent event) {
+        activeRegistry.getByOwner(event.getPlayer().getUniqueId()).ifPresent(active -> {
+            Entity entity = active.getSpawnedEntity();
+            if (entity != null && entity.isValid()) {
+                if (entity instanceof org.bukkit.entity.Sittable sittable) {
+                    sittable.setSitting(true);
+                }
+                try {
+                    entity.getWorld().spawnParticle(org.bukkit.Particle.VILLAGER_HAPPY, entity.getLocation().add(0, 0.5, 0), 5, 0.2, 0.2, 0.2, 0.02);
+                } catch (Exception ignored) {}
+            }
+        });
+    }
+
+    @EventHandler(priority = org.bukkit.event.EventPriority.MONITOR)
+    public void onBedLeave(org.bukkit.event.player.PlayerBedLeaveEvent event) {
+        activeRegistry.getByOwner(event.getPlayer().getUniqueId()).ifPresent(active -> {
+            Entity entity = active.getSpawnedEntity();
+            if (entity != null && entity.isValid() && entity instanceof org.bukkit.entity.Sittable sittable) {
+                sittable.setSitting(false);
+            }
+        });
+    }
+
     /**
      * Single entry point for right-clicks on anything belonging to a pet: the pet body,
      * a tracked child (e.g. a swarm member), or an invisible interaction hitbox.

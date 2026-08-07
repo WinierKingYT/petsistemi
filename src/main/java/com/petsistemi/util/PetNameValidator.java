@@ -44,7 +44,7 @@ public final class PetNameValidator {
         }
 
         // Color permission check: if player lacks color permission, auto-strip color tags for seamless UX
-        boolean allowColor = player == null || player.hasPermission("petsistemi.rename.color") || player.hasPermission("companionpets.color");
+        boolean allowColor = player == null || player.hasPermission("petsistemi.color") || player.hasPermission("petsistemi.rename.color") || player.hasPermission("companionpets.color");
         if (!allowColor && (trimmed.contains("&") || trimmed.contains("<") || trimmed.contains("§"))) {
             trimmed = strippedText;
         }

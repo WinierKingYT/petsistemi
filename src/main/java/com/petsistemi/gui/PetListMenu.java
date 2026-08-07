@@ -56,13 +56,21 @@ public class PetListMenu {
             return;
         }
 
-        Collection<PetSnapshot> pets = petService.getOwnedPets(viewer.getUniqueId());
+        List<PetSnapshot> sortedPets = new ArrayList<>(petService.getOwnedPets(viewer.getUniqueId()));
+        sortedPets.sort((a, b) -> {
+            int stateA = a.spawned() ? 0 : (a.selected() ? 1 : 2);
+            int stateB = b.spawned() ? 0 : (b.selected() ? 1 : 2);
+            if (stateA != stateB) return Integer.compare(stateA, stateB);
+            if (a.level() != b.level()) return Integer.compare(b.level(), a.level());
+            return a.definitionId().compareToIgnoreCase(b.definitionId());
+        });
+
         Component title = text(messageService, "list.menu-title", "<gold><bold>Pet Koleksiyonunuz</bold></gold>", null);
         PetMenuHolder holder = new PetMenuHolder("PET_LIST_ALL", Math.max(0, page));
         Inventory inv = Bukkit.createInventory(holder, 54, title);
 
         int slot = 10;
-        for (PetSnapshot pet : pets) {
+        for (PetSnapshot pet : sortedPets) {
             if (slot >= 44) break;
             if ((slot + 1) % 9 == 0) slot += 2; // skip borders
 
