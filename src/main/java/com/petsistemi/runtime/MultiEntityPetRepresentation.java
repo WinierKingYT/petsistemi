@@ -70,7 +70,12 @@ public class MultiEntityPetRepresentation implements PetRepresentationController
             return List.of();
         }
 
-        Material childMaterial = resolveMaterial(rep.childMaterial(), DEFAULT_MATERIAL);
+        // Children inherit the primary's material when child-material is unset. Falling back
+        // to the global default instead made a swarm render as one honeycomb surrounded by
+        // three unrelated amethysts.
+        Material childMaterial = resolveMaterial(
+                rep.childMaterial() != null ? rep.childMaterial() : rep.itemMaterial(),
+                DEFAULT_MATERIAL);
         PetVector3 scale = LevelScalePolicy.fromSnapshot(rep.scale(), pet.level(), configSnapshot);
         List<Entity> children = new ArrayList<>(childCount);
         for (int i = 1; i <= childCount; i++) {

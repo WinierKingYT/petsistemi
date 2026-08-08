@@ -7,6 +7,9 @@ import com.petsistemi.domain.PetRepresentationDefinition;
 import com.petsistemi.domain.PetVector3;
 import com.petsistemi.domain.RuntimeRepresentationType;
 import org.bukkit.Location;
+import org.mockito.ArgumentCaptor;
+import org.bukkit.inventory.ItemStack;
+import org.bukkit.Material;
 import org.bukkit.World;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
@@ -24,6 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
@@ -103,9 +107,29 @@ class MultiEntityPetRepresentationTest {
         assertEquals(2, children(2, "NOT_A_MATERIAL").size());
     }
 
+    /**
+     * Regression from a live server: swarm_bees sets item-material but no child-material,
+     * so the swarm rendered as one honeycomb ringed by three unrelated amethysts. Children
+     * inherit the primary's material rather than a global default.
+     */
     @Test
-    void missingChildMaterialFallsBackToTheDefault() {
-        assertEquals(2, children(2, null).size());
+    void childrenInheritThePrimaryMaterialWhenChildMaterialIsUnset() {
+        List<Entity> spawned = children(2, null);
+
+        assertEquals(2, spawned.size());
+        ArgumentCaptor<ItemStack> stacks = ArgumentCaptor.forClass(ItemStack.class);
+        verify((ItemDisplay) spawned.get(0)).setItemStack(stacks.capture());
+        assertEquals(Material.ALLIUM, stacks.getValue().getType(),
+                "çocuklar birincilin materyalini miras almalı");
+    }
+
+    @Test
+    void anExplicitChildMaterialStillWins() {
+        List<Entity> spawned = children(2, "POPPY");
+
+        ArgumentCaptor<ItemStack> stacks = ArgumentCaptor.forClass(ItemStack.class);
+        verify((ItemDisplay) spawned.get(0)).setItemStack(stacks.capture());
+        assertEquals(Material.POPPY, stacks.getValue().getType());
     }
 
     @Test

@@ -373,7 +373,12 @@ public class DefaultPetService implements PetService, AsyncPetService {
                 UUID.randomUUID(),
                 ownerId,
                 definition.id(),
-                definition.displayName(),
+                // No custom name yet: this field means "the player named it this".
+                // Seeding it with definition.displayName() copied the admin's MiniMessage
+                // markup into a player-input field, and the nameplate then escaped it —
+                // so a freshly given pet rendered a literal "<gold>Kurt Dostu</gold>".
+                // Leaving it null lets the renderer fall back to the trusted display name.
+                null,
                 1,
                 0L,
                 PetAvailabilityState.AVAILABLE,

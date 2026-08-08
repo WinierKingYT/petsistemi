@@ -8,11 +8,12 @@ gui-material: HONEYCOMB
 permission: "petsistemi.pet.swarmbees"
 
 representation:
+  # MULTI_ENTITY her zaman ITEM_DISPLAY kullanır; gerçek mob sürüsü bu sürümde
+  # desteklenmiyor, o yüzden entity-type burada anlamsızdı ve kaldırıldı.
   type: MULTI_ENTITY
-  entity-type: BEE
   child-count: 3
   item-material: HONEYCOMB
-  baby: true
+  child-material: HONEYCOMB
 
 movement:
   type: SWARM_CLOUD
