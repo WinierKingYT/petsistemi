@@ -55,7 +55,7 @@ public class PetReactionListener implements Listener {
         reactionEngine.playOwnerDamage(pet, resolveDefinition(active));
     }
 
-    @EventHandler(priority = EventPriority.MONITOR)
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onLevelUp(PetLevelUpEvent event) {
         if (reactionEngine == null || event.getPetSnapshot() == null || event.getPetSnapshot().ownerId() == null) return;
 

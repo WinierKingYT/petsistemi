@@ -6,8 +6,6 @@ import com.petsistemi.runtime.PetRuntimeCoordinator;
 import org.bukkit.entity.Entity;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
-import org.bukkit.event.entity.EntityCombustEvent;
-import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityDeathEvent;
 import org.bukkit.event.entity.EntityTargetLivingEntityEvent;
 import org.bukkit.event.world.ChunkUnloadEvent;
@@ -44,20 +42,6 @@ public class PetEntityListener implements Listener {
                 ActivePet active = activeOpt.get();
                 coordinator.despawnRuntime(active.getOwnerId());
             }
-        }
-    }
-
-    @EventHandler
-    public void onDamage(EntityDamageEvent event) {
-        if (activeRegistry.getByAnyEntity(event.getEntity().getUniqueId()).isPresent()) {
-            event.setCancelled(true);
-        }
-    }
-
-    @EventHandler
-    public void onCombust(EntityCombustEvent event) {
-        if (activeRegistry.getByAnyEntity(event.getEntity().getUniqueId()).isPresent()) {
-            event.setCancelled(true);
         }
     }
 

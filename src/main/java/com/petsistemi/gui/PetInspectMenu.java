@@ -81,7 +81,7 @@ public class PetInspectMenu {
         );
 
         if (pet == null) {
-            inv.setItem(13, createInfoItem(Material.BARRIER,
+            inv.setItem(13, createItem(Material.BARRIER,
                     text(messageService, "inspect.no-data-title", "<red><b>Pet Verisi Yok</b></red>", null),
                     List.of(text(messageService, "inspect.not-found", "<red>Bu pet veritabanında bulunamadı.</red>", null))));
             viewer.openInventory(inv);
@@ -196,9 +196,5 @@ public class PetInspectMenu {
 
     private static ItemStack createItem(Material material, Component name, List<Component> lore) {
         return createItem(null, null, null, material, name, lore);
-    }
-
-    private static ItemStack createInfoItem(Material material, Component name, List<Component> lore) {
-        return createItem(material, name, lore);
     }
 }

@@ -102,7 +102,7 @@ public class DefaultPetService implements PetService, AsyncPetService {
 
     @Override
     public CompletableFuture<Collection<PetSnapshot>> getOwnedPetsAsync(UUID ownerId) {
-        return getOwnedPetsAsyncList(ownerId).thenApply(list -> list);
+        return getOwnedPetsAsyncList(ownerId).thenApply(java.util.ArrayList::new);
     }
 
     public CompletableFuture<List<PetSnapshot>> getOwnedPetsAsyncList(UUID ownerId) {
@@ -131,6 +131,19 @@ public class DefaultPetService implements PetService, AsyncPetService {
         return dbExecutor.submit(() -> repository.findActiveByOwner(ownerId)).thenApply(opt -> opt.map(this::mapToSnapshot));
     }
 
+    /** Must be called on the Bukkit main thread. Reads permission-based pet limit for the player. */
+    private int resolveMaxPets(UUID ownerId, int defaultMax) {
+        Player onlinePlayer = Bukkit.getPlayer(ownerId);
+        if (onlinePlayer != null) {
+            for (int i = 50; i >= 1; i--) {
+                if (onlinePlayer.hasPermission("petsistemi.limit." + i) || onlinePlayer.hasPermission("companionpets.limit." + i)) {
+                    return i;
+                }
+            }
+        }
+        return defaultMax;
+    }
+
     @Override
     public CompletableFuture<PetGiveResult> givePetAsync(UUID ownerId, String definitionId) {
         Objects.requireNonNull(ownerId, "ownerId null olamaz.");
@@ -144,18 +157,13 @@ public class DefaultPetService implements PetService, AsyncPetService {
         int maxPets = (configSnapshot != null && configSnapshot.get() != null && configSnapshot.get().configuration() != null)
                 ? configSnapshot.get().configuration().limits().maximumOwnedPets() : 5;
 
-        Player onlinePlayer = Bukkit.getPlayer(ownerId);
-        if (onlinePlayer != null) {
-            for (int i = 50; i >= 1; i--) {
-                if (onlinePlayer.hasPermission("petsistemi.limit." + i) || onlinePlayer.hasPermission("companionpets.limit." + i)) {
-                    maxPets = i;
-                    break;
-                }
-            }
-        }
+        // Permission check must run on the Bukkit main thread.
+        // givePetAsync can be called from any context, so we dispatch explicitly.
+        CompletableFuture<Integer> permFuture = (mainThreadDispatcher != null)
+                ? mainThreadDispatcher.supply(() -> resolveMaxPets(ownerId, maxPets))
+                : CompletableFuture.completedFuture(resolveMaxPets(ownerId, maxPets));
 
-        final int finalMaxPets = maxPets;
-        return dbExecutor.submit(() -> insertPetDb(ownerId, definition, finalMaxPets)).thenCompose(state -> {
+        return permFuture.thenCompose(resolvedMax -> dbExecutor.submit(() -> insertPetDb(ownerId, definition, resolvedMax)).thenCompose(state -> {
             if (!state.success()) {
                 return CompletableFuture.completedFuture(new PetGiveResult(false, state.message(), null));
             }
@@ -171,8 +179,9 @@ public class DefaultPetService implements PetService, AsyncPetService {
             };
             CompletableFuture<Void> mainFuture = mainThreadDispatcher != null ? mainThreadDispatcher.run(eventRunnable) : CompletableFuture.runAsync(eventRunnable);
             return mainFuture.thenApply(v -> new PetGiveResult(true, "Pet başarıyla verildi.", snapshot));
-        });
+        }));
     }
+
 
     /**
      * Admin-only rename: no ownership check.

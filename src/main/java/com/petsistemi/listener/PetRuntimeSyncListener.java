@@ -29,16 +29,15 @@ public class PetRuntimeSyncListener implements Listener {
         this.coordinator = coordinator;
     }
 
-    @EventHandler(priority = EventPriority.MONITOR)
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onLevelUp(PetLevelUpEvent event) {
         PetSnapshot snapshot = event.getPetSnapshot();
         if (snapshot == null || snapshot.ownerId() == null || snapshot.petId() == null) return;
         refresh(snapshot.ownerId(), snapshot, snapshot.customName());
     }
 
-    @EventHandler(priority = EventPriority.MONITOR)
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onRename(PetRenameEvent event) {
-        if (event.isCancelled()) return;
         UUID ownerId = event.getOwnerId();
         PetSnapshot snapshot = event.getPet();
         if (ownerId == null || snapshot == null || snapshot.petId() == null) return;

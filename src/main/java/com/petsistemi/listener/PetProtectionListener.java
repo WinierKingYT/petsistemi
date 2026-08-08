@@ -130,7 +130,7 @@ public class PetProtectionListener implements Listener {
         });
     }
 
-    @EventHandler(priority = org.bukkit.event.EventPriority.MONITOR)
+    @EventHandler
     public void onBedLeave(org.bukkit.event.player.PlayerBedLeaveEvent event) {
         activeRegistry.getByOwner(event.getPlayer().getUniqueId()).ifPresent(active -> {
             Entity entity = active.getSpawnedEntity();

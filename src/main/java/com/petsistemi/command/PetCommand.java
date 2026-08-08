@@ -286,12 +286,13 @@ public class PetCommand implements CommandExecutor, TabCompleter {
     private void displayInfo(Player player, PetSnapshot pet) {
         String customName = pet.customName() != null ? pet.customName() : pet.definitionId();
         long currentXp = pet.experience();
-        long reqXp = (pet.level() + 1) * 100L;
+        long xpPerLevel = xpPerLevelFromSnapshot();
+        long reqXp = (pet.level() + 1) * xpPerLevel;
         double ratio = Math.min(1.0, Math.max(0.0, (double) currentXp / (double) reqXp));
-        int totalBars = 20;
-        int filledBars = (int) (ratio * totalBars);
+        final int PROGRESS_BAR_WIDTH = 20;
+        int filledBars = (int) (ratio * PROGRESS_BAR_WIDTH);
         String filled = "█".repeat(Math.max(0, filledBars));
-        String empty = "░".repeat(Math.max(0, totalBars - filledBars));
+        String empty = "░".repeat(Math.max(0, PROGRESS_BAR_WIDTH - filledBars));
         String progressBar = "<gradient:#ff9900:#ff0055>[" + filled + "</gradient><gray>" + empty + "]</gray> " + (int)(ratio * 100) + "%";
 
         String statusBadge = pet.spawned() ? "<green>⚡ Çağrıldı (Aktif)</green>" : (pet.selected() ? "<yellow>⭐ Seçili (Depoda)</yellow>" : "<gray>💤 Pasif</gray>");
@@ -305,6 +306,17 @@ public class PetCommand implements CommandExecutor, TabCompleter {
                 "<newline><gold>===================================================</gold>";
 
         player.sendMessage(net.kyori.adventure.text.minimessage.MiniMessage.miniMessage().deserialize(infoMsg));
+    }
+
+    private long xpPerLevelFromSnapshot() {
+        if (configSnapshot != null
+                && configSnapshot.get() != null
+                && configSnapshot.get().configuration() != null
+                && configSnapshot.get().configuration().progression() != null) {
+            long xp = configSnapshot.get().configuration().progression().xpPerLevel();
+            return xp > 0 ? xp : 100L;
+        }
+        return 100L;
     }
 
     private void handleRename(Player player, String[] args) {

@@ -31,8 +31,14 @@ import java.util.logging.Logger;
 
 public class PetProgressionListener implements Listener {
 
-    private static final long KILL_XP_MIN  = 1L;
-    private static final long BLOCK_XP_MIN = 1L;
+    private static final long   KILL_XP_MIN             = 1L;
+    private static final long   BLOCK_XP_MIN            = 1L;
+    private static final double DEFAULT_WALK_XP_THRESHOLD  = 50.0;
+    private static final long   DEFAULT_WALK_XP_AMOUNT     = 5L;
+    private static final long   DEFAULT_BLOCK_BREAK_XP     = 2L;
+    private static final double DEFAULT_KILL_XP_MULTIPLIER = 0.5;
+    private static final long   DEFAULT_FISH_XP            = 10L;
+    private static final long   DEFAULT_CRAFT_XP           = 2L;
 
     private final ActivePetRegistry activePetRegistry;
     private final AsyncPetExperienceService asyncExperienceService;
@@ -51,10 +57,10 @@ public class PetProgressionListener implements Listener {
         this.activePetRegistry = activePetRegistry;
         this.asyncExperienceService = asyncExperienceService;
         this.configSnapshot = configSnapshot;
-        this.fallbackWalkXpThreshold = 50.0;
-        this.fallbackWalkXpAmount = 5L;
-        this.fallbackBlockBreakXpBase = 2L;
-        this.fallbackKillXpMultiplier = 0.5;
+        this.fallbackWalkXpThreshold = DEFAULT_WALK_XP_THRESHOLD;
+        this.fallbackWalkXpAmount = DEFAULT_WALK_XP_AMOUNT;
+        this.fallbackBlockBreakXpBase = DEFAULT_BLOCK_BREAK_XP;
+        this.fallbackKillXpMultiplier = DEFAULT_KILL_XP_MULTIPLIER;
     }
 
     public PetProgressionListener(ActivePetRegistry activePetRegistry,
@@ -75,10 +81,10 @@ public class PetProgressionListener implements Listener {
             this.fallbackBlockBreakXpBase = config.getLong("progression.block-break-xp",        2L);
             this.fallbackKillXpMultiplier = config.getDouble("progression.kill-xp-multiplier",  0.5);
         } else {
-            this.fallbackWalkXpThreshold  = 50.0;
-            this.fallbackWalkXpAmount     = 5L;
-            this.fallbackBlockBreakXpBase = 2L;
-            this.fallbackKillXpMultiplier = 0.5;
+            this.fallbackWalkXpThreshold  = DEFAULT_WALK_XP_THRESHOLD;
+            this.fallbackWalkXpAmount     = DEFAULT_WALK_XP_AMOUNT;
+            this.fallbackBlockBreakXpBase = DEFAULT_BLOCK_BREAK_XP;
+            this.fallbackKillXpMultiplier = DEFAULT_KILL_XP_MULTIPLIER;
         }
     }
 
@@ -180,7 +186,7 @@ public class PetProgressionListener implements Listener {
         Optional<ActivePet> activeOpt = activePetRegistry.getByOwner(player.getUniqueId());
         if (activeOpt.isEmpty()) return;
 
-        dispatchXpAsync(activeOpt.get().getPetId(), 10L, ExperienceSource.MOB_KILL);
+        dispatchXpAsync(activeOpt.get().getPetId(), DEFAULT_FISH_XP, ExperienceSource.FISHING);
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -189,7 +195,7 @@ public class PetProgressionListener implements Listener {
         Optional<ActivePet> activeOpt = activePetRegistry.getByOwner(player.getUniqueId());
         if (activeOpt.isEmpty()) return;
 
-        dispatchXpAsync(activeOpt.get().getPetId(), 2L, ExperienceSource.BLOCK_BREAK);
+        dispatchXpAsync(activeOpt.get().getPetId(), DEFAULT_CRAFT_XP, ExperienceSource.CRAFTING);
     }
 
     @EventHandler

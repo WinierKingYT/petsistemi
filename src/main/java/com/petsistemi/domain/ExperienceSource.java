@@ -8,5 +8,7 @@ public enum ExperienceSource {
     EXTERNAL_PLUGIN,
     WALKING,
     BLOCK_BREAK,
-    ONLINE_TIME
+    ONLINE_TIME,
+    FISHING,
+    CRAFTING
 }

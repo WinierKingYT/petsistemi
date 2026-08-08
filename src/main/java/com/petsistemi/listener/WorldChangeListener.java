@@ -17,19 +17,30 @@ import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 public class WorldChangeListener implements Listener {
+
+    /** Default arena keywords used when the config does not specify disabled-worlds. */
+    private static final Set<String> DEFAULT_DISABLED_KEYWORDS = Set.of("bedwars", "minigames");
 
     private final JavaPlugin plugin;
     private final ActivePetRegistry activeRegistry;
     private final PetRuntimeCoordinator coordinator;
     private final PetRuntimeOperationService operationService;
+    private final Set<String> disabledWorldKeywords;
 
     public WorldChangeListener(JavaPlugin plugin, ActivePetRegistry activeRegistry, PetRuntimeCoordinator coordinator, PetRuntimeOperationService operationService) {
         this.plugin = plugin;
         this.activeRegistry = activeRegistry;
         this.coordinator = coordinator;
         this.operationService = operationService;
+        // Load disabled-worlds list from config; fall back to the built-in defaults.
+        java.util.List<String> cfgList = plugin.getConfig().getStringList("disabled-worlds");
+        this.disabledWorldKeywords = (cfgList != null && !cfgList.isEmpty())
+                ? cfgList.stream().map(s -> s.toLowerCase(java.util.Locale.ROOT)).collect(Collectors.toSet())
+                : DEFAULT_DISABLED_KEYWORDS;
     }
 
     public WorldChangeListener(JavaPlugin plugin, ActivePetRegistry activeRegistry, PetRuntimeCoordinator coordinator) {
@@ -43,7 +54,7 @@ public class WorldChangeListener implements Listener {
     private boolean isWorldDisabled(String worldName) {
         if (worldName == null) return false;
         String lower = worldName.toLowerCase(java.util.Locale.ROOT);
-        return lower.contains("bedwars") || lower.contains("minigames");
+        return disabledWorldKeywords.stream().anyMatch(lower::contains);
     }
 
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -105,7 +116,7 @@ public class WorldChangeListener implements Listener {
         });
     }
 
-    @EventHandler(priority = EventPriority.MONITOR)
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onRespawn(org.bukkit.event.player.PlayerRespawnEvent event) {
         Player player = event.getPlayer();
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
