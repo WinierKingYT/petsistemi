@@ -197,9 +197,114 @@ public record PetDefinition(
         if (transform == null || transform.apply() == null || !transform.apply().hasAny()) {
             return this;
         }
-        return new PetDefinition(id, displayName, description, entityType, baby, glowing, invulnerable,
-                silent, gravity, progressionEnabled, maxLevel, nameplateEnabled, nameplateFormat,
-                representationOrEntity().applyOverride(transform.apply()), movement, states, transforms, reactions, emotes,
-                guiMaterial, permission, buffs, personality, evolutions, hitbox, levelRewards, allowedModes, spawnStyle, mount, presence);
+        // Only the representation changes; toBuilder() carries the other 29 components so a
+        // newly added field can never be silently dropped from a transformed definition.
+        return toBuilder()
+                .representation(representationOrEntity().applyOverride(transform.apply()))
+                .build();
+    }
+
+    // ── Builder ──────────────────────────────────────────────────────────────────
+    //
+    // This record has 30 components, most of them optional. Positional construction
+    // forced every caller — and every test — to thread a long run of nulls, where a
+    // single misplaced argument silently binds the wrong field instead of failing to
+    // compile. The builder names each field at the call site and defaults the rest.
+
+    /** Starts a builder with the two fields every pet must have. */
+    public static Builder builder(String id, String displayName) {
+        return new Builder(id, displayName);
+    }
+
+    /** Starts a builder pre-filled with this definition's values, for copy-with-changes. */
+    public Builder toBuilder() {
+        return new Builder(id, displayName)
+                .description(description)
+                .entityType(entityType)
+                .baby(baby).glowing(glowing).invulnerable(invulnerable).silent(silent).gravity(gravity)
+                .progressionEnabled(progressionEnabled).maxLevel(maxLevel)
+                .nameplateEnabled(nameplateEnabled).nameplateFormat(nameplateFormat)
+                .representation(representation).movement(movement).states(states)
+                .transforms(transforms).reactions(reactions).emotes(emotes)
+                .guiMaterial(guiMaterial).permission(permission)
+                .buffs(buffs).personality(personality).evolutions(evolutions).hitbox(hitbox)
+                .levelRewards(levelRewards).allowedModes(allowedModes)
+                .spawnStyle(spawnStyle).mount(mount).presence(presence);
+    }
+
+    public static final class Builder {
+        private final String id;
+        private final String displayName;
+        private List<String> description = List.of();
+        private String entityType = "WOLF";
+        private boolean baby;
+        private boolean glowing;
+        private boolean invulnerable = true;
+        private boolean silent;
+        private boolean gravity = true;
+        private boolean progressionEnabled = true;
+        private int maxLevel = 100;
+        private boolean nameplateEnabled = true;
+        private List<String> nameplateFormat = List.of("{pet_name}");
+        private PetRepresentationDefinition representation;
+        private PetMovementDefinition movement;
+        private PetStatesDefinition states;
+        private java.util.List<PetTransformDefinition> transforms;
+        private java.util.Map<PetReactionType, PetReactionDefinition> reactions;
+        private java.util.Map<String, PetEmoteDefinition> emotes;
+        private String guiMaterial;
+        private String permission;
+        private List<PetBuffDefinition> buffs;
+        private PetPersonalityType personality;
+        private List<PetEvolutionDefinition> evolutions;
+        private PetHitboxDefinition hitbox;
+        private List<PetLevelRewardDefinition> levelRewards;
+        private List<PetFollowMode> allowedModes;
+        private PetSpawnStyleDefinition spawnStyle;
+        private PetMountDefinition mount;
+        private PetPresenceDefinition presence;
+
+        private Builder(String id, String displayName) {
+            this.id = id;
+            this.displayName = displayName;
+        }
+
+        public Builder description(List<String> v) { this.description = v != null ? v : List.of(); return this; }
+        public Builder entityType(String v) { this.entityType = v; return this; }
+        public Builder baby(boolean v) { this.baby = v; return this; }
+        public Builder glowing(boolean v) { this.glowing = v; return this; }
+        public Builder invulnerable(boolean v) { this.invulnerable = v; return this; }
+        public Builder silent(boolean v) { this.silent = v; return this; }
+        public Builder gravity(boolean v) { this.gravity = v; return this; }
+        public Builder progressionEnabled(boolean v) { this.progressionEnabled = v; return this; }
+        public Builder maxLevel(int v) { this.maxLevel = v; return this; }
+        public Builder nameplateEnabled(boolean v) { this.nameplateEnabled = v; return this; }
+        public Builder nameplateFormat(List<String> v) { this.nameplateFormat = v != null ? v : List.of(); return this; }
+        public Builder representation(PetRepresentationDefinition v) { this.representation = v; return this; }
+        public Builder movement(PetMovementDefinition v) { this.movement = v; return this; }
+        public Builder states(PetStatesDefinition v) { this.states = v; return this; }
+        public Builder transforms(java.util.List<PetTransformDefinition> v) { this.transforms = v; return this; }
+        public Builder reactions(java.util.Map<PetReactionType, PetReactionDefinition> v) { this.reactions = v; return this; }
+        public Builder emotes(java.util.Map<String, PetEmoteDefinition> v) { this.emotes = v; return this; }
+        public Builder guiMaterial(String v) { this.guiMaterial = v; return this; }
+        public Builder permission(String v) { this.permission = v; return this; }
+        public Builder buffs(List<PetBuffDefinition> v) { this.buffs = v; return this; }
+        public Builder personality(PetPersonalityType v) { this.personality = v; return this; }
+        public Builder evolutions(List<PetEvolutionDefinition> v) { this.evolutions = v; return this; }
+        public Builder hitbox(PetHitboxDefinition v) { this.hitbox = v; return this; }
+        public Builder levelRewards(List<PetLevelRewardDefinition> v) { this.levelRewards = v; return this; }
+        public Builder allowedModes(List<PetFollowMode> v) { this.allowedModes = v; return this; }
+        public Builder spawnStyle(PetSpawnStyleDefinition v) { this.spawnStyle = v; return this; }
+        public Builder mount(PetMountDefinition v) { this.mount = v; return this; }
+        public Builder presence(PetPresenceDefinition v) { this.presence = v; return this; }
+
+        public PetDefinition build() {
+            return new PetDefinition(id, displayName, description, entityType,
+                    baby, glowing, invulnerable, silent, gravity,
+                    progressionEnabled, maxLevel, nameplateEnabled, nameplateFormat,
+                    representation, movement, states, transforms, reactions, emotes,
+                    guiMaterial, permission, buffs, personality, evolutions, hitbox,
+                    levelRewards, allowedModes, spawnStyle, mount, presence);
+        }
     }
 }
