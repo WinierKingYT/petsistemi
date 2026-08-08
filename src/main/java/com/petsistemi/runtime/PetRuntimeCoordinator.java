@@ -227,7 +227,9 @@ public class PetRuntimeCoordinator {
      * falling back to the legacy behavior controller.
      */
     public void tickAll() {
-        tickEach(new ArrayList<>(activeRegistry.getAllActive()), Bukkit::getPlayer);
+        // getAllActive() already hands back an immutable copy, so wrapping it in another
+        // ArrayList allocated a second list for every pet sweep, 20 times a second.
+        tickEach(activeRegistry.getAllActive(), Bukkit::getPlayer);
     }
 
     /**
@@ -237,7 +239,7 @@ public class PetRuntimeCoordinator {
      *
      * <p>{@code ownerLookup} is a seam so the loop can be driven without a live server.</p>
      */
-    synchronized void tickEach(List<ActivePet> pets, OwnerLookup ownerLookup) {
+    synchronized void tickEach(java.util.Collection<ActivePet> pets, OwnerLookup ownerLookup) {
         for (ActivePet active : pets) {
             Player owner = ownerLookup.find(active.getOwnerId());
             if (owner == null || !owner.isOnline()) continue;

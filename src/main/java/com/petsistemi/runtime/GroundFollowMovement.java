@@ -34,6 +34,10 @@ public class GroundFollowMovement implements PetMovementController {
     private final Map<UUID, Location> wanderAnchors = new HashMap<>();
     private final Map<UUID, Integer> wanderTicks = new HashMap<>();
 
+    /** Memoised config lookup; see {@link #runtimeConfig()}. Main-thread only. */
+    private RuntimeConfigurationSnapshot cachedSnapshot;
+    private PluginConfiguration.RuntimeConfiguration cachedRuntimeConfig;
+
     private static final double WANDER_RADIUS_SQUARED = 4.0 * 4.0;
     private static final int WANDER_REPICK_INTERVAL = 40;
 
@@ -170,10 +174,7 @@ public class GroundFollowMovement implements PetMovementController {
         double startDistSq    = defaultStartFollowDistanceSquared;
         double speed          = defaultFollowSpeed;
 
-        RuntimeConfigurationSnapshot snapshot = (configSnapshot != null) ? configSnapshot.get() : null;
-        PluginConfiguration.RuntimeConfiguration runtimeConfig = (snapshot != null && snapshot.configuration() != null)
-                ? snapshot.configuration().runtime()
-                : null;
+        PluginConfiguration.RuntimeConfiguration runtimeConfig = runtimeConfig();
         if (runtimeConfig != null) {
             teleportDistSq = runtimeConfig.teleportDistance() * runtimeConfig.teleportDistance();
             stopDistSq     = runtimeConfig.stopDistance() * runtimeConfig.stopDistance();
@@ -196,6 +197,26 @@ public class GroundFollowMovement implements PetMovementController {
         }
 
         return new double[]{teleportDistSq, stopDistSq, startDistSq, speed};
+    }
+
+    /**
+     * Runtime config for the current snapshot, memoised per snapshot instance.
+     *
+     * <p>These values only change on a config reload, but this ran once per pet per tick and
+     * walked {@code AtomicReference -> snapshot -> configuration -> runtime} every time.
+     * The snapshot is swapped wholesale on reload, so identity comparison is enough to
+     * invalidate — no locking needed, and a stale read simply recomputes next tick.</p>
+     */
+    private PluginConfiguration.RuntimeConfiguration runtimeConfig() {
+        RuntimeConfigurationSnapshot snapshot = (configSnapshot != null) ? configSnapshot.get() : null;
+        if (snapshot == null || snapshot.configuration() == null) {
+            return null;
+        }
+        if (snapshot != cachedSnapshot) {
+            cachedRuntimeConfig = snapshot.configuration().runtime();
+            cachedSnapshot = snapshot;
+        }
+        return cachedRuntimeConfig;
     }
 
     private void handleWander(ActivePet activePet, LivingEntity entity, Player owner) {
