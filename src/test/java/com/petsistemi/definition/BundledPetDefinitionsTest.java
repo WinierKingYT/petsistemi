@@ -1,7 +1,10 @@
 package com.petsistemi.definition;
 
+import be.seeseemelk.mockbukkit.MockBukkit;
 import com.petsistemi.domain.PetDefinition;
 import org.bukkit.configuration.file.YamlConfiguration;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
@@ -27,6 +30,22 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * every pet on the server.
  */
 class BundledPetDefinitionsTest {
+
+    /**
+     * A pet declaring {@code buffs:} makes the parser resolve potion effect names through
+     * {@link org.bukkit.Registry}, which needs {@code Bukkit.server}. That static initialiser
+     * runs once per JVM and stays broken if it first runs serverless — poisoning every later
+     * test in the run, not just this one.
+     */
+    @BeforeAll
+    static void bootServer() {
+        MockBukkit.mock();
+    }
+
+    @AfterAll
+    static void stopServer() {
+        MockBukkit.unmock();
+    }
 
     /** Discovers the shipped pet ids from the resource directory so new pets are covered automatically. */
     static List<String> bundledPetIds() throws URISyntaxException, IOException {

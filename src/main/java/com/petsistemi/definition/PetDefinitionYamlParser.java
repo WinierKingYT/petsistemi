@@ -330,22 +330,49 @@ public final class PetDefinitionYamlParser {
         }
         List<PetBuffDefinition> buffs = new ArrayList<>();
         List<Map<?, ?>> list = yaml.getMapList("buffs");
-        for (Map<?, ?> map : list) {
-            String effectStr = map.get("effect") != null ? map.get("effect").toString() : null;
+        for (int i = 0; i < list.size(); i++) {
+            Map<?, ?> map = list.get(i);
+            // Both spellings are accepted: the bundled pets were authored with "type"/
+            // "duration-seconds" while the parser only ever read "effect"/"duration-ticks",
+            // so every shipped buff list was dropped without a word in the log.
+            String effectStr = firstString(map, "type", "effect");
             if (effectStr == null || effectStr.isBlank()) {
+                errors.add("buffs[" + i + "]: etki adı eksik ('type' veya 'effect' bekleniyor)");
                 continue;
             }
             PotionEffectType type = PotionEffectType.getByName(effectStr.toUpperCase(java.util.Locale.ROOT).trim());
             if (type == null) {
-                errors.add("Geçersiz buff etki türü: " + effectStr);
+                errors.add("buffs[" + i + "]: geçersiz buff etki türü: " + effectStr);
                 continue;
             }
             int amp = map.get("amplifier") instanceof Number n ? n.intValue() : 0;
             int minLvl = map.get("min-level") instanceof Number n ? n.intValue() : 1;
-            int duration = map.get("duration-ticks") instanceof Number n ? n.intValue() : 60;
+            int duration = buffDurationTicks(map);
             buffs.add(new PetBuffDefinition(type, amp, minLvl, duration));
         }
         return buffs.isEmpty() ? null : buffs;
+    }
+
+    /** Returns the first non-null value among {@code keys}, as a string. */
+    private static String firstString(Map<?, ?> map, String... keys) {
+        for (String key : keys) {
+            Object value = map.get(key);
+            if (value != null) {
+                return value.toString();
+            }
+        }
+        return null;
+    }
+
+    /** Buff duration in ticks; {@code duration-seconds} is the admin-facing spelling. */
+    private static int buffDurationTicks(Map<?, ?> map) {
+        if (map.get("duration-ticks") instanceof Number ticks) {
+            return ticks.intValue();
+        }
+        if (map.get("duration-seconds") instanceof Number seconds) {
+            return seconds.intValue() * 20;
+        }
+        return 60;
     }
 
     private static PetPersonalityType parsePersonality(YamlConfiguration yaml, List<String> errors) {
