@@ -68,7 +68,8 @@ Geliştirme 1.20.4 üzerinde sürer; 1.21 ve üstü **sonra** hedeflenecektir.
 > alınabilecek bir önlem var: **yeni migration'lar SQLite'a özgü sözdizimi
 > kullanmamalıdır.** Bu bir faz değil, MF1'den itibaren geçerli bir kuraldır.
 >
-> Ayrıca mevcut MySQL kodu hiçbir yerde örneklenmiyor — ölü kod. Bkz. Borç Kaydı B5.
+> **Güncelleme (2026-08-08):** MF8 ile MySQL backend üretim bootstrap'ına bağlandı;
+> network modu paylaşımlı event günlüğü ve dağıtık yazma kilitleriyle eklendi.
 
 ---
 
@@ -90,6 +91,10 @@ MF2 ve MF6 birbirine bağlı değildir; paralel ilerleyebilirler.
 ---
 
 ## MF1 — Namespaced Registry
+
+> **Tamamlandı (2026-08-08):** Movement ve representation registry'leri artık
+> `NamespacedKey` ile genişletilebilir. Yerleşik enum API'leri geriye uyumluluk için
+> korunur; YAML özel anahtarları tanımda taşınır ve runtime dispatch'te önceliklidir.
 
 | | |
 |---|---|
@@ -126,21 +131,31 @@ bir temsil türü olarak kaydedilebilmelidir.
 > Bir pet YAML'ı `movement.type: test:custom_movement` yazar. Pet o kontrolcüyle hareket eder.
 > Mevcut 503 test yeşil kalır.
 
+**Doğrulama:** `test:custom_movement` YAML anahtarı ayrıştırılıp tanımda korunur ve
+aynı anahtarla kaydedilen controller registry'den çözülür. Tam test paketi yeşildir.
+
 ### Kapsam dışı
 
 - Enum'ları silmek
 - Validator'ı yeniden yazmak
 - Movement/representation sayısını artırmak
 
-### Açık tasarım sorusu
+### Anahtar uzayı kararı (2026-08-08)
 
-Pet Pack formatı (MF8) anahtar uzayına bağlıdır: bir paketin getirdiği movement
-`petsistemi:orbit` mi yoksa `frostpack:orbit` mi olacak? **Bu soru MF1'de cevaplanmalıdır**,
-MF8'de değil — sonradan değiştirmek yayınlanmış paketleri kırar.
+`petsistemi:*` yalnızca çekirdeğin yerleşik kayıtlarına ayrılır. Pet Pack veya üçüncü
+taraf eklenti tarafından getirilen kayıtlar sahibinin namespace'ini kullanır
+(`frostpack:orbit`, `modelengine:model`). Böylece paket kimliği yayınlandıktan sonra
+çekirdek adlarıyla çakışmaz.
 
 ---
 
 ## MF2 — Behavior Engine (Trigger / Condition / Action)
+
+> **Tamamlandı (2026-08-08):** Namespaced trigger, condition ve action registry'leri,
+> deterministik behavior executor ve native `behaviors:` YAML şeması eklendi. Mevcut
+> `reactions:`, `emotes:` ve `buffs:` tanımları runtime'da behavior pipeline'ına
+> çevriliyor; dış davranış korunuyor. Üçüncü taraf eklentiler `BehaviorService`'i Bukkit
+> ServicesManager üzerinden alarak kendi kayıtlarını ekleyebilir ve trigger çalıştırabilir.
 
 | | |
 |---|---|
@@ -175,9 +190,20 @@ yeniden yazımdır.
 > `reactions:` ve `emotes:` içeriden behavior olarak ifade edilir, dışarıdan davranışları
 > hiç değişmez. Üçüncü parti bir plugin kendi trigger ve action'ını kaydedebilir.
 
+**Doğrulama:** Legacy reaction/emote/buff testleri ile native behavior parser/runtime
+testleri yeşildir; sahte bir üçüncü taraf eklenti `BehaviorService` kaydını Bukkit
+ServicesManager üzerinden çözmektedir. Tam paket 512/512 yeşildir.
+
 ---
 
 ## MF3 — Ability / Skill
+
+> **Tamamlandı (2026-08-08):** Ability tanımı behavior üzerine kuruldu; YAML parser,
+> validator, namespaced ability anahtarları, owner/ability bazlı cooldown, hedef seçimi
+> (`NONE`, pet, owner, owner-target, nearest-living, area-around-pet), projectile/AoE
+> action'ları ve `/pet ability <ad>` eklendi. Oyuncu `/pet ability bind <ad>` ile
+> çömelme + el değiştirme tuşuna oturumluk ability bağlayabilir; bağ yokken vanilla
+> el değiştirme davranışı etkilenmez.
 
 | | |
 |---|---|
@@ -189,9 +215,20 @@ zorunludur.
 
 Kapsam: cooldown, hedef seçimi, mermi ve alan efektleri, `/pet ability` ve tuş bağlama.
 
+**Doğrulama:** Cooldown yalnızca başarılı action sonrasında başlar; hedefsiz deneme
+cooldown tüketmez. Projectile hedef vektörü, çoklu alan hedefleri, binding controller
+ve swap-hand listener testleri dahil tam paket 522/522 yeşildir.
+
 ---
 
 ## MF4 — Animation Abstraction
+
+> **Tamamlandı (2026-08-08):** Provider-bağımsız `PetAnimationStateMachine`
+> IDLE/MOVING/SPRINTING/SLEEPING/ATTACKING durumlarını yönetir. State tanımları
+> namespaced klip, öncelik, blend-in/out ve loop metadata'sı taşır; eski
+> `animation: WALK/SLEEP` şeması uyumluluk adaptörü olarak korunur. Vanilla ve display
+> temsilleri aynı `PetRepresentationController.applyAnimation` arayüzünden çalışır ve
+> harici model eklentisi olmadan oturma/uyku ölçeği davranışını sürdürür.
 
 | | |
 |---|---|
@@ -218,6 +255,13 @@ taşımalıdır — yalnızca vanilla'nın ifade edebildiği kadarını değil.
 
 ## MF5 — Model Provider Adaptörleri
 
+> **Tamamlandı (2026-08-08):** Core-dışı `PetModelProvider`/`ModelProviderService`
+> sözleşmesi ve `modelengine:model`, `itemsadder:model`, `oraxen:model` adaptörleri
+> eklendi. ModelEngine MF4 priority/blend/loop geçişlerini, ItemsAdder custom entity
+> kliplerini, Oraxen ise ItemDisplay tabanlı ortak state fallback'ini kullanır. Harici
+> API sınıfları yansıtmalı adaptör sınırında kaldığından sağlayıcı jar'ları build'e veya
+> dağıtım artifact'ına girmez; eksik provider plugin açılışını etkilemez.
+
 | | |
 |---|---|
 | **Boyut** | L · **Risk** Düşük (izole) · **Bağımlılık** MF1 + MF4 |
@@ -230,6 +274,13 @@ K2 gereği bu faz artık spekülatif değildir; MCPets'e karşı asıl görsel a
 ---
 
 ## MF6 — Collection GUI + Oyun İçi Editör
+
+> **Tamamlandı (2026-08-08):** `/pet collection` tüm tanımları açık/kilitli durumuyla,
+> sahiplik filtresi ve gerçek sayfalama ile sunar. `/petadmin editor [tanım_id]` temel
+> görünüm/hareket alanlarını ve parlama ayarını oyun içinden düzenler. Taslaklar üretim
+> parser/validator zincirinden geçer; dış dosya çakışması reddedilir, dosya atomik yazılır
+> ve bütün klasör doğrulanmadan canlı snapshot yayımlanmaz. Ayrıntılar:
+> [COLLECTION-EDITOR.md](COLLECTION-EDITOR.md).
 
 | | |
 |---|---|
@@ -244,11 +295,48 @@ MF2/MF3'e bağımlı değildir — MF2 ile paralel ilerleyebilir.
 
 ## MF7 — Gameplay · MF8 — Ekosistem
 
+> **MF7a tamamlandı (2026-08-08):** `item-actions` şeması materyal/custom-model-data
+> eşleştirmesini; tüketim, seviye/izin, cooldown ve namespaced handler çağrısını tek hatta
+> birleştirir. Başarısız asenkron işlemler itemi iade eder, cooldown yalnızca başarıda
+> başlar. `petsistemi:gain_experience` ve `petsistemi:unlock_pet` yerleşiktir; üçüncü
+> taraflar Bukkit `PetItemActionService` üzerinden aksiyon kaydeder. Ayrıntılar:
+> [ITEM-ACTIONS.md](ITEM-ACTIONS.md).
+>
+> **MF7 tamamlandı (2026-08-08):** MF7a–d üzerine kalıcı `petsistemi:evolve_pet`
+> aksiyonu, DB/runtime compensation, iptal edilebilir evrim API olayı ve aktif pet
+> gerektirmeyen PDC işaretli unlock itemi eklendi. Unlock itemi yönetici komutu ve Bukkit
+> `PetUnlockItemService` üzerinden üretilebilir; başarısız asenkron kullanım itemi iade eder.
+> Tam regresyon paketi 575/575 yeşildir.
+>
+> **MF7b tamamlandı (2026-08-08):** Daha önce yalnızca parse edilen `evolutions:` aşamaları
+> kalıcı seviyeden deterministik türetilen runtime tanımlarına bağlandı. En yüksek uygun eşik
+> seçilir; hedef tanım, ad ve ölçek override'ı transforms/idle/animation zincirinden önce
+> uygulanır. Eksik hedef ile representation/movement sağlayıcı geçişi yüklemede reddedilir.
+> Ayrıntılar: [EVOLUTIONS.md](EVOLUTIONS.md).
+>
+> **MF7c tamamlandı (2026-08-08):** Namespaced ve üçüncü taraf kaydına açık emir motoru;
+> kalıcı `follow/stay/wander`, tek seferlik `come`, oyuncu başına pending koruması ve Bukkit
+> `PetOrderService` eklendi. `/pet mode` aynı motoru kullanan uyumluluk komutudur. Ayrıntılar:
+> [ORDERS.md](ORDERS.md).
+>
+> **MF7d tamamlandı (2026-08-08):** Kara/uçuş velocity kontrolü, 1.20.4 için izole WASD
+> input adaptörü, izin ve global feature kapıları, normal movement bastırması, gravity geri
+> yükleme ve lifecycle temizliği `PetMountController` altında toplandı. Bukkit
+> `PetMountService` yayımlandı. Ayrıntılar: [MOUNTS.md](MOUNTS.md).
+
 Bilinçli olarak detaylandırılmamıştır. MF2 tamamlandığında bu maddelerin yarısı yeniden
 tanımlanacaktır.
 
-- **MF7:** Pet Item Action System (yem / evrim / unlock hepsi tek altyapı), orders, mount
+- **MF7:** Pet Item Action System (yem / unlock / seçimli evrim), otomatik
+  seviye evrimi, kalıcı/seçimli evrim, petsiz unlock itemleri, orders, mount — **tamamlandı**
 - **MF8:** MySQL ve network senkronizasyonu (K3), Pet Pack formatı, marketplace
+
+> **MF8 tamamlandı (2026-08-08):** Seçilebilir SQLite/MySQL backend, MySQL V9 şeması ve
+> gerçek MySQL CI entegrasyon testi; event-cursor tabanlı network invalidation/runtime
+> yenileme ve MySQL dağıtık kilitleri; atomik/rollback'li, bağımlılık ve motor sürümü
+> doğrulamalı namespaced Pet Pack kurulumları; HTTPS, redirect, boyut ve SHA-256 korumalı
+> marketplace ile üç açık Bukkit servisi tamamlandı. Ayrıntılar:
+> [ECOSYSTEM.md](ECOSYSTEM.md). Tam regresyon paketi 587/587 yeşildir.
 
 ---
 
@@ -275,7 +363,7 @@ Faz değiller, ama plana dahiller — çünkü unutulursa birikirler.
 | B2 | `spirit_flame` süzülmüyor | Cevapsız — `pets/` silinip açılış logundaki `Yüklenen petler:` satırı gerekiyor |
 | B3 | Yapısal borç: 9-11 parametreli ctor'lar, 552 satırlık `PetRuntimeCoordinator` | Bilinçli ertelendi |
 | B4 | Yaşam döngüsü entegrasyon testi | DB + koordinatör kablolaması gerekiyor |
-| B5 | Ölü MySQL kodu | Hiçbir yerde örneklenmiyor. **Öneri: silinsin**, MF8'de düzgün eklensin. Özellik gibi görünen ölü kod tuzaktır |
+| B5 | Ölü MySQL kodu | **Kapandı (MF8):** typed config, bootstrap, şema migratorü, repository adaptörleri ve CI MySQL 8.4 testiyle canlı hatta alındı |
 | B6 | Buff YAML'ları mevcut kurulumlara ulaşmıyor | `pets/` klasörü varsa üzerine yazılmaz; yeni `buffs:` bölümleri için o dosyalar silinmeli |
 
 ---

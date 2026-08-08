@@ -59,6 +59,24 @@ class SqlitePetRepositoryTest {
     }
 
     @Test
+    void updatePersistsDefinitionChangeWithoutLosingProgress() {
+        UUID petId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        PetInstance original = new PetInstance(petId, ownerId, "wolf", "Bobi", 12, 345,
+                PetAvailabilityState.AVAILABLE, 1000L, 1000L);
+        repository.insert(original);
+
+        repository.update(original.withDefinitionId("phoenix"));
+
+        PetInstance evolved = repository.findById(petId).orElseThrow();
+        assertEquals("phoenix", evolved.definitionId());
+        assertEquals("Bobi", evolved.customName());
+        assertEquals(12, evolved.level());
+        assertEquals(345, evolved.experience());
+        assertEquals(1000L, evolved.createdAt());
+    }
+
+    @Test
     void testSwitchActivePetTransaction() {
         UUID ownerId = UUID.randomUUID();
         UUID petA = UUID.randomUUID();

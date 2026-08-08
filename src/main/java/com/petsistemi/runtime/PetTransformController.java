@@ -29,14 +29,22 @@ public class PetTransformController {
 
     private final PetDefinitionRegistry definitionRegistry;
     private final PetRepresentationRegistry representationRegistry;
+    private final PetEvolutionController evolutionController;
 
     private final Map<UUID, Integer> activeTransformIndex = new HashMap<>();
     private final Map<UUID, PetDefinition> activeDefinitions = new HashMap<>();
 
     public PetTransformController(PetDefinitionRegistry definitionRegistry,
                                   PetRepresentationRegistry representationRegistry) {
+        this(definitionRegistry, representationRegistry, null);
+    }
+
+    public PetTransformController(PetDefinitionRegistry definitionRegistry,
+                                  PetRepresentationRegistry representationRegistry,
+                                  PetEvolutionController evolutionController) {
         this.definitionRegistry = definitionRegistry;
         this.representationRegistry = representationRegistry;
+        this.evolutionController = evolutionController;
     }
 
     /** Called once per pet per tick from the coordinator, before other controllers. */
@@ -99,6 +107,10 @@ public class PetTransformController {
     }
 
     private PetDefinition resolveBase(ActivePet active) {
+        if (evolutionController != null) {
+            PetDefinition evolved = evolutionController.activeDefinition(active);
+            if (evolved != null) return evolved;
+        }
         if (definitionRegistry == null || active == null || active.getDefinitionId() == null) {
             return null;
         }

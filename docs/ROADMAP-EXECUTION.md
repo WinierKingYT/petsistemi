@@ -63,14 +63,71 @@ oturacağı motor katmanları ayrı bir eksende ilerler ve `ENGINE-ROADMAP.md`'d
 
 | Faz | Konu | Durum |
 | :--- | :--- | :--- |
-| **MF1** | Namespaced Registry — açık movement/representation kaydı | `PLANLANDI` |
-| **MF2** | Behavior Engine — Trigger / Condition / Action | `PLANLANDI` |
-| **MF3** | Ability / Skill | `PLANLANDI` |
-| **MF4** | Animation Abstraction | `PLANLANDI` |
-| **MF5** | Model Provider adaptörleri (ModelEngine vb.) | `PLANLANDI` |
-| **MF6** | Collection GUI + oyun içi editör | `PLANLANDI` |
-| **MF7** | Gameplay (item action, orders, mount) | `TASLAK` |
-| **MF8** | Ekosistem (MySQL/network, Pet Packs) | `TASLAK` |
+| **MF1** | Namespaced Registry — açık movement/representation kaydı | `COMPLETED` |
+| **MF2** | Behavior Engine — Trigger / Condition / Action | `COMPLETED` |
+| **MF3** | Ability / Skill | `COMPLETED` |
+| **MF4** | Animation Abstraction | `COMPLETED` |
+| **MF5** | Model Provider adaptörleri (ModelEngine vb.) | `COMPLETED` |
+| **MF6** | Collection GUI + oyun içi editör | `COMPLETED` |
+| **MF7** | Gameplay (item action, evolution, orders, mount) | `COMPLETED` — MF7a + MF7b + MF7c + MF7d + MF7e |
+| **MF8** | Ekosistem (MySQL/network, Pet Packs, marketplace) | `COMPLETED` |
 
 Kilitlenen kararlar, çıkış kriterleri, kapsam dışı maddeler ve borç kaydı için bkz.
 [ENGINE-ROADMAP.md](ENGINE-ROADMAP.md).
+
+- **[2026-08-08 · MF1]**: Movement/representation registry'leri namespaced anahtarlara
+  taşındı; özel YAML anahtarları runtime'a kadar korunuyor, yerleşik enum API'si ve
+  `FAST_DIGGING` → `HASTE` 1.20.4 uyumluluk çözümlemesi geriye uyumlu kaldı.
+- **[2026-08-08 · MF2 başlangıcı]**: Açık trigger/condition/action registry'leri ve
+  behavior executor eklendi. Eski `reactions:`/`emotes:` akışları uyumluluk adaptörüyle
+  yeni motor üzerinden çalışıyor; native YAML ve buff action sonraki dilimde.
+- **[2026-08-08 · MF2 tamamlandı]**: Native `behaviors:` YAML, buff action adaptörü ve
+  Bukkit `BehaviorService` eklendi. Legacy reaction/emote/buff davranışı korunarak
+  üçüncü taraf trigger/condition/action kaydı açıldı; 512 test yeşil.
+- **[2026-08-08 · MF3 başlangıcı]**: Behavior tabanlı ability YAML modeli, cooldown,
+  hedef seçimi ve `/pet ability` komutu eklendi. Projectile/AoE action'ları ve tuş
+  bağlama sonraki dilimde.
+- **[2026-08-08 · MF3 tamamlandı]**: Yerleşik projectile, alan potion ve alan hasarı
+  action'ları ile oturumluk çömelme + el değiştirme tuş bağı eklendi. Başarısız
+  hedefleme cooldown tüketmiyor; 522 test yeşil.
+- **[2026-08-08 · MF4 tamamlandı]**: Provider-bağımsız animasyon state machine,
+  namespaced klip/öncelik/blend metadata'sı ve ortak vanilla/display animasyon arayüzü
+  eklendi. Eski idle animation YAML'ı korunurken IDLE/MOVING/SPRINTING/SLEEPING ile
+  öncelikli ATTACKING geçişleri açıldı; 526 test yeşil.
+- **[2026-08-08 · MF5 tamamlandı]**: ModelEngine, ItemsAdder ve Oraxen için isteğe bağlı
+  model adaptörleri; `representation.model-id`; Bukkit `ModelProviderService` ve güvenli
+  eksik-provider davranışı eklendi. Harici API'ler core linkage'ından ayrıldı; 535 test
+  yeşil. Kullanım: [MODEL-PROVIDERS.md](MODEL-PROVIDERS.md).
+- **[2026-08-08 · MF6 tamamlandı]**: Tüm pet tanımlarını kilitli/açık durumuyla gösteren,
+  filtreli ve sayfalı `/pet collection`; chat girdili `/petadmin editor`; üretim doğrulama
+  zinciri, iyimser dosya kilidi, atomik yazma ve başarısız yayında rollback eklendi.
+  Tam paket 539/539 yeşil. Kullanım: [COLLECTION-EDITOR.md](COLLECTION-EDITOR.md).
+- **[2026-08-08 · MF7a tamamlandı]**: Açık `PetItemActionService`, namespaced action
+  registry, materyal/custom-model-data eşleştirmesi, başarıya bağlı tüketim/cooldown ve
+  yerleşik XP/unlock aksiyonları eklendi. `wolf` kemik yemiyle örneklendi. MF7 bütünü
+  orders/evolution/mount-control tamamlanana kadar sürüyor; tam paket 547/547 yeşil. Kullanım:
+  [ITEM-ACTIONS.md](ITEM-ACTIONS.md).
+- **[2026-08-08 · MF7b tamamlandı]**: `evolutions:` şeması en yüksek uygun seviye
+  aşamasını seçen runtime controller'a bağlandı; hedef tanım + ad/ölçek override'ı transforms
+  öncesinde uygulanıyor. Eksik hedef ve canlı değiştirilemeyen provider geçişleri klasör
+  genelinde doğrulanıyor; tam paket 551/551 yeşil. Kullanım: [EVOLUTIONS.md](EVOLUTIONS.md).
+- **[2026-08-08 · MF7c tamamlandı]**: Bukkit `PetOrderService`, namespaced order registry,
+  oyuncu başına devam eden işlem koruması ve yerleşik `follow/stay/wander/come` emirleri
+  eklendi. Eski `/pet mode` aynı motor üzerinden geriye uyumlu çalışıyor; `come` multi-entity
+  petlerin bütün parçalarını taşırken kalıcı modu değiştirmiyor. Tam paket 557/557 yeşil.
+  Kullanım: [ORDERS.md](ORDERS.md).
+- **[2026-08-08 · MF7d tamamlandı]**: Merkezî `PetMountController`, Bukkit
+  `PetMountService`, WASD/zıplama giriş adaptörü, kara/uçuş velocity kontrolü ve gravity
+  geri yüklemeli lifecycle temizliği eklendi. Binek tick'i normal follow movement'ı bastırırken
+  görsel zincir çalışmayı sürdürüyor; tam paket 568/568 yeşil. Kullanım: [MOUNTS.md](MOUNTS.md).
+- **[2026-08-08 · MF7e / MF7 tamamlandı]**: `petsistemi:evolve_pet` kalıcı tanım
+  değişimini pet kimliği ve progression verisini koruyarak uygular; aktif runtime spawn
+  başarısızlığında DB ve görünüm geri alınır. Aktif pet gerektirmeyen PDC işaretli unlock
+  itemi, `/petadmin unlockitem`, `PetUnlockItemService` ve asenkron item iadesi eklendi.
+  Tam paket 575/575 yeşil. Kullanım: [ITEM-ACTIONS.md](ITEM-ACTIONS.md),
+  [EVOLUTIONS.md](EVOLUTIONS.md).
+- **[2026-08-08 · MF8 tamamlandı]**: MySQL V9 backend ve CI servisi, paylaşımlı event
+  cursor'ı + dağıtık kilitli network senkronizasyonu, atomik namespaced Pet Pack yönetimi
+  ve HTTPS/SHA-256 korumalı marketplace tamamlandı. Bukkit network/pack/marketplace
+  servisleri üçüncü taraflara açıldı; tam regresyon paketi 587/587 yeşil. Kullanım:
+  [ECOSYSTEM.md](ECOSYSTEM.md).

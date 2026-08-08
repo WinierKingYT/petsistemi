@@ -2,11 +2,14 @@ package com.petsistemi.application;
 
 import com.petsistemi.api.PetSnapshot;
 import com.petsistemi.api.event.PetDismissEvent;
+import com.petsistemi.api.event.PetEvolutionEvent;
 import com.petsistemi.api.event.PetPreDismissEvent;
+import com.petsistemi.api.event.PetPreEvolutionEvent;
 import com.petsistemi.api.event.PetPreSummonEvent;
 import com.petsistemi.api.event.PetRecoveryFailedEvent;
 import com.petsistemi.api.event.PetSummonEvent;
 import com.petsistemi.api.result.PetDismissResult;
+import com.petsistemi.api.result.PetEvolutionResult;
 import com.petsistemi.api.result.PetSummonResult;
 import com.petsistemi.bootstrap.MainThreadDispatcher;
 import com.petsistemi.definition.PetDefinitionRegistry;
@@ -292,6 +295,174 @@ public class PetRuntimeOperationService {
     }
 
     // ─────────────────────────────────────────────────────────────────────────
+    // PERSISTENT EVOLUTION
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /**
+     * Permanently changes a pet's definition while preserving its identity and progression.
+     * If the pet is active, the runtime representation is replaced on the main thread. A
+     * failed runtime replacement compensates the database write and restores the old pet.
+     */
+    public CompletableFuture<PetEvolutionResult> evolveAsync(Player owner, UUID petId, String targetDefinitionId) {
+        Objects.requireNonNull(owner, "owner null olamaz.");
+        Objects.requireNonNull(petId, "petId null olamaz.");
+        String targetId = targetDefinitionId == null ? "" : targetDefinitionId.trim().toLowerCase(java.util.Locale.ROOT);
+        if (targetId.isEmpty()) {
+            return CompletableFuture.completedFuture(new PetEvolutionResult(false, "Hedef pet tanımı belirtilmedi.", null, null));
+        }
+
+        UUID ownerId = owner.getUniqueId();
+        Object lockMarker = new Object();
+        if (ownerLocks.putIfAbsent(ownerId, lockMarker) != null) {
+            return CompletableFuture.completedFuture(new PetEvolutionResult(false, "Zaten devam eden bir pet işleminiz var.", null, null));
+        }
+
+        CompletableFuture<PetEvolutionResult> future = new CompletableFuture<>();
+        dbExecutor.submit(() -> {
+            PetInstance pet = repository.findById(petId).orElse(null);
+            if (pet == null) return new InternalEvolutionState(false, "Pet veritabanında bulunamadı.", null, null, null, false);
+            if (!ownerId.equals(pet.ownerId())) return new InternalEvolutionState(false, "Bu pet size ait değil.", null, null, null, false);
+            if (pet.availabilityState() == PetAvailabilityState.DISABLED) return new InternalEvolutionState(false, "Devre dışı pet evrimleştirilemez.", null, null, null, false);
+            if (pet.definitionId().equalsIgnoreCase(targetId)) return new InternalEvolutionState(false, "Pet zaten bu türe ait.", null, null, null, false);
+            PetDefinition target = definitionRegistry.find(targetId).orElse(null);
+            if (target == null) return new InternalEvolutionState(false, "Hedef pet tanımı bulunamadı: " + targetId, null, null, null, false);
+            PetDefinition source = definitionRegistry.find(pet.definitionId()).orElse(null);
+            if (source == null) return new InternalEvolutionState(false, "Mevcut pet tanımı bulunamadı: " + pet.definitionId(), null, null, null, false);
+            boolean selected = selectionRepository.findByOwner(ownerId)
+                    .map(selection -> selection.petId().equals(petId)).orElse(false);
+            return new InternalEvolutionState(true, null, pet, pet.withDefinitionId(target.id()), target, selected);
+        }).thenAccept(state -> {
+            if (!state.success()) {
+                ownerLocks.remove(ownerId, lockMarker);
+                future.complete(new PetEvolutionResult(false, state.message(), null, null));
+                return;
+            }
+
+            mainThreadDispatcher.run(() -> {
+                if (!owner.isOnline()) {
+                    ownerLocks.remove(ownerId, lockMarker);
+                    future.complete(new PetEvolutionResult(false, "Oyuncu çevrimdışı olduğu için evrim iptal edildi.", null, null));
+                    return;
+                }
+                String permission = state.targetDefinition().permission();
+                if (permission != null && !owner.hasPermission(permission)) {
+                    ownerLocks.remove(ownerId, lockMarker);
+                    future.complete(new PetEvolutionResult(false, "Hedef pet türü için yetkiniz yok (" + permission + ").", null, null));
+                    return;
+                }
+
+                Optional<ActivePet> active = coordinator.getRuntimePet(ownerId)
+                        .filter(runtime -> runtime.getPetId().equals(petId));
+                boolean selected = state.selected();
+                PetSnapshot before = snapshot(state.before(), selected, active.isPresent());
+                PetSnapshot after = snapshot(state.after(), selected, active.isPresent());
+                PetPreEvolutionEvent preEvent = new PetPreEvolutionEvent(owner, before, state.after().definitionId());
+                if (Bukkit.getServer() != null) Bukkit.getPluginManager().callEvent(preEvent);
+                if (preEvent.isCancelled()) {
+                    ownerLocks.remove(ownerId, lockMarker);
+                    future.complete(new PetEvolutionResult(false, "Pet evrimi başka bir eklenti tarafından engellendi.", before, null));
+                    return;
+                }
+
+                PetFollowMode followMode = active.map(ActivePet::getFollowMode).orElse(PetFollowMode.FOLLOW);
+                org.bukkit.Location stayLocation = active.map(ActivePet::getStayLocation).orElse(null);
+                dbExecutor.submit(() -> {
+                    try {
+                        repository.update(state.after());
+                        return true;
+                    } catch (Exception ex) {
+                        if (plugin != null) plugin.getLogger().log(Level.SEVERE, "Pet evrimi kaydedilemedi.", ex);
+                        return false;
+                    }
+                }).thenCompose(saved -> mainThreadDispatcher.run(() -> {
+                    if (!saved) {
+                        ownerLocks.remove(ownerId, lockMarker);
+                        future.complete(new PetEvolutionResult(false, "Pet evrimi veritabanına kaydedilemedi.", before, null));
+                        return;
+                    }
+
+                    Entity evolvedEntity = null;
+                    try {
+                        if (active.isPresent()) {
+                            ActivePet replacement = coordinator.spawnRuntimeUncommittedHandle(owner, state.after(), state.targetDefinition());
+                            replacement.setFollowMode(followMode);
+                            replacement.setStayLocation(stayLocation);
+                            coordinator.commitRuntimeSpawn(replacement);
+                            evolvedEntity = replacement.getSpawnedEntity();
+                        }
+                        if (profileCache != null) profileCache.updateDefinition(ownerId, petId, state.after().definitionId());
+                        if (Bukkit.getServer() != null) Bukkit.getPluginManager().callEvent(new PetEvolutionEvent(owner, before, after, evolvedEntity));
+                        ownerLocks.remove(ownerId, lockMarker);
+                        future.complete(new PetEvolutionResult(true, "Pet kalıcı olarak evrimleşti: " + state.after().definitionId(), before, after));
+                    } catch (Exception runtimeError) {
+                        coordinator.rollbackRuntimeSpawn(ownerId, null);
+                        rollbackEvolution(owner, state, followMode, stayLocation, before, future, ownerId,
+                                lockMarker, active.isPresent(), runtimeError);
+                    }
+                })).exceptionally(ex -> {
+                    ownerLocks.remove(ownerId, lockMarker);
+                    future.complete(new PetEvolutionResult(false, "Pet evrimi sırasında hata oluştu: " + ex.getMessage(), before, null));
+                    return null;
+                });
+            }).exceptionally(ex -> {
+                ownerLocks.remove(ownerId, lockMarker);
+                future.complete(new PetEvolutionResult(false, "Pet evrimi sırasında hata oluştu: " + ex.getMessage(), null, null));
+                return null;
+            });
+        }).exceptionally(ex -> {
+            ownerLocks.remove(ownerId, lockMarker);
+            future.complete(new PetEvolutionResult(false, "Pet evrimi sırasında hata oluştu: " + ex.getMessage(), null, null));
+            return null;
+        });
+        return future;
+    }
+
+    private void rollbackEvolution(Player owner, InternalEvolutionState state, PetFollowMode followMode,
+                                   org.bukkit.Location stayLocation, PetSnapshot before,
+                                   CompletableFuture<PetEvolutionResult> future, UUID ownerId,
+                                   Object lockMarker, boolean restoreRuntime, Exception runtimeError) {
+        dbExecutor.submit(() -> {
+            try {
+                repository.update(state.before());
+                return true;
+            } catch (Exception rollbackError) {
+                if (plugin != null) plugin.getLogger().log(Level.SEVERE, "Pet evrimi DB geri alımı başarısız.", rollbackError);
+                return false;
+            }
+        }).thenCompose(rolledBack -> mainThreadDispatcher.run(() -> {
+            boolean runtimeRestored = true;
+            if (rolledBack && restoreRuntime && owner.isOnline()) {
+                try {
+                    PetDefinition source = definitionRegistry.find(state.before().definitionId()).orElseThrow();
+                    ActivePet restored = coordinator.spawnRuntimeUncommittedHandle(owner, state.before(), source);
+                    restored.setFollowMode(followMode);
+                    restored.setStayLocation(stayLocation);
+                    coordinator.commitRuntimeSpawn(restored);
+                } catch (Exception restoreError) {
+                    runtimeRestored = false;
+                    coordinator.rollbackRuntimeSpawn(ownerId, null);
+                    if (plugin != null) plugin.getLogger().log(Level.SEVERE, "Evrim sonrası eski runtime geri yüklenemedi.", restoreError);
+                }
+            }
+            if (rolledBack && profileCache != null) {
+                profileCache.updateDefinition(ownerId, state.before().petId(), state.before().definitionId());
+            }
+            String suffix = rolledBack && runtimeRestored ? " Değişiklik geri alındı." : " Geri alma tamamlanamadı; sunucu günlüğünü kontrol edin.";
+            ownerLocks.remove(ownerId, lockMarker);
+            future.complete(new PetEvolutionResult(false, "Yeni pet görünümü oluşturulamadı: " + runtimeError.getMessage() + suffix, before, null));
+        })).exceptionally(ex -> {
+            ownerLocks.remove(ownerId, lockMarker);
+            future.complete(new PetEvolutionResult(false, "Evrim geri alınırken hata oluştu: " + ex.getMessage(), before, null));
+            return null;
+        });
+    }
+
+    private static PetSnapshot snapshot(PetInstance pet, boolean selected, boolean spawned) {
+        return new PetSnapshot(pet.petId(), pet.ownerId(), pet.definitionId(), pet.customName(),
+                pet.level(), pet.experience(), pet.availabilityState(), selected, spawned);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
     // DISMISS
     // ─────────────────────────────────────────────────────────────────────────
 
@@ -507,4 +678,6 @@ public class PetRuntimeOperationService {
 
     private record InternalSummonState(boolean success, String message, PetInstance pet,
                                        PetDefinition definition, UUID previousPetId, PetFollowMode followMode) {}
+    private record InternalEvolutionState(boolean success, String message, PetInstance before,
+                                          PetInstance after, PetDefinition targetDefinition, boolean selected) {}
 }

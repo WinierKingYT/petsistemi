@@ -11,6 +11,13 @@ import com.petsistemi.message.PlaceholderMap;
 import com.petsistemi.runtime.ActivePet;
 import com.petsistemi.runtime.ActivePetRegistry;
 import com.petsistemi.runtime.InteractionHitboxController;
+import com.petsistemi.runtime.item.PetItemActionEngine;
+import com.petsistemi.runtime.item.PetItemActionOutcome;
+import com.petsistemi.runtime.item.PetItemActionStatus;
+import com.petsistemi.runtime.mount.PetMountController;
+import com.petsistemi.api.mount.PetMountResult;
+import com.petsistemi.api.mount.PetMountStatus;
+import org.bukkit.GameMode;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -19,6 +26,8 @@ import org.bukkit.event.entity.EntityBreedEvent;
 import org.bukkit.event.entity.EntityTameEvent;
 import org.bukkit.event.player.PlayerInteractEntityEvent;
 import org.bukkit.event.entity.PlayerLeashEntityEvent;
+import org.bukkit.inventory.EquipmentSlot;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.Optional;
@@ -33,21 +42,23 @@ public class PetProtectionListener implements Listener {
     private final AtomicReference<RuntimeConfigurationSnapshot> configSnapshot;
     private final MessageService messageService;
     private final InteractionHitboxController hitboxController;
+    private final PetItemActionEngine itemActionEngine;
+    private final PetMountController mountController;
 
     public PetProtectionListener(ActivePetRegistry activeRegistry) {
-        this(activeRegistry, null, null, null, null, null);
+        this(activeRegistry, null, null, null, null, null, null, null, null);
     }
 
     public PetProtectionListener(ActivePetRegistry activeRegistry, PetService petService,
                                  JavaPlugin plugin, PetDefinitionRegistry definitionRegistry) {
-        this(activeRegistry, petService, plugin, definitionRegistry, null, null);
+        this(activeRegistry, petService, plugin, definitionRegistry, null, null, null, null, null);
     }
 
     public PetProtectionListener(ActivePetRegistry activeRegistry, PetService petService,
                                  JavaPlugin plugin, PetDefinitionRegistry definitionRegistry,
                                  AtomicReference<RuntimeConfigurationSnapshot> configSnapshot,
                                  MessageService messageService) {
-        this(activeRegistry, petService, plugin, definitionRegistry, configSnapshot, messageService, null);
+        this(activeRegistry, petService, plugin, definitionRegistry, configSnapshot, messageService, null, null, null);
     }
 
     public PetProtectionListener(ActivePetRegistry activeRegistry, PetService petService,
@@ -55,6 +66,27 @@ public class PetProtectionListener implements Listener {
                                  AtomicReference<RuntimeConfigurationSnapshot> configSnapshot,
                                  MessageService messageService,
                                  InteractionHitboxController hitboxController) {
+        this(activeRegistry, petService, plugin, definitionRegistry, configSnapshot, messageService,
+                hitboxController, null, null);
+    }
+
+    public PetProtectionListener(ActivePetRegistry activeRegistry, PetService petService,
+                                 JavaPlugin plugin, PetDefinitionRegistry definitionRegistry,
+                                 AtomicReference<RuntimeConfigurationSnapshot> configSnapshot,
+                                 MessageService messageService,
+                                 InteractionHitboxController hitboxController,
+                                 PetItemActionEngine itemActionEngine) {
+        this(activeRegistry, petService, plugin, definitionRegistry, configSnapshot, messageService,
+                hitboxController, itemActionEngine, null);
+    }
+
+    public PetProtectionListener(ActivePetRegistry activeRegistry, PetService petService,
+                                 JavaPlugin plugin, PetDefinitionRegistry definitionRegistry,
+                                 AtomicReference<RuntimeConfigurationSnapshot> configSnapshot,
+                                 MessageService messageService,
+                                 InteractionHitboxController hitboxController,
+                                 PetItemActionEngine itemActionEngine,
+                                 PetMountController mountController) {
         this.activeRegistry = activeRegistry;
         this.petService = petService;
         this.plugin = plugin;
@@ -62,6 +94,8 @@ public class PetProtectionListener implements Listener {
         this.configSnapshot = configSnapshot;
         this.messageService = messageService;
         this.hitboxController = hitboxController;
+        this.itemActionEngine = itemActionEngine;
+        this.mountController = mountController;
     }
 
     @EventHandler
@@ -160,11 +194,93 @@ public class PetProtectionListener implements Listener {
         ActivePet activePet = activeOpt.get();
         boolean isOwner = activePet.getOwnerId().equals(player.getUniqueId());
 
-        if (player.isSneaking() && isOwner && canRide(player, activePet)) {
+        if (isOwner && event.getHand() == EquipmentSlot.HAND && tryItemAction(player, activePet)) {
+            return;
+        }
+        // Bukkit fires the interaction for both hands. Mount/inspect must run once only;
+        // otherwise the off-hand event immediately toggles a successful mount back off.
+        if (event.getHand() != EquipmentSlot.HAND) {
+            return;
+        }
+
+        if (player.isSneaking() && isOwner && (mountController != null || canRide(player, activePet))) {
             toggleRide(player, activePet, mountTarget(activePet, event.getRightClicked()));
         } else if (petService != null) {
             PetInspectMenu.open(player, petService, activePet.getPetId(), activePet.getOwnerId(), plugin, definitionRegistry, configSnapshot, messageService);
         }
+    }
+
+    private boolean tryItemAction(Player player, ActivePet activePet) {
+        if (itemActionEngine == null || definitionRegistry == null) return false;
+        PetDefinition definition = definitionRegistry.find(activePet.getDefinitionId()).orElse(null);
+        ItemStack held = player.getInventory().getItemInMainHand();
+        if (definition == null || !itemActionEngine.matches(definition, held)) return false;
+
+        ItemStack paid = held.clone();
+        java.util.concurrent.CompletableFuture<PetItemActionOutcome> future =
+                itemActionEngine.use(player, activePet, definition, held);
+        PetItemActionOutcome immediate = future.getNow(null);
+        if (immediate != null) {
+            if (immediate.success()) consume(player, immediate.definition().consumeAmount());
+            sendItemOutcome(player, immediate);
+            return true;
+        }
+
+        int consumeAmount = definition.itemActions().stream()
+                .filter(action -> action.material().equalsIgnoreCase(held.getType().name()))
+                .filter(action -> action.customModelData() == null || (held.hasItemMeta()
+                        && held.getItemMeta().hasCustomModelData()
+                        && held.getItemMeta().getCustomModelData() == action.customModelData()))
+                .findFirst().map(com.petsistemi.domain.item.PetItemActionDefinition::consumeAmount).orElse(0);
+        paid.setAmount(consumeAmount);
+        consume(player, consumeAmount);
+        future.whenComplete((outcome, error) -> runOnMainThread(() -> {
+            PetItemActionOutcome resolved = outcome;
+            if (resolved == null) {
+                resolved = new PetItemActionOutcome(PetItemActionStatus.FAILED,
+                        error != null ? error.getMessage() : "Item işlemi başarısız.", null, 0);
+            }
+            if (!resolved.success()) refund(player, paid);
+            sendItemOutcome(player, resolved);
+        }));
+        return true;
+    }
+
+    private static void consume(Player player, int amount) {
+        if (amount <= 0 || player.getGameMode() == GameMode.CREATIVE) return;
+        ItemStack current = player.getInventory().getItemInMainHand();
+        int remaining = current.getAmount() - amount;
+        if (remaining <= 0) player.getInventory().setItemInMainHand(null);
+        else current.setAmount(remaining);
+    }
+
+    private static void refund(Player player, ItemStack paid) {
+        if (paid == null || paid.getAmount() <= 0 || player.getGameMode() == GameMode.CREATIVE) return;
+        player.getInventory().addItem(paid).values().forEach(leftover ->
+                player.getWorld().dropItemNaturally(player.getLocation(), leftover));
+    }
+
+    private void sendItemOutcome(Player player, PetItemActionOutcome outcome) {
+        if (outcome == null || outcome.status() == PetItemActionStatus.NOT_MATCHED) return;
+        String message = outcome.message() != null ? outcome.message() : "Item işlemi tamamlanamadı.";
+        if (outcome.status() == PetItemActionStatus.COOLDOWN) {
+            message += " Kalan süre: " + outcome.remainingSeconds() + " saniye.";
+        }
+        net.kyori.adventure.text.format.NamedTextColor color = outcome.success()
+                ? net.kyori.adventure.text.format.NamedTextColor.GREEN
+                : net.kyori.adventure.text.format.NamedTextColor.RED;
+        player.sendMessage(net.kyori.adventure.text.Component.text(message, color));
+    }
+
+    private void runOnMainThread(Runnable action) {
+        if (plugin != null && plugin.getServer() != null) plugin.getServer().getScheduler().runTask(plugin, action);
+        else action.run();
+    }
+
+    @EventHandler
+    public void onQuit(org.bukkit.event.player.PlayerQuitEvent event) {
+        if (itemActionEngine != null) itemActionEngine.cleanup(event.getPlayer().getUniqueId());
+        if (mountController != null) mountController.cleanup(event.getPlayer().getUniqueId());
     }
 
     /** Pet body / tracked child first, then the interaction hitbox registry. */
@@ -219,6 +335,29 @@ public class PetProtectionListener implements Listener {
 
     private void toggleRide(Player player, ActivePet activePet, Entity petEntity) {
         String petName = petName(activePet);
+        if (mountController != null) {
+            PetMountResult result = mountController.toggleMount(player);
+            String key;
+            String fallback;
+            if (result.status() == PetMountStatus.MOUNTED) {
+                key = "riding.enter";
+                fallback = "<green><name> üzerine bindiniz! WASD ile yönetin, Space ile zıplayın.</green>";
+            } else if (result.status() == PetMountStatus.DISMOUNTED) {
+                key = "riding.exit";
+                fallback = "<yellow><name> üzerinden indiniz.</yellow>";
+            } else if (result.status() == PetMountStatus.NO_PERMISSION) {
+                key = "riding.no-permission";
+                fallback = "<red><name> petine binme yetkiniz yok.</red>";
+            } else if (result.status() == PetMountStatus.DISABLED) {
+                key = "riding.disabled";
+                fallback = "<red>Bu pet için sürüş devre dışı.</red>";
+            } else {
+                key = "riding.failed";
+                fallback = "<red>Pet sürüşü başlatılamadı: " + result.message() + "</red>";
+            }
+            sendMessage(player, key, fallback, petName);
+            return;
+        }
         if (player.getVehicle() == petEntity) {
             player.leaveVehicle();
             sendMessage(player, "riding.exit", "<yellow><name> üzerinden indiniz.</yellow>", petName);

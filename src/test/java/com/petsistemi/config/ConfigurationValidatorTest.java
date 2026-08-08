@@ -47,4 +47,21 @@ class ConfigurationValidatorTest {
         assertTrue(errors.stream().anyMatch(e -> e.contains("stop-distance")));
         assertTrue(errors.stream().anyMatch(e -> e.contains("locale")));
     }
+
+    @Test
+    void networkSyncRequiresMysqlBackend() {
+        PluginConfiguration base = new PluginConfiguration(
+                new PluginConfiguration.LimitsConfiguration(20),
+                new PluginConfiguration.NamingConfiguration(2, 16, false, false),
+                new PluginConfiguration.ProgressionConfiguration(true, 100),
+                new PluginConfiguration.RuntimeConfiguration(5L, 5.0, 2.0, 15.0, 1.2),
+                new PluginConfiguration.DatabaseConfiguration(true, true, 5),
+                new PluginConfiguration.GuiConfiguration("Menu", 6), new PluginConfiguration.DiagnosticsConfiguration(100),
+                new PluginConfiguration.DefinitionConfiguration("KEEP_OLD_ON_ANY_ERROR"),
+                new PluginConfiguration.FeaturesConfiguration(false, false, false, false),
+                new PluginConfiguration.EcosystemConfiguration(
+                        new PluginConfiguration.NetworkConfiguration(true, "server-a", 20, 100, 10000),
+                        PluginConfiguration.PetPackConfiguration.defaults(), PluginConfiguration.MarketplaceConfiguration.defaults()), "tr_TR");
+        assertTrue(ConfigurationValidator.validate(base).stream().anyMatch(error -> error.contains("MYSQL")));
+    }
 }

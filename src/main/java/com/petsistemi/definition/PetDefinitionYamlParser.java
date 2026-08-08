@@ -25,6 +25,15 @@ import com.petsistemi.domain.PetVector3;
 import com.petsistemi.domain.PetVisualOverride;
 import com.petsistemi.domain.PetWeather;
 import com.petsistemi.domain.RuntimeRepresentationType;
+import com.petsistemi.domain.RuntimeKeyResolver;
+import com.petsistemi.domain.behavior.BehaviorActionDefinition;
+import com.petsistemi.domain.behavior.BehaviorConditionDefinition;
+import com.petsistemi.domain.behavior.PetBehaviorDefinition;
+import com.petsistemi.domain.ability.AbilityTargetType;
+import com.petsistemi.domain.ability.PetAbilityDefinition;
+import com.petsistemi.domain.animation.PetAnimationState;
+import com.petsistemi.runtime.behavior.BuiltInBehaviorKeys;
+import org.bukkit.NamespacedKey;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.potion.PotionEffectType;
 
@@ -71,6 +80,9 @@ public final class PetDefinitionYamlParser {
             com.petsistemi.domain.PetSpawnStyleDefinition spawnStyle = parseSpawnStyle(yaml, errors);
             com.petsistemi.domain.PetMountDefinition mount = parseMount(yaml, errors);
             com.petsistemi.domain.PetPresenceDefinition presence = parsePresence(yaml, errors);
+            List<PetBehaviorDefinition> behaviors = parseBehaviors(yaml, errors);
+            Map<NamespacedKey, PetAbilityDefinition> abilities = parseAbilities(yaml, errors);
+            List<com.petsistemi.domain.item.PetItemActionDefinition> itemActions = parseItemActions(yaml, errors);
 
             PetDefinition def = new PetDefinition(
                     id,
@@ -102,7 +114,10 @@ public final class PetDefinitionYamlParser {
                     allowedModes,
                     spawnStyle,
                     mount,
-                    presence
+                    presence,
+                    behaviors,
+                    abilities,
+                    itemActions
             );
             return new Parsed(def, errors);
         } catch (Exception e) {
@@ -125,7 +140,9 @@ public final class PetDefinitionYamlParser {
         String repTypeStr = hasRepresentation
                 ? yaml.getString("representation.type", "ENTITY")
                 : "ENTITY";
-        RuntimeRepresentationType repType = parseEnum(repTypeStr, RuntimeRepresentationType.class, errors, "representation.type");
+        NamespacedKey repKey = parseRuntimeKey(repTypeStr, RuntimeRepresentationType.class, errors, "representation.type", false);
+        RuntimeRepresentationType repType = RuntimeKeyResolver.builtInRepresentation(repKey);
+        if (repType == null) repType = RuntimeRepresentationType.ENTITY;
 
         String entityType = (hasRepresentation ? yaml.getString("representation.entity-type") : null);
         if (entityType == null || entityType.isBlank()) {
@@ -156,11 +173,12 @@ public final class PetDefinitionYamlParser {
         double particleSpeed = yaml.getDouble("representation.particle-speed", 0.0);
         int childCount = Math.max(0, yaml.getInt("representation.child-count", 0));
         String childMaterial = hasRepresentation ? yaml.getString("representation.child-material") : null;
+        String modelId = hasRepresentation ? trimToNull(yaml.getString("representation.model-id")) : null;
 
         return new PetRepresentationDefinition(
-                repType, entityType, baby, glowing, invulnerable, silent, gravity,
+                repType, repKey, entityType, baby, glowing, invulnerable, silent, gravity,
                 itemMaterial, customModelData, scale != null ? scale : PetVector3.ONE,
-                particleType, particleCount, particleOffset, particleSpeed, childCount, childMaterial);
+                particleType, particleCount, particleOffset, particleSpeed, childCount, childMaterial, modelId);
     }
 
     private static PetMovementDefinition parseMovement(YamlConfiguration yaml,
@@ -177,7 +195,9 @@ public final class PetDefinitionYamlParser {
         }
 
         String movTypeStr = yaml.getString("movement.type", "GROUND_FOLLOW");
-        PetMovementType movType = parseEnum(movTypeStr, PetMovementType.class, errors, "movement.type");
+        NamespacedKey movementKey = parseRuntimeKey(movTypeStr, PetMovementType.class, errors, "movement.type", true);
+        PetMovementType movType = RuntimeKeyResolver.builtInMovement(movementKey);
+        if (movType == null) movType = PetMovementType.GROUND_FOLLOW;
 
         double followDistance = yaml.getDouble("movement.follow-distance", 0.0);
         double teleportDistance = yaml.getDouble("movement.teleport-distance", 0.0);
@@ -207,7 +227,7 @@ public final class PetDefinitionYamlParser {
                     anchorDistance, anchorHeight, rotateWithOwner);
         }
 
-        return new PetMovementDefinition(movType, followDistance, teleportDistance, updateIntervalTicks,
+        return new PetMovementDefinition(movType, movementKey, followDistance, teleportDistance, updateIntervalTicks,
                 height, sideOffset, followSpeed, orbit, anchor, delayTicks);
     }
 
@@ -308,20 +328,45 @@ public final class PetDefinitionYamlParser {
         if (!yaml.isConfigurationSection("states")) {
             return null;
         }
-        PetStateDefinition moving = null;
-        if (yaml.isConfigurationSection("states.MOVING")) {
-            PetIdleAnimation animation = parseEnum(yaml.getString("states.MOVING.animation"), PetIdleAnimation.class,
-                    errors, "states.MOVING.animation");
-            moving = new PetStateDefinition(0, animation);
+        return new PetStatesDefinition(
+                parseAnimationState(yaml, PetAnimationState.MOVING, errors),
+                parseAnimationState(yaml, PetAnimationState.IDLE, errors),
+                parseAnimationState(yaml, PetAnimationState.SPRINTING, errors),
+                parseAnimationState(yaml, PetAnimationState.SLEEPING, errors),
+                parseAnimationState(yaml, PetAnimationState.ATTACKING, errors));
+    }
+
+    private static PetStateDefinition parseAnimationState(YamlConfiguration yaml, PetAnimationState state,
+                                                           List<String> errors) {
+        String path = "states." + state.name();
+        if (!yaml.isConfigurationSection(path)) {
+            return null;
         }
-        PetStateDefinition idle = null;
-        if (yaml.isConfigurationSection("states.IDLE")) {
-            int afterTicks = Math.max(0, yaml.getInt("states.IDLE.after-ticks", 0));
-            PetIdleAnimation animation = parseEnum(yaml.getString("states.IDLE.animation"), PetIdleAnimation.class,
-                    errors, "states.IDLE.animation");
-            idle = new PetStateDefinition(afterTicks, animation);
+        int afterTicks = Math.max(0, yaml.getInt(path + ".after-ticks", 0));
+        PetIdleAnimation animation = parseEnum(yaml.getString(path + ".animation"), PetIdleAnimation.class,
+                errors, path + ".animation");
+        NamespacedKey clip = parseAnimationClip(yaml.getString(path + ".clip"), errors, path + ".clip");
+        int priority = yaml.getInt(path + ".priority", -1);
+        int blendIn = yaml.getInt(path + ".blend-in-ticks", 2);
+        int blendOut = yaml.getInt(path + ".blend-out-ticks", 2);
+        if (priority < -1) errors.add(path + ".priority -1 veya daha büyük olmalıdır.");
+        if (blendIn < 0) errors.add(path + ".blend-in-ticks negatif olamaz.");
+        if (blendOut < 0) errors.add(path + ".blend-out-ticks negatif olamaz.");
+        boolean loop = yaml.getBoolean(path + ".loop", state.defaultLoop());
+        return new PetStateDefinition(afterTicks, animation, clip, priority, blendIn, blendOut, loop);
+    }
+
+    private static NamespacedKey parseAnimationClip(String raw, List<String> errors, String path) {
+        if (raw == null || raw.isBlank()) {
+            return null;
         }
-        return new PetStatesDefinition(moving, idle);
+        String value = raw.trim().toLowerCase(java.util.Locale.ROOT);
+        NamespacedKey key = NamespacedKey.fromString(value.contains(":") ? value
+                : RuntimeKeyResolver.NAMESPACE + ":" + value);
+        if (key == null) {
+            errors.add(path + " geçerli bir klip adı veya namespaced key olmalıdır.");
+        }
+        return key;
     }
 
     private static List<PetBuffDefinition> parseBuffs(YamlConfiguration yaml, List<String> errors) {
@@ -340,7 +385,7 @@ public final class PetDefinitionYamlParser {
                 errors.add("buffs[" + i + "]: etki adı eksik ('type' veya 'effect' bekleniyor)");
                 continue;
             }
-            PotionEffectType type = PotionEffectType.getByName(effectStr.toUpperCase(java.util.Locale.ROOT).trim());
+            PotionEffectType type = RuntimeKeyResolver.potionEffect(effectStr);
             if (type == null) {
                 errors.add("buffs[" + i + "]: geçersiz buff etki türü: " + effectStr);
                 continue;
@@ -464,10 +509,12 @@ public final class PetDefinitionYamlParser {
 
     private static com.petsistemi.domain.PetMountDefinition parseMount(YamlConfiguration yaml, List<String> errors) {
         if (!yaml.isConfigurationSection("mount")) {
-            return com.petsistemi.domain.PetMountDefinition.DISABLED;
+            // null preserves the legacy global riding switch; an explicit mount.enabled:false
+            // is different and blocks this definition even when the global feature is on.
+            return null;
         }
         boolean enabled = yaml.getBoolean("mount.enabled", false);
-        String perm = yaml.getString("mount.permission");
+        String perm = trimToNull(yaml.getString("mount.permission"));
         double speed = yaml.getDouble("mount.speed-multiplier", 1.2);
         boolean allowFly = yaml.getBoolean("mount.allow-fly", false);
         return new com.petsistemi.domain.PetMountDefinition(enabled, perm, speed, allowFly);
@@ -481,6 +528,145 @@ public final class PetDefinitionYamlParser {
         List<String> triggers = yaml.getStringList("presence.triggers");
         int duration = yaml.getInt("presence.visible-duration-seconds", 10);
         return new com.petsistemi.domain.PetPresenceDefinition(mode, triggers, duration);
+    }
+
+    private static List<PetBehaviorDefinition> parseBehaviors(YamlConfiguration yaml, List<String> errors) {
+        if (!yaml.isList("behaviors")) return null;
+        List<PetBehaviorDefinition> behaviors = new ArrayList<>();
+        List<Map<?, ?>> entries = yaml.getMapList("behaviors");
+        for (int i = 0; i < entries.size(); i++) {
+            Map<?, ?> entry = entries.get(i);
+            NamespacedKey trigger = parseNamespacedKey(entry.get("trigger"), errors,
+                    "behaviors[" + i + "].trigger");
+            if (trigger == null) continue;
+            boolean enabled = !(entry.get("enabled") instanceof Boolean value) || value;
+            List<BehaviorConditionDefinition> conditions = parseConditionDefinitions(
+                    entry.get("conditions"), errors, "behaviors[" + i + "].conditions");
+            List<BehaviorActionDefinition> actions = parseActionDefinitions(
+                    entry.get("actions"), errors, "behaviors[" + i + "].actions");
+            if (actions.isEmpty()) {
+                errors.add("behaviors[" + i + "].actions en az bir action içermelidir.");
+                continue;
+            }
+            behaviors.add(new PetBehaviorDefinition(trigger, enabled, conditions, actions));
+        }
+        return behaviors.isEmpty() ? null : behaviors;
+    }
+
+    private static Map<NamespacedKey, PetAbilityDefinition> parseAbilities(YamlConfiguration yaml,
+                                                                            List<String> errors) {
+        if (!yaml.isConfigurationSection("abilities")) return null;
+        Map<NamespacedKey, PetAbilityDefinition> abilities = new java.util.LinkedHashMap<>();
+        for (String id : yaml.getConfigurationSection("abilities").getKeys(false)) {
+            String path = "abilities." + id;
+            if (!yaml.isConfigurationSection(path)) continue;
+            NamespacedKey key = abilityKey(id, errors, path);
+            if (key == null) continue;
+            int cooldown = Math.max(0, yaml.getInt(path + ".cooldown-seconds", 0));
+            AbilityTargetType targetType = parseEnum(yaml.getString(path + ".target", "NONE"),
+                    AbilityTargetType.class, errors, path + ".target");
+            double range = yaml.getDouble(path + ".range", 8.0);
+            boolean enabled = yaml.getBoolean(path + ".enabled", true);
+            Object conditionsRaw = yaml.getList(path + ".conditions");
+            Object actionsRaw = yaml.getList(path + ".actions");
+            List<BehaviorConditionDefinition> conditions = parseConditionDefinitions(conditionsRaw, errors,
+                    path + ".conditions");
+            List<BehaviorActionDefinition> actions = parseActionDefinitions(actionsRaw, errors,
+                    path + ".actions");
+            if (actions.isEmpty()) {
+                errors.add(path + ".actions en az bir action içermelidir.");
+                continue;
+            }
+            PetBehaviorDefinition behavior = new PetBehaviorDefinition(BuiltInBehaviorKeys.ABILITY,
+                    enabled, conditions, actions);
+            abilities.put(key, new PetAbilityDefinition(key, cooldown, targetType, range, behavior));
+        }
+        return abilities.isEmpty() ? null : abilities;
+    }
+
+    private static List<com.petsistemi.domain.item.PetItemActionDefinition> parseItemActions(
+            YamlConfiguration yaml, List<String> errors) {
+        if (!yaml.isConfigurationSection("item-actions")) return null;
+        List<com.petsistemi.domain.item.PetItemActionDefinition> definitions = new ArrayList<>();
+        for (String id : yaml.getConfigurationSection("item-actions").getKeys(false)) {
+            String path = "item-actions." + id;
+            if (!yaml.isConfigurationSection(path)) {
+                errors.add(path + " bir bölüm olmalıdır.");
+                continue;
+            }
+            String material = trimToNull(yaml.getString(path + ".item.material"));
+            Integer customModelData = yaml.contains(path + ".item.custom-model-data")
+                    ? yaml.getInt(path + ".item.custom-model-data") : null;
+            int consume = yaml.getInt(path + ".consume", 1);
+            int cooldown = yaml.getInt(path + ".cooldown-seconds", 0);
+            int minimumLevel = yaml.getInt(path + ".min-level", 1);
+            int maximumLevel = yaml.getInt(path + ".max-level", 0);
+            String permission = trimToNull(yaml.getString(path + ".permission"));
+            NamespacedKey action = parseNamespacedKey(yaml.get(path + ".action"), errors, path + ".action");
+            org.bukkit.configuration.ConfigurationSection parameterSection =
+                    yaml.getConfigurationSection(path + ".parameters");
+            Map<String, Object> parameters = parameterSection != null
+                    ? Map.copyOf(parameterSection.getValues(false)) : Map.of();
+            definitions.add(new com.petsistemi.domain.item.PetItemActionDefinition(id, material,
+                    customModelData, consume, cooldown, minimumLevel, maximumLevel, permission, action, parameters));
+        }
+        return definitions.isEmpty() ? null : definitions;
+    }
+
+    private static NamespacedKey abilityKey(String raw, List<String> errors, String path) {
+        if (raw == null || raw.isBlank()) return null;
+        NamespacedKey key = raw.contains(":") ? NamespacedKey.fromString(raw)
+                : NamespacedKey.fromString("petsistemi:" + raw.toLowerCase(java.util.Locale.ROOT));
+        if (key == null) errors.add(path + " geçerli bir ability anahtarı değildir.");
+        return key;
+    }
+
+    private static List<BehaviorConditionDefinition> parseConditionDefinitions(Object raw, List<String> errors,
+                                                                                String path) {
+        if (!(raw instanceof List<?> list)) return List.of();
+        List<BehaviorConditionDefinition> definitions = new ArrayList<>();
+        for (int i = 0; i < list.size(); i++) {
+            if (!(list.get(i) instanceof Map<?, ?> entry)) {
+                errors.add(path + "[" + i + "] map olmalıdır.");
+                continue;
+            }
+            NamespacedKey key = parseNamespacedKey(entry.get("type"), errors, path + "[" + i + "].type");
+            if (key != null) definitions.add(new BehaviorConditionDefinition(key, behaviorParameters(entry.get("parameters"))));
+        }
+        return definitions;
+    }
+
+    private static List<BehaviorActionDefinition> parseActionDefinitions(Object raw, List<String> errors,
+                                                                          String path) {
+        if (!(raw instanceof List<?> list)) return List.of();
+        List<BehaviorActionDefinition> definitions = new ArrayList<>();
+        for (int i = 0; i < list.size(); i++) {
+            if (!(list.get(i) instanceof Map<?, ?> entry)) {
+                errors.add(path + "[" + i + "] map olmalıdır.");
+                continue;
+            }
+            NamespacedKey key = parseNamespacedKey(entry.get("type"), errors, path + "[" + i + "].type");
+            if (key != null) definitions.add(new BehaviorActionDefinition(key, behaviorParameters(entry.get("parameters"))));
+        }
+        return definitions;
+    }
+
+    private static Map<String, Object> behaviorParameters(Object raw) {
+        if (!(raw instanceof Map<?, ?> map)) return Map.of();
+        Map<String, Object> parameters = new java.util.LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : map.entrySet()) {
+            if (entry.getKey() != null && entry.getValue() != null) {
+                parameters.put(entry.getKey().toString(), entry.getValue());
+            }
+        }
+        return parameters;
+    }
+
+    private static NamespacedKey parseNamespacedKey(Object raw, List<String> errors, String path) {
+        String value = raw != null ? raw.toString().trim() : null;
+        NamespacedKey key = value != null && value.contains(":") ? NamespacedKey.fromString(value) : null;
+        if (key == null) errors.add(path + " geçerli bir namespaced key olmalıdır (örn. petsistemi:owner_damage).");
+        return key;
     }
 
     private static String trimToNull(String raw) {
@@ -517,6 +703,27 @@ public final class PetDefinitionYamlParser {
             errors.add("Geçersiz " + path + ": '" + raw + "'. Desteklenen değerler: " + enumNames(enumType));
             return null;
         }
+    }
+
+    private static <E extends Enum<E>> NamespacedKey parseRuntimeKey(String raw, Class<E> enumType,
+                                                                       List<String> errors, String path,
+                                                                       boolean movement) {
+        if (raw == null || raw.isBlank()) {
+            return movement ? RuntimeKeyResolver.movementKey(PetMovementType.GROUND_FOLLOW)
+                    : RuntimeKeyResolver.representationKey(RuntimeRepresentationType.ENTITY);
+        }
+        E legacy = parseEnum(raw, enumType, new ArrayList<>(), path);
+        if (legacy != null) {
+            return movement ? RuntimeKeyResolver.movementKey((PetMovementType) legacy)
+                    : RuntimeKeyResolver.representationKey((RuntimeRepresentationType) legacy);
+        }
+        NamespacedKey custom = NamespacedKey.fromString(raw.trim());
+        if (custom == null || !raw.contains(":")) {
+            errors.add("Geçersiz " + path + ": '" + raw + "'. Yerleşik değer veya namespaced anahtar bekleniyor.");
+            return movement ? RuntimeKeyResolver.movementKey(PetMovementType.GROUND_FOLLOW)
+                    : RuntimeKeyResolver.representationKey(RuntimeRepresentationType.ENTITY);
+        }
+        return custom;
     }
 
     private static <E extends Enum<E>> String enumNames(Class<E> enumType) {

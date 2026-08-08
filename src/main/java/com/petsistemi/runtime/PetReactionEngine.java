@@ -5,6 +5,10 @@ import com.petsistemi.domain.PetDefinition;
 import com.petsistemi.domain.PetEmoteDefinition;
 import com.petsistemi.domain.PetReactionDefinition;
 import com.petsistemi.domain.PetReactionType;
+import com.petsistemi.runtime.behavior.BehaviorContext;
+import com.petsistemi.runtime.behavior.BuiltInBehaviorKeys;
+import com.petsistemi.runtime.behavior.LegacyBehaviorAdapter;
+import com.petsistemi.runtime.behavior.PetBehaviorEngine;
 import org.bukkit.Particle;
 import org.bukkit.Sound;
 import org.bukkit.World;
@@ -30,10 +34,20 @@ public class PetReactionEngine {
     private static final String DEFAULT_LEVEL_UP_PARTICLE = "VILLAGER_HAPPY";
 
     private final AtomicReference<RuntimeConfigurationSnapshot> configSnapshot;
+    private final PetBehaviorEngine behaviorEngine;
 
     public PetReactionEngine(AtomicReference<RuntimeConfigurationSnapshot> configSnapshot) {
         this.configSnapshot = configSnapshot;
+        this.behaviorEngine = new PetBehaviorEngine();
+        for (PetReactionType type : PetReactionType.values()) {
+            behaviorEngine.triggers().register(BuiltInBehaviorKeys.reaction(type));
+        }
+        behaviorEngine.triggers().register(BuiltInBehaviorKeys.EMOTE);
+        behaviorEngine.actions().register(BuiltInBehaviorKeys.PLAY_EFFECT, this::playEffect);
     }
+
+    /** Extension point used by third-party trigger/condition/action registrations. */
+    public PetBehaviorEngine behaviorEngine() { return behaviorEngine; }
 
     private boolean enabled() {
         return configSnapshot != null
@@ -80,12 +94,17 @@ public class PetReactionEngine {
 
     /** Plays a per-pet emote (sound + particle burst). */
     public void playEmote(Entity petEntity, PetEmoteDefinition emote) {
+        playEmote(petEntity, emote, null);
+    }
+
+    public void playEmote(Entity petEntity, PetEmoteDefinition emote, PetDefinition definition) {
         if (!enabled() || petEntity == null || !petEntity.isValid() || emote == null || !emote.enabled()) {
             return;
         }
-        sound(petEntity, parseSound(emote.sound()), emote.sound(), 0.8f);
-        int count = emote.particleCount() > 0 ? emote.particleCount() : 5;
-        particle(petEntity, emote.particle(), count, 0.4, 0.4, 0.4, 0.1);
+        java.util.List<com.petsistemi.domain.behavior.PetBehaviorDefinition> behaviors = new java.util.ArrayList<>();
+        behaviors.add(LegacyBehaviorAdapter.emote(emote));
+        if (definition != null && definition.behaviors() != null) behaviors.addAll(definition.behaviors());
+        behaviorEngine.fire(BuiltInBehaviorKeys.EMOTE, BehaviorContext.of(petEntity, definition), behaviors);
     }
 
     private void playReaction(Entity petEntity, PetReactionType type, PetDefinition definition,
@@ -94,18 +113,32 @@ public class PetReactionEngine {
             return;
         }
         PetReactionDefinition reaction = reactionFor(definition, type);
-        if (reaction != null && !reaction.enabled()) {
-            return;
-        }
-        String soundName = reaction != null && reaction.sound() != null ? reaction.sound() : defaultSound;
-        String particleName = reaction != null && reaction.particle() != null ? reaction.particle() : defaultParticle;
-        int count = reaction != null && reaction.particleCount() > 0 ? reaction.particleCount() : defaultCount;
-        float volume = reaction != null && reaction.volume() > 0.0 ? (float) reaction.volume() : defaultVolume;
+        java.util.List<com.petsistemi.domain.behavior.PetBehaviorDefinition> behaviors = new java.util.ArrayList<>();
+        behaviors.add(LegacyBehaviorAdapter.reaction(type, reaction, defaultSound,
+                defaultParticle, defaultCount, defaultVolume));
+        if (definition != null && definition.behaviors() != null) behaviors.addAll(definition.behaviors());
+        behaviorEngine.fire(BuiltInBehaviorKeys.reaction(type), BehaviorContext.of(petEntity, definition), behaviors);
+    }
 
+    private void playEffect(BehaviorContext context, Map<String, Object> parameters) {
+        Entity petEntity = context.petEntity();
+        if (petEntity == null || !petEntity.isValid()) return;
+        String soundName = stringParameter(parameters, "sound");
+        String particleName = stringParameter(parameters, "particle");
+        int count = numberParameter(parameters, "particle-count", 0).intValue();
+        float volume = numberParameter(parameters, "volume", 0.8).floatValue();
         sound(petEntity, parseSound(soundName), soundName, volume);
-        if (particleName != null) {
-            particle(petEntity, particleName, count, 0.4, 0.4, 0.4, 0.1);
-        }
+        if (particleName != null) particle(petEntity, particleName, count, 0.4, 0.4, 0.4, 0.1);
+    }
+
+    private static String stringParameter(Map<String, Object> parameters, String key) {
+        Object value = parameters.get(key);
+        return value != null ? value.toString() : null;
+    }
+
+    private static Number numberParameter(Map<String, Object> parameters, String key, Number fallback) {
+        Object value = parameters.get(key);
+        return value instanceof Number number ? number : fallback;
     }
 
     private static PetReactionDefinition reactionFor(PetDefinition definition, PetReactionType type) {

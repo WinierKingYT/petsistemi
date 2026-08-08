@@ -1,10 +1,13 @@
 package com.petsistemi.domain;
 
+import org.bukkit.NamespacedKey;
+
 /**
  * Movement definition of a pet. {@code null} fields mean "use runtime configuration defaults".
  */
 public record PetMovementDefinition(
         PetMovementType type,
+        NamespacedKey key,
         double followDistance,
         double teleportDistance,
         int updateIntervalTicks,
@@ -30,7 +33,7 @@ public record PetMovementDefinition(
             double followSpeed,
             PetOrbitDefinition orbit
     ) {
-        this(type, followDistance, teleportDistance, updateIntervalTicks, height, sideOffset,
+        this(type, RuntimeKeyResolver.movementKey(type), followDistance, teleportDistance, updateIntervalTicks, height, sideOffset,
                 followSpeed, orbit, null, 0);
     }
 
@@ -46,12 +49,21 @@ public record PetMovementDefinition(
             PetOrbitDefinition orbit,
             PetAnchorDefinition anchor
     ) {
-        this(type, followDistance, teleportDistance, updateIntervalTicks, height, sideOffset,
+        this(type, RuntimeKeyResolver.movementKey(type), followDistance, teleportDistance, updateIntervalTicks, height, sideOffset,
                 followSpeed, orbit, anchor, 0);
+    }
+
+    /** Backward-compatible constructor retaining the former canonical signature. */
+    public PetMovementDefinition(PetMovementType type, double followDistance, double teleportDistance,
+                                 int updateIntervalTicks, double height, double sideOffset, double followSpeed,
+                                 PetOrbitDefinition orbit, PetAnchorDefinition anchor, int delayTicks) {
+        this(type, RuntimeKeyResolver.movementKey(type), followDistance, teleportDistance, updateIntervalTicks, height,
+                sideOffset, followSpeed, orbit, anchor, delayTicks);
     }
 
     public PetMovementDefinition {
         type = type != null ? type : PetMovementType.GROUND_FOLLOW;
+        key = key != null ? key : RuntimeKeyResolver.movementKey(type);
         updateIntervalTicks = updateIntervalTicks < 0 ? 0 : updateIntervalTicks;
         delayTicks = delayTicks < 0 ? 0 : delayTicks;
         followDistance = sanitize(followDistance);
@@ -59,6 +71,16 @@ public record PetMovementDefinition(
         height = sanitize(height);
         sideOffset = sanitize(sideOffset);
         followSpeed = sanitize(followSpeed);
+    }
+
+    /** Extension-aware constructor; the enum remains a compatibility hint for legacy consumers. */
+    public PetMovementDefinition(NamespacedKey key, double followDistance, double teleportDistance,
+                                 int updateIntervalTicks, double height, double sideOffset, double followSpeed,
+                                 PetOrbitDefinition orbit, PetAnchorDefinition anchor, int delayTicks) {
+        this(RuntimeKeyResolver.builtInMovement(key) != null ? RuntimeKeyResolver.builtInMovement(key)
+                        : PetMovementType.GROUND_FOLLOW,
+                key, followDistance, teleportDistance, updateIntervalTicks, height, sideOffset, followSpeed,
+                orbit, anchor, delayTicks);
     }
 
     private static double sanitize(double value) {

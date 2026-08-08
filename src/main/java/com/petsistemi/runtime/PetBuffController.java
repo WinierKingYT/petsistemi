@@ -2,10 +2,18 @@ package com.petsistemi.runtime;
 
 import com.petsistemi.domain.PetBuffDefinition;
 import com.petsistemi.domain.PetDefinition;
+import com.petsistemi.domain.RuntimeKeyResolver;
+import com.petsistemi.domain.behavior.PetBehaviorDefinition;
+import com.petsistemi.runtime.behavior.BehaviorContext;
+import com.petsistemi.runtime.behavior.BuiltInBehaviorKeys;
+import com.petsistemi.runtime.behavior.LegacyBehaviorAdapter;
+import com.petsistemi.runtime.behavior.PetBehaviorEngine;
 import org.bukkit.entity.Player;
 import org.bukkit.potion.PotionEffect;
 
 import java.util.List;
+import java.util.ArrayList;
+import java.util.Map;
 
 /**
  * Periodically applies configured passive potion effects (buffs) to owners of active pets.
@@ -13,6 +21,7 @@ import java.util.List;
 public class PetBuffController {
 
     private final boolean enabled;
+    private final PetBehaviorEngine behaviorEngine;
 
     /** Buffs on, which is the shipped default — each pet still opts in via its own {@code buffs:}. */
     public PetBuffController() {
@@ -24,7 +33,15 @@ public class PetBuffController {
      *                grants potion effects no matter what its definition declares.
      */
     public PetBuffController(boolean enabled) {
+        this(enabled, new PetBehaviorEngine());
+    }
+
+    public PetBuffController(boolean enabled, PetBehaviorEngine behaviorEngine) {
         this.enabled = enabled;
+        this.behaviorEngine = behaviorEngine != null ? behaviorEngine : new PetBehaviorEngine();
+        this.behaviorEngine.triggers().register(BuiltInBehaviorKeys.TICK);
+        this.behaviorEngine.conditions().register(BuiltInBehaviorKeys.MIN_LEVEL, this::hasMinimumLevel);
+        this.behaviorEngine.actions().register(BuiltInBehaviorKeys.APPLY_POTION_EFFECT, this::applyPotionEffect);
     }
 
     /**
@@ -39,28 +56,44 @@ public class PetBuffController {
             return;
         }
 
+        List<PetBehaviorDefinition> definitions = new ArrayList<>();
+        if (definition.behaviors() != null) definitions.addAll(definition.behaviors());
         List<PetBuffDefinition> buffs = definition.buffs();
-        if (buffs == null || buffs.isEmpty()) {
-            return;
+        if (buffs != null) {
+            for (PetBuffDefinition buff : buffs) {
+                if (buff != null && buff.effectType() != null) definitions.add(LegacyBehaviorAdapter.buff(buff));
+            }
         }
+        behaviorEngine.fire(BuiltInBehaviorKeys.TICK,
+                new BehaviorContext(pet.getSpawnedEntity(), definition, Map.of("pet", pet, "owner", owner)),
+                definitions);
+    }
 
-        int petLevel = pet.getLevel();
-        for (PetBuffDefinition buff : buffs) {
-            if (buff == null || buff.effectType() == null) continue;
-            if (petLevel < buff.minLevel()) continue;
+    private boolean hasMinimumLevel(BehaviorContext context, Map<String, Object> parameters) {
+        Object petValue = context.attributes().get("pet");
+        Object levelValue = parameters.get("level");
+        return petValue instanceof ActivePet pet
+                && pet.getLevel() >= (levelValue instanceof Number number ? number.intValue() : 1);
+    }
 
-            // Pet buffs are refreshed for as long as the pet is out, so visible particles
-            // would wrap the owner in swirls permanently. The icon stays on: without it the
-            // player has no way to tell where the effect is coming from.
-            PotionEffect effect = new PotionEffect(
-                    buff.effectType(),
-                    buff.durationTicks(),
-                    buff.amplifier(),
-                    true,  // ambient
-                    false, // particles
-                    true   // icon
-            );
-            owner.addPotionEffect(effect);
-        }
+    private void applyPotionEffect(BehaviorContext context, Map<String, Object> parameters) {
+        Object ownerValue = context.attributes().get("owner");
+        if (!(ownerValue instanceof Player owner)) return;
+        org.bukkit.potion.PotionEffectType type = RuntimeKeyResolver.potionEffect(string(parameters, "effect"));
+        if (type == null) return;
+        int duration = integer(parameters, "duration-ticks", 60);
+        int amplifier = integer(parameters, "amplifier", 0);
+        // Passive buffs are refreshed while the pet is active: keep the icon, hide swirls.
+        owner.addPotionEffect(new PotionEffect(type, duration, amplifier, true, false, true));
+    }
+
+    private static String string(Map<String, Object> parameters, String key) {
+        Object value = parameters.get(key);
+        return value != null ? value.toString() : null;
+    }
+
+    private static int integer(Map<String, Object> parameters, String key, int fallback) {
+        Object value = parameters.get(key);
+        return value instanceof Number number ? number.intValue() : fallback;
     }
 }

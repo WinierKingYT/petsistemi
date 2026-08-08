@@ -66,9 +66,11 @@ gui:
   no: "<red>Hayır</red>"
 
 riding:
-  enter: "<green><name> üzerine bindiniz! İnmek için tekrar Shift + sağ tık yapın.</green>"
+  enter: "<green><name> üzerine bindiniz! WASD ile yönetin, Space ile zıplayın.</green>"
   exit: "<yellow><name> üzerinden indiniz.</yellow>"
   no-permission: "<red><name> petine binme yetkiniz yok.</red>"
+  disabled: "<red>Bu pet için sürüş devre dışı.</red>"
+  failed: "<red>Pet sürüşü başlatılamadı.</red>"
 
 inspect:
   not-found: "<red>Bu pet veritabanında bulunamadı.</red>"

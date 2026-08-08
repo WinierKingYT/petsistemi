@@ -31,9 +31,31 @@
 - [ ] 0 pet durumunda GUI görünümü
 - [ ] Pagination (20+ pet durumunda sayfa geçişleri)
 - [ ] Inventory shift-click / drag engelleme
+- [ ] `/pet collection`: 18 tanım açık/kilitli durumuyla görünür; sahip olunan filtresi doğru çalışır
+- [ ] Koleksiyonda açık pet sol tıkla çağrılır, sağ tıkla incelenir; kilitli pet işlem yapmaz
+- [ ] `/petadmin editor <tanım_id>` chat girdisini taslağa alır; `iptal` ve `-` davranışları doğrudur
+- [ ] Editörde geçersiz materyal/tür kaydedilmez ve doğrulama hataları gösterilir
+- [ ] Editör açıkken dosya dışarıdan değiştirilirse kayıt çakışma uyarısıyla reddedilir
+- [ ] Başarılı editör kaydı sonraki summon'da uygulanır; hatalı başka YAML varsa dosya geri alınır
 - [ ] `/petadmin inspect <player>`
 - [ ] `/petadmin reconcile all --dry-run`
 - [ ] `/petadmin backup`
+
+## MF7a Item Actions
+- [ ] Aktif `wolf` petine ana elde `BONE` ile sağ tık: 1 kemik tüketilir ve 25 XP eklenir
+- [ ] Aynı yem 2 saniye içinde tekrar kullanılırsa tüketilmez ve cooldown mesajı görünür
+- [ ] Off-hand etkileşimi item aksiyonunu ikinci kez çalıştırmaz
+- [ ] Yetersiz item, uygunsuz seviye veya eksik permission durumunda item tüketilmez
+- [ ] Asenkron action başarısız olduğunda rezerve edilen item envantere geri gelir
+- [ ] Creative oyuncuda action çalışır ancak item tüketilmez
+
+## MF7b Seviye Evrimi
+- [ ] `phoenix` seviye 19'da temel ad/ölçekle görünür
+- [ ] Seviye 20 olduğunda aynı UUID ile `Kadim Anka` adı ve 1.8 ölçek uygulanır
+- [ ] `/petadmin setlevel` ile seviye tekrar 19'a çekilince temel görünüm geri gelir
+- [ ] Evrim görünümü dismiss/summon ve sunucu restart sonrasında kalıcı seviyeden yeniden kurulur
+- [ ] Evrilmiş petin gece transform'u, idle ölçeği ve animasyonları birlikte çalışır
+- [ ] Eksik `target-id` veya farklı representation/movement provider kullanan hedef reload'u reddeder
 
 ## Display Petler (Modüler Runtime)
 - [ ] `arcane_crystal` (ITEM_DISPLAY + ORBIT) çağırma: kristal sahibin etrafında döner
@@ -109,3 +131,48 @@
 - [ ] Emote'lu pet despawn edilip yeniden summon edilince cooldown sıfırlanır (cleanup ownerId ile)
 - [ ] `features.reactions.enabled: false` iken emote ses/parçacığı oluşmaz ama cooldown mesajları normal akışta döner
 - [ ] Büyük harfli isimler küçük harfe normalize edilir: `/pet emote PURR` çalışır
+
+## Pet Emirleri (MF7c)
+- [ ] `/pet order follow`, `/pet order stay`, `/pet order wander` aktif petin modunu değiştirir ve restart sonrası korur
+- [ ] Eski `/pet mode follow|stay|wander` aynı sonuç ve kalıcılık davranışını üretir
+- [ ] `allowed-modes: [FOLLOW]` tanımlı pette `stay`/`wander` emirleri reddedilir ve tab completion'da görünmez
+- [ ] `/pet order come` peti oyuncunun arkasına getirir; mevcut kalıcı takip modunu değiştirmez
+- [ ] MULTI_ENTITY pette `/pet order come` ana entity ve bütün child entity'leri birlikte taşır
+- [ ] Aktif pet yokken emir açık hata döndürür; hızlı ikinci emir ilk işlem sürerken reddedilir
+- [ ] Bukkit `PetOrderService` üzerinden kaydedilen `eklenti:emir` çalışır ve tab completion'da görünür
+
+## Pet Binekleri (MF7d)
+- [ ] `features.riding.enabled: false` iken `mount.enabled: true` pet binmeyi reddeder
+- [ ] Global sürüş açıkken sahibi Shift + sağ tıkla `wolf` üzerine biner; başka oyuncu binemez
+- [ ] WASD kara bineğini bakış yönüne göre sürer, Space tek basışta zıplatır
+- [ ] `speed-multiplier: 1.25`, `1.0` bineğe göre gözle görülür fakat kontrollü hız artışı üretir
+- [ ] `allow-fly: true` binekte bakış pitch'i yükselme/alçalmayı, Space yükselmeyi kontrol eder
+- [ ] Sürüş sırasında FOLLOW/WANDER controller velocity'yi geri ezmez; animasyon/görsel güncellenir
+- [ ] Shift ile inince ve global riding reload ile kapanınca önceki gravity değeri geri gelir
+- [ ] Binek üzerindeyken dismiss, pet değişimi, world change, quit ve plugin disable güvenli indirir
+- [ ] Geçersiz `speed-multiplier` (`0`, `4`, NaN) pet tanımının yüklenmesini engeller
+- [ ] Bukkit `PetMountService` üçüncü taraf eklentiden mount/dismount sonucu döndürür
+
+## Kalıcı Evrim ve Petsiz Unlock Itemleri (MF7e)
+- [ ] `petsistemi:evolve_pet` itemi aktif pete kullanıldığında UUID, ad, seviye ve XP korunur; görünüm hedef tanıma geçer
+- [ ] Aktif olmayan sahipli pete servis üzerinden evrim uygulandığında değişiklik restart sonrası korunur
+- [ ] Evrim hedefinin representation/movement türü farklıysa aktif pet güvenli biçimde yeni controller ile yeniden doğar
+- [ ] Hedef runtime spawn kasıtlı bozulduğunda pet kaydı ve eski görünüm geri gelir; item iade edilir
+- [ ] `PetPreEvolutionEvent` iptal edilince DB, runtime ve item adedi değişmez
+- [ ] `/petadmin unlockitem <oyuncu> wolf` ile verilen item aktif pet yokken havaya sağ tıkla pet açar
+- [ ] Unlock sırasında DB hatasında item envantere döner; dolu envanterde oyuncunun yanına düşer
+- [ ] Unlock itemine hızlı çift sağ tık ikinci pet kaydı üretmez
+- [ ] Sıradan aynı materyal (`NAME_TAG`) PDC işareti yoksa unlock işlemi başlatmaz
+- [ ] Bukkit `PetUnlockItemService` ile üretilen item komutla üretilen itemle aynı şekilde çalışır
+
+## Ekosistem (MF8)
+
+- [ ] İki sunucu aynı MySQL'e farklı `server-id` ile bağlandığında A'daki seçim/değişiklik B'deki çevrimiçi oyuncunun petini bir poll aralığında yeniler
+- [ ] Aynı pete iki sunucudan eşzamanlı XP/değişiklik yazımı kilit zaman aşımı olmadan tamamlanır ve veri bozulmaz
+- [ ] MySQL modunda otomatik dosya yedeği zamanlanmaz; `/petadmin backup` sağlayıcı snapshot/mysqldump yönlendirmesi verir
+- [ ] Geçerli `.petpack` inbox'tan kurulur, `namespace:pet` tanımı listelenir ve restart sonrası receipt korunur
+- [ ] Paket yükseltmesinde yeni sürümden çıkarılan pet dosyası silinir; bozuk referanslı yükseltme eski sürüme rollback yapar
+- [ ] Başka kurulu paketin bağımlı olduğu paket kaldırılamaz
+- [ ] ZIP traversal, dosya/adet/boyut sınırı ve yüksek `minimum-engine-version` kurulumdan önce reddedilir
+- [ ] Marketplace yalnız HTTPS kataloğu kabul eder; hatalı SHA-256 paket dosyasını yayınlamadan siler
+- [ ] `/petadmin marketplace refresh|list|install` ana thread'i bloklamadan tamamlanır

@@ -11,6 +11,7 @@ import com.petsistemi.persistence.migration.V5AvailabilityStateMigration;
 import com.petsistemi.persistence.migration.V6SelectionTableRenameMigration;
 import com.petsistemi.persistence.migration.V7AuditLogTableMigration;
 import com.petsistemi.persistence.migration.V8FollowModeMigration;
+import com.petsistemi.persistence.migration.V9EcosystemTablesMigration;
 
 import java.io.File;
 import java.sql.Connection;
@@ -33,7 +34,8 @@ public final class SchemaMigrator {
                 new V5AvailabilityStateMigration(),
                 new V6SelectionTableRenameMigration(),
                 new V7AuditLogTableMigration(),
-                new V8FollowModeMigration()
+                new V8FollowModeMigration(),
+                new V9EcosystemTablesMigration()
         );
     }
 

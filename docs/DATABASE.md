@@ -1,8 +1,11 @@
 # DATABASE.md - PetSistemi Veritabanı Dokümanı
 
-## 1. Veritabanı Motoru: SQLite (WAL Modu)
+## 1. Veritabanı Motorları
 
-`PetSistemi`, yerel veri depolaması için SQLite veritabanı motorunu kullanır.
+`PetSistemi`, tek sunucuda varsayılan SQLite/WAL veya paylaşımlı kurulumlarda MySQL 8.x
+kullanabilir. Seçim `database.backend` ile yapılır. Network modu MySQL gerektirir.
+
+### SQLite WAL yapılandırması
 
 ### Pragma Yapılandırması
 ```sql
@@ -23,12 +26,28 @@ CREATE TABLE pets (
     custom_name TEXT,
     level INTEGER NOT NULL DEFAULT 1,
     experience INTEGER NOT NULL DEFAULT 0,
-    state TEXT NOT NULL DEFAULT 'AVAILABLE',
+    availability_state TEXT NOT NULL DEFAULT 'AVAILABLE',
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL
 );
 CREATE UNIQUE INDEX uq_pets_pet_owner ON pets(pet_id, owner_id);
 ```
+
+## 3. MF8 tabloları ve MySQL
+
+V9, SQLite ve MySQL şemalarına `pet_network_events` ile `pet_pack_installations`
+tablolarını ekler. MySQL şeması aynı mantıksal kolonları InnoDB, uygun `VARCHAR` tipleri,
+foreign key/index'ler ve `AUTO_INCREMENT` kimliklerle oluşturur. `schema_migrations` 1–9
+sürümlerini kaydeder; repository adaptörleri MySQL `ON DUPLICATE KEY UPDATE` sözdizimini
+kullanır.
+
+`pet_network_events`, sunucu kimliği ve artan event cursor'ı üzerinden cache/runtime
+invalidasyonu taşır. Eski event'ler `ecosystem.network.retention-hours` süresine göre
+temizlenir. Aynı sahip veya pet üzerindeki network yazımları MySQL named lock ile
+serialize edilir.
+
+SQLite dosya yedekleri MySQL'e uygulanmaz. MySQL için sağlayıcı snapshot'ı veya
+`mysqldump` kullanın; ayrıntılar [ECOSYSTEM.md](ECOSYSTEM.md) belgesindedir.
 
 ### `player_selected_pets` Tablosu
 ```sql

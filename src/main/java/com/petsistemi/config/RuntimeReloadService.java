@@ -39,6 +39,15 @@ public class RuntimeReloadService {
         } catch (Exception e) {
             return new ReloadResult(false, "Konfigürasyon doğrulama hatası: " + e.getMessage(), false);
         }
+        RuntimeConfigurationSnapshot liveSnapshot = (context != null && context.configSnapshot() != null)
+                ? context.configSnapshot().get() : null;
+        if (liveSnapshot != null && liveSnapshot.configuration() != null
+                && (!Objects.equals(liveSnapshot.configuration().database(), candidateConfig.database())
+                || !Objects.equals(liveSnapshot.configuration().ecosystem(), candidateConfig.ecosystem()))) {
+            return new ReloadResult(false,
+                    "database ve ecosystem ayarları bağlantı/servis yaşam döngüsünü değiştirir; uygulamak için sunucuyu yeniden başlatın.",
+                    false);
+        }
 
         // 3. Load candidate MessageBundle using candidate locale
         MessageBundle candidateBundle;
@@ -57,7 +66,7 @@ public class RuntimeReloadService {
         }
 
         // 5. Save current state for potential rollback
-        RuntimeConfigurationSnapshot oldSnapshot = (context != null && context.configSnapshot() != null) ? context.configSnapshot().get() : null;
+        RuntimeConfigurationSnapshot oldSnapshot = liveSnapshot;
         MessageBundle oldBundle = messageService != null ? messageService.currentBundle() : null;
         Map<String, PetDefinition> oldDefinitions = definitionRegistry != null ? definitionRegistry.currentSnapshot() : null;
         String oldBukkitConfigYaml = plugin.getConfig() != null ? plugin.getConfig().saveToString() : null;

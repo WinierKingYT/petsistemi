@@ -18,6 +18,13 @@ public final class SchedulerRegistrar {
         }, 100L, 100L);
         context.taskRegistry().registerNamed("watchdogTask", watchdogTask);
 
+        if (context.networkSyncService() != null) {
+            long interval = Math.max(1L, context.config().ecosystem().network().pollIntervalTicks());
+            BukkitTask networkSyncTask = Bukkit.getScheduler().runTaskTimer(
+                    context.plugin(), () -> context.networkSyncService().pollOnceAsync(), interval, interval);
+            context.taskRegistry().registerNamed("networkSyncTask", networkSyncTask);
+        }
+
         Bukkit.getScheduler().runTaskLater(context.plugin(), () -> {
             for (Player player : Bukkit.getOnlinePlayers()) {
                 if (context.activePetRegistry().getByOwner(player.getUniqueId()).isEmpty()) {
@@ -85,7 +92,9 @@ public final class SchedulerRegistrar {
         }
 
         // 6. Auto Backup Task (every 6 hours)
-        if (context.adminPersistenceService() != null) {
+        boolean sqliteBackend = config == null || com.petsistemi.persistence.DatabaseBackend.from(
+                config.database().backend()) == com.petsistemi.persistence.DatabaseBackend.SQLITE;
+        if (context.adminPersistenceService() != null && sqliteBackend) {
             BukkitTask autoBackupTask = Bukkit.getScheduler().runTaskTimerAsynchronously(
                     context.plugin(),
                     new com.petsistemi.task.AutoBackupTask(context.plugin(), context.adminPersistenceService(),
@@ -96,6 +105,8 @@ public final class SchedulerRegistrar {
                     43200L, 432000L
             );
             context.taskRegistry().registerNamed("autoBackupTask", autoBackupTask);
+        } else {
+            context.taskRegistry().cancelNamed("autoBackupTask");
         }
 
         // 7. Orphan Cleaner Task (every 10 minutes)

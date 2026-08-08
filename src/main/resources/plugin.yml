@@ -4,16 +4,17 @@ main: com.petsistemi.PetSistemiPlugin
 api-version: '1.20'
 author: Antigravity
 description: Advanced modular Paper 1.20.4 Pet System Plugin (mob, item-display, orbit & familiar pets)
+softdepend: [PlaceholderAPI, ModelEngine, ItemsAdder, Oraxen]
 
 commands:
   pet:
     description: Oyuncu pet yönetim ve GUI komutu.
     aliases: [companion, pets]
     permission: companionpets.use
-    usage: /pet [list|summon|dismiss|info|rename|mode|emote|help]
+    usage: /pet [list|collection|summon|dismiss|info|rename|mode|order|emote|ability|help]
   petadmin:
     description: Yönetici pet yönetim komutları.
-    usage: /petadmin <give|remove|list|info|addxp|setxp|setlevel|summon|dismiss|reload|inspect|health|backup|reconcile|disable|enable>
+    usage: /petadmin <give|unlockitem|pack|marketplace|remove|list|info|addxp|setxp|setlevel|summon|dismiss|reload|editor|inspect|health|backup|reconcile|disable|enable>
 
 permissions:
   companionpets.use:
@@ -24,6 +25,9 @@ permissions:
     default: op
     children:
       companionpets.admin.give: true
+      companionpets.admin.unlockitem: true
+      companionpets.admin.pack: true
+      companionpets.admin.marketplace: true
       companionpets.admin.remove: true
       companionpets.admin.list: true
       companionpets.admin.info: true
@@ -33,6 +37,7 @@ permissions:
       companionpets.admin.summon: true
       companionpets.admin.dismiss: true
       companionpets.admin.reload: true
+      companionpets.admin.editor: true
       companionpets.admin.inspect: true
       companionpets.admin.health: true
       companionpets.admin.backup: true
@@ -68,6 +73,18 @@ permissions:
     default: op
   companionpets.admin.reload:
     description: Konfigürasyon yenileme yetkisi.
+    default: op
+  companionpets.admin.unlockitem:
+    description: Oyunculara işaretli pet unlock itemi verme yetkisi.
+    default: op
+  companionpets.admin.pack:
+    description: Pet Pack kurma, kaldırma ve dışa aktarma yetkisi.
+    default: op
+  companionpets.admin.marketplace:
+    description: Pet Pack marketplace kataloğunu ve kurulumunu yönetme yetkisi.
+    default: op
+  companionpets.admin.editor:
+    description: Oyun içi pet tanım editörünü kullanma yetkisi.
     default: op
   companionpets.admin.inspect:
     description: Baktığı varlığı denetleme yetkisi.

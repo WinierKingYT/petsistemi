@@ -1,5 +1,7 @@
 package com.petsistemi.domain;
 
+import org.bukkit.NamespacedKey;
+
 /**
  * Visual representation definition of a pet. Fully YAML-driven; the same runtime
  * can host entity pets, item/block/text displays, particle auras and multi-entity swarms.
@@ -8,6 +10,7 @@ package com.petsistemi.domain;
  */
 public record PetRepresentationDefinition(
         RuntimeRepresentationType type,
+        NamespacedKey key,
         String entityType,
         boolean baby,
         boolean glowing,
@@ -22,7 +25,9 @@ public record PetRepresentationDefinition(
         double particleOffset,
         double particleSpeed,
         int childCount,
-        String childMaterial
+        String childMaterial,
+        /** Provider asset id for namespaced external representations. */
+        String modelId
 ) {
 
     /** Backward-compatible constructor (pre-Milestone-2 fields only). */
@@ -38,8 +43,41 @@ public record PetRepresentationDefinition(
             Integer customModelData,
             PetVector3 scale
     ) {
-        this(type, entityType, baby, glowing, invulnerable, silent, gravity, itemMaterial,
-                customModelData, scale, null, 0, 0.0, 0.0, 0, null);
+        this(type, RuntimeKeyResolver.representationKey(type), entityType, baby, glowing, invulnerable, silent, gravity, itemMaterial,
+                customModelData, scale, null, 0, 0.0, 0.0, 0, null, null);
+    }
+
+    /** Backward-compatible constructor retaining the former canonical signature. */
+    public PetRepresentationDefinition(RuntimeRepresentationType type, String entityType, boolean baby, boolean glowing,
+                                       boolean invulnerable, boolean silent, boolean gravity, String itemMaterial,
+                                       Integer customModelData, PetVector3 scale, String particleType, int particleCount,
+                                       double particleOffset, double particleSpeed, int childCount, String childMaterial) {
+        this(type, RuntimeKeyResolver.representationKey(type), entityType, baby, glowing, invulnerable, silent, gravity,
+                itemMaterial, customModelData, scale, particleType, particleCount, particleOffset, particleSpeed,
+                childCount, childMaterial, null);
+    }
+
+    /** Extension-aware constructor; the enum remains a compatibility hint for legacy consumers. */
+    public PetRepresentationDefinition(NamespacedKey key, String entityType, boolean baby, boolean glowing,
+                                       boolean invulnerable, boolean silent, boolean gravity, String itemMaterial,
+                                       Integer customModelData, PetVector3 scale, String particleType, int particleCount,
+                                       double particleOffset, double particleSpeed, int childCount, String childMaterial) {
+        this(RuntimeKeyResolver.builtInRepresentation(key) != null ? RuntimeKeyResolver.builtInRepresentation(key)
+                        : RuntimeRepresentationType.ENTITY,
+                key, entityType, baby, glowing, invulnerable, silent, gravity, itemMaterial, customModelData, scale,
+                particleType, particleCount, particleOffset, particleSpeed, childCount, childMaterial, null);
+    }
+
+    /** Extension-aware constructor with a provider asset id. */
+    public PetRepresentationDefinition(NamespacedKey key, String modelId, String entityType, boolean baby,
+                                       boolean glowing, boolean invulnerable, boolean silent, boolean gravity,
+                                       String itemMaterial, Integer customModelData, PetVector3 scale,
+                                       String particleType, int particleCount, double particleOffset,
+                                       double particleSpeed, int childCount, String childMaterial) {
+        this(RuntimeKeyResolver.builtInRepresentation(key) != null ? RuntimeKeyResolver.builtInRepresentation(key)
+                        : RuntimeRepresentationType.ENTITY,
+                key, entityType, baby, glowing, invulnerable, silent, gravity, itemMaterial, customModelData, scale,
+                particleType, particleCount, particleOffset, particleSpeed, childCount, childMaterial, modelId);
     }
 
     public static PetRepresentationDefinition legacyEntity(String entityType, boolean baby, boolean glowing,
@@ -75,7 +113,7 @@ public record PetRepresentationDefinition(
         boolean babyFlag = override.baby() != null ? override.baby() : baby;
         PetVector3 s = override.scale() != null ? override.scale() : scale;
         String eType = override.entityType() != null ? override.entityType() : entityType;
-        return new PetRepresentationDefinition(type, eType, babyFlag, glow, invulnerable, silent, gravity,
-                item, cmd, s, particle, count, particleOffset, particleSpeed, childCount, childMaterial);
+        return new PetRepresentationDefinition(type, key, eType, babyFlag, glow, invulnerable, silent, gravity,
+                item, cmd, s, particle, count, particleOffset, particleSpeed, childCount, childMaterial, modelId);
     }
 }

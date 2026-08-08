@@ -19,6 +19,24 @@ nameplate:
     - "<gold>{pet_name}</gold> <gray>Lv.{level}</gray>"
 permission: companionpets.pet.wolf
 
+# MF7d sürüş örneği. Ayrıca config.yml -> features.riding.enabled true olmalıdır.
+mount:
+  enabled: true
+  speed-multiplier: 1.25
+  allow-fly: false
+
+# MF7 item-action örneği: sahibi aktif kurduna kemikle sağ tıkladığında XP verir.
+item-actions:
+  feed_bone:
+    item:
+      material: BONE
+    consume: 1
+    cooldown-seconds: 2
+    min-level: 1
+    action: petsistemi:gain_experience
+    parameters:
+      amount: 25
+
 # Sahibine verilen pasif etkiler. Kademeler pet seviyesiyle açılır:
 # 1-5 -> I, 6-10 -> II, 11-15 -> III, 16+ -> IV. Kazanılan en güçlü kademe uygulanır.
 # Kaldırmak için bu bölümü silmek yeterli; tümünü kapatmak için config.yml -> features.buffs.enabled

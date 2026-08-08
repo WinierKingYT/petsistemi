@@ -24,6 +24,7 @@ import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.Bukkit;
+import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.command.Command;
@@ -32,6 +33,7 @@ import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -60,6 +62,7 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
     private final MessageService messageService;
     private final com.petsistemi.bootstrap.TaskRegistry taskRegistry;
     private final com.petsistemi.bootstrap.PetPluginContext context;
+    private final com.petsistemi.definition.editor.PetEditorSessionManager editorSessions;
 
     private final NamespacedKey petIdKey;
 
@@ -132,15 +135,20 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
         this.repository = repository;
         this.selectionRepository = selectionRepository;
         this.connectionProvider = connectionProvider;
-        this.adminPersistenceService = (context != null && context.dbExecutor() != null && connectionProvider != null)
-                ? new AdminPersistenceService(context.dbExecutor(), connectionProvider, plugin != null ? plugin.getLogger() : java.util.logging.Logger.getLogger("PetAdminCommand"))
-                : null;
+        this.adminPersistenceService = context != null && context.adminPersistenceService() != null
+                ? context.adminPersistenceService()
+                : (context != null && context.dbExecutor() != null && connectionProvider != null
+                ? new AdminPersistenceService(context.dbExecutor(), connectionProvider,
+                plugin != null ? plugin.getLogger() : java.util.logging.Logger.getLogger("PetAdminCommand"),
+                DatabaseBackend.from(context.config() != null ? context.config().database().backend() : "SQLITE"))
+                : null);
         this.auditLogger = auditLogger;
         this.coordinator = coordinator;
         this.profileCache = profileCache;
         this.messageService = messageService;
         this.taskRegistry = taskRegistry;
         this.context = context;
+        this.editorSessions = context != null ? context.editorSessionManager() : null;
 
         this.petIdKey = plugin != null ? new NamespacedKey(plugin, "pet_id") : null;
     }
@@ -158,6 +166,18 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
             case "give" -> {
                 if (!checkPerm(sender, "companionpets.admin.give")) return true;
                 handleGive(sender, args);
+            }
+            case "unlockitem" -> {
+                if (!checkPerm(sender, "companionpets.admin.unlockitem")) return true;
+                handleUnlockItem(sender, args);
+            }
+            case "pack" -> {
+                if (!checkPerm(sender, "companionpets.admin.pack")) return true;
+                handlePack(sender, args);
+            }
+            case "marketplace", "market" -> {
+                if (!checkPerm(sender, "companionpets.admin.marketplace")) return true;
+                handleMarketplace(sender, args);
             }
             case "remove" -> {
                 if (!checkPerm(sender, "companionpets.admin.remove")) return true;
@@ -194,6 +214,10 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
             case "reload" -> {
                 if (!checkPerm(sender, "companionpets.admin.reload")) return true;
                 handleReload(sender);
+            }
+            case "editor" -> {
+                if (!checkPerm(sender, "companionpets.admin.editor")) return true;
+                handleEditor(sender, args);
             }
             case "inspect" -> {
                 if (!checkPerm(sender, "companionpets.admin.inspect")) return true;
@@ -245,10 +269,37 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
         return false;
     }
 
+    private void handleEditor(CommandSender sender, String[] args) {
+        if (!(sender instanceof Player player)) {
+            send(sender, "command.only-players", "<red>Oyun içi editör yalnızca oyuncular tarafından açılabilir.</red>", null);
+            return;
+        }
+        if (editorSessions == null || definitionRegistry == null) {
+            send(player, "admin.editor-unavailable", "<red>Tanım editörü bu çalışma zamanında kullanılamıyor.</red>", null);
+            return;
+        }
+        if (args.length < 2) {
+            com.petsistemi.gui.PetDefinitionEditorMenu.openCatalogue(player, plugin, definitionRegistry, 0);
+            return;
+        }
+        try {
+            if (context != null && context.sessionManager() != null) {
+                context.sessionManager().removeSession(player.getUniqueId());
+            }
+            editorSessions.begin(player.getUniqueId(), args[1]);
+            com.petsistemi.gui.PetDefinitionEditorMenu.openDefinition(player, plugin, editorSessions);
+        } catch (Exception e) {
+            send(player, "admin.editor-open-failed", "<red>Editör açılamadı: " + e.getMessage() + "</red>", null);
+        }
+    }
+
     private void sendHelp(CommandSender sender) {
         send(sender, "admin.divider", "<dark_gray>-----------------------------------------</dark_gray>", null);
         send(sender, "admin.help-header", "<gold><b>=== PetSistemi Yönetici Komutları ===</b></gold>", null);
         sendHelpLine(sender, "/petadmin give <oyuncu> <tur_id>",         "Pet ver");
+        sendHelpLine(sender, "/petadmin unlockitem <oyuncu> <tur_id> [miktar] [materyal]", "Unlock itemi ver");
+        sendHelpLine(sender, "/petadmin pack <list|install|uninstall|export>", "Pet Pack yönetimi");
+        sendHelpLine(sender, "/petadmin marketplace <refresh|list|install>", "Marketplace yönetimi");
         sendHelpLine(sender, "/petadmin remove <oyuncu> <pet_id>",       "Pet sil");
         sendHelpLine(sender, "/petadmin list <oyuncu>",                  "Pet listesi");
         sendHelpLine(sender, "/petadmin info <oyuncu>",                  "Detaylı pet raporu");
@@ -264,6 +315,7 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
         sendHelpLine(sender, "/petadmin backup",                          "Veritabanı yedeği al");
         sendHelpLine(sender, "/petadmin reconcile",                       "Yetim entity uzlaştır");
         sendHelpLine(sender, "/petadmin reload",                          "Yapılandırmayı yenile");
+        sendHelpLine(sender, "/petadmin editor [tanım_id]",                "Oyun içi tanım editörünü aç");
         send(sender, "admin.divider", "<dark_gray>-----------------------------------------</dark_gray>", null);
     }
 
@@ -315,6 +367,171 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
                 }
             }));
         }
+    }
+
+    private void handleUnlockItem(CommandSender sender, String[] args) {
+        if (context == null || context.unlockItemController() == null) {
+            send(sender, "admin.unlockitem-unavailable", "<red>Unlock item servisi hazır değil.</red>", null);
+            return;
+        }
+        if (args.length < 3) {
+            send(sender, "admin.usage", "<red>Kullanım: /petadmin unlockitem <oyuncu> <tur_id> [miktar] [materyal]</red>",
+                    PlaceholderMap.of("usage", "/petadmin unlockitem <oyuncu> <tur_id> [miktar] [materyal]"));
+            return;
+        }
+        Player target = Bukkit.getPlayerExact(args[1]);
+        if (target == null) {
+            send(sender, "admin.player-not-found", "<red>Oyuncu çevrimiçi değil veya bulunamadı.</red>", null);
+            return;
+        }
+        int amount = 1;
+        if (args.length >= 4) {
+            try { amount = Integer.parseInt(args[3]); }
+            catch (NumberFormatException ignored) {
+                send(sender, "admin.invalid-number", "<red>Miktar geçerli bir sayı olmalıdır.</red>", null);
+                return;
+            }
+        }
+        Material material = Material.NAME_TAG;
+        if (args.length >= 5) {
+            material = Material.matchMaterial(args[4]);
+            if (material == null) {
+                send(sender, "admin.invalid-material", "<red>Geçersiz materyal: " + args[4] + "</red>", null);
+                return;
+            }
+        }
+        try {
+            ItemStack item = context.unlockItemController().create(args[2], amount, material);
+            target.getInventory().addItem(item).values().forEach(leftover ->
+                    target.getWorld().dropItemNaturally(target.getLocation(), leftover));
+            send(sender, "admin.unlockitem-success", "<green>" + target.getName() + " oyuncusuna " + amount
+                    + " adet " + args[2].toLowerCase(java.util.Locale.ROOT) + " unlock itemi verildi.</green>", null);
+            if (auditLogger != null) {
+                auditLogger.logAction("GIVE_UNLOCK_ITEM", sender.getName(), target.getUniqueId(), null,
+                        args[2] + " x" + amount + " (" + material.name() + ")");
+            }
+        } catch (IllegalArgumentException error) {
+            send(sender, "admin.unlockitem-failed", "<red>Unlock itemi oluşturulamadı: " + error.getMessage() + "</red>", null);
+        }
+    }
+
+    private void handlePack(CommandSender sender, String[] args) {
+        if (context == null || context.petPackService() == null) {
+            send(sender, "admin.pack-unavailable", "<red>Pet Pack servisi hazır değil.</red>", null);
+            return;
+        }
+        String action = args.length >= 2 ? args[1].toLowerCase(java.util.Locale.ROOT) : "list";
+        if (action.equals("list")) {
+            var installed = context.petPackService().installed();
+            if (installed.isEmpty()) {
+                send(sender, "admin.pack-empty", "<gray>Kurulu Pet Pack yok.</gray>", null);
+                return;
+            }
+            send(sender, "admin.pack-header", "<gold>Kurulu Pet Pack'ler:</gold>", null);
+            installed.forEach(pack -> send(sender, "admin.pack-line",
+                    "<yellow>• " + pack.id() + "</yellow><gray> @ " + pack.version() + " [" + pack.namespace() + "]</gray>", null));
+            return;
+        }
+        if (action.equals("install")) {
+            if (args.length < 3) {
+                send(sender, "admin.usage", "<red>Kullanım: /petadmin pack install <dosya.petpack></red>", null);
+                return;
+            }
+            java.nio.file.Path inbox = plugin.getDataFolder().toPath().resolve("packs").resolve("inbox").toAbsolutePath().normalize();
+            java.nio.file.Path archive = inbox.resolve(args[2]).normalize();
+            if (!archive.startsWith(inbox)) {
+                send(sender, "admin.pack-invalid-path", "<red>Paket yolu inbox dışına çıkamaz.</red>", null);
+                return;
+            }
+            runPackAsync(sender, () -> context.petPackService().install(archive, archive.toUri()));
+            return;
+        }
+        if (action.equals("uninstall")) {
+            if (args.length < 3) {
+                send(sender, "admin.usage", "<red>Kullanım: /petadmin pack uninstall <pack_id></red>", null);
+                return;
+            }
+            runPackAsync(sender, () -> context.petPackService().uninstall(args[2]));
+            return;
+        }
+        if (action.equals("export")) {
+            if (args.length < 6) {
+                send(sender, "admin.usage", "<red>Kullanım: /petadmin pack export <id> <namespace> <version> <pet_id...></red>", null);
+                return;
+            }
+            com.petsistemi.pack.PetPackManifest manifest = new com.petsistemi.pack.PetPackManifest(
+                    1, args[2].toLowerCase(java.util.Locale.ROOT), args[3].toLowerCase(java.util.Locale.ROOT),
+                    args[4], plugin.getDescription().getVersion(), "", java.util.List.of(sender.getName()), java.util.List.of());
+            java.util.List<String> definitions = java.util.Arrays.asList(args).subList(5, args.length);
+            java.nio.file.Path output = plugin.getDataFolder().toPath().resolve("packs").resolve("exports")
+                    .resolve(manifest.id() + "-" + manifest.version() + ".petpack");
+            plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
+                try {
+                    java.nio.file.Path exported = context.petPackService().exportPack(manifest, definitions, output);
+                    sendMessageOnMain(sender, () -> send(sender, "admin.pack-exported",
+                            "<green>Pet Pack dışa aktarıldı: " + exported.getFileName() + "</green>", null));
+                } catch (Exception error) {
+                    sendMessageOnMain(sender, () -> send(sender, "admin.pack-failed", "<red>Pet Pack dışa aktarılamadı: " + error.getMessage() + "</red>", null));
+                }
+            });
+            return;
+        }
+        send(sender, "admin.usage", "<red>Kullanım: /petadmin pack <list|install|uninstall|export></red>", null);
+    }
+
+    private void runPackAsync(CommandSender sender, java.util.function.Supplier<com.petsistemi.pack.PetPackInstallResult> action) {
+        plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
+            com.petsistemi.pack.PetPackInstallResult result;
+            try {
+                result = action.get();
+            } catch (Exception error) {
+                result = new com.petsistemi.pack.PetPackInstallResult(false,
+                        "Pet Pack işlemi başarısız: " + rootMessage(error), null, java.util.List.of(), false);
+            }
+            com.petsistemi.pack.PetPackInstallResult completed = result;
+            sendMessageOnMain(sender, () -> send(sender, completed.success() ? "admin.pack-success" : "admin.pack-failed",
+                    (completed.success() ? "<green>" : "<red>") + completed.message() + (completed.success() ? "</green>" : "</red>"), null));
+        });
+    }
+
+    private void handleMarketplace(CommandSender sender, String[] args) {
+        if (context == null || context.marketplaceService() == null) {
+            send(sender, "admin.marketplace-disabled", "<red>Marketplace config.yml içinde etkin değil.</red>", null);
+            return;
+        }
+        String action = args.length >= 2 ? args[1].toLowerCase(java.util.Locale.ROOT) : "list";
+        if (action.equals("refresh")) {
+            context.marketplaceService().refreshAsync().whenComplete((entries, error) -> sendMessageOnMain(sender, () -> {
+                if (error != null) send(sender, "admin.marketplace-failed", "<red>Katalog yenilenemedi: " + rootMessage(error) + "</red>", null);
+                else send(sender, "admin.marketplace-refreshed", "<green>Marketplace kataloğu yenilendi: " + entries.size() + " paket.</green>", null);
+            }));
+            return;
+        }
+        if (action.equals("list")) {
+            var entries = context.marketplaceService().entries();
+            if (entries.isEmpty()) {
+                send(sender, "admin.marketplace-empty", "<gray>Katalog boş; önce /petadmin marketplace refresh kullanın.</gray>", null);
+            } else {
+                send(sender, "admin.marketplace-header", "<gold>Marketplace paketleri:</gold>", null);
+                entries.forEach(entry -> send(sender, "admin.marketplace-line", "<yellow>• " + entry.id()
+                        + "</yellow><gray> @ " + entry.version() + " — " + entry.name() + "</gray>", null));
+            }
+            return;
+        }
+        if (action.equals("install") && args.length >= 3) {
+            context.marketplaceService().installAsync(args[2]).thenAccept(result -> sendMessageOnMain(sender, () ->
+                    send(sender, result.success() ? "admin.marketplace-success" : "admin.marketplace-failed",
+                            (result.success() ? "<green>" : "<red>") + result.message()
+                                    + (result.success() ? "</green>" : "</red>"), null)));
+            return;
+        }
+        send(sender, "admin.usage", "<red>Kullanım: /petadmin marketplace <refresh|list|install [id]></red>", null);
+    }
+
+    private static String rootMessage(Throwable error) {
+        Throwable current = error;
+        while (current.getCause() != null) current = current.getCause();
+        return current.getMessage() != null ? current.getMessage() : current.getClass().getSimpleName();
     }
 
     private void handleGiveAll(CommandSender sender, String[] args) {
@@ -685,11 +902,15 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
         send(sender, "admin.divider", "<dark_gray>-----------------------------------------</dark_gray>", null);
         send(sender, "command.health-header", "<gold><b>=== PetSistemi Sağlık ve Raporlama ===</b></gold>", null);
 
+        boolean mysqlBackend = context != null && context.config() != null
+                && DatabaseBackend.from(context.config().database().backend()) == DatabaseBackend.MYSQL;
         if (adminPersistenceService != null) {
             adminPersistenceService.checkHealthAsync().thenAccept(report -> sendMessageOnMain(sender, () -> {
                 if (report.ok()) {
                     if ("ok".equalsIgnoreCase(report.integrity())) {
-                        send(sender, "admin.health-integrity-ok", "<gray>SQLite Bütünlüğü (Integrity): </gray><green>TAM (OK)</green>", null);
+                        send(sender, "admin.health-integrity-ok", mysqlBackend
+                                ? "<gray>MySQL Bağlantısı ve Şeması: </gray><green>TAM (OK)</green>"
+                                : "<gray>SQLite Bütünlüğü (Integrity): </gray><green>TAM (OK)</green>", null);
                     } else {
                         send(sender, "admin.health-integrity-bad", "<gray>SQLite Bütünlüğü (Integrity): </gray><red>" + report.integrity() + "</red>", PlaceholderMap.of("value", report.integrity()));
                     }
@@ -710,7 +931,9 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
         long freeMemMb = Runtime.getRuntime().freeMemory() / 1024 / 1024;
         long usedMemMb = totalMemMb - freeMemMb;
 
-        send(sender, "admin.health-db-size", "<gray>Veritabanı Dosya Boyutu: </gray><yellow>" + dbSizeKb + " KB</yellow>", PlaceholderMap.of("size", String.valueOf(dbSizeKb)));
+        if (!mysqlBackend) {
+            send(sender, "admin.health-db-size", "<gray>Veritabanı Dosya Boyutu: </gray><yellow>" + dbSizeKb + " KB</yellow>", PlaceholderMap.of("size", String.valueOf(dbSizeKb)));
+        }
         send(sender, "admin.health-memory", "<gray>JVM Bellek Kullanımı: </gray><aqua>" + usedMemMb + " MB / " + totalMemMb + " MB</aqua>", PlaceholderMap.of("used", String.valueOf(usedMemMb)).add("total", String.valueOf(totalMemMb)));
         send(sender, "admin.health-definitions", "<gray>Yüklü Pet Tanımları: </gray><yellow>" + definitionRegistry.getAll().size() + "</yellow>", PlaceholderMap.of("count", String.valueOf(definitionRegistry.getAll().size())));
         send(sender, "admin.health-active-pets", "<gray>Aktif Runtime Petler: </gray><green>" + activeRegistry.getAllActive().size() + "</green>", PlaceholderMap.of("count", String.valueOf(activeRegistry.getAllActive().size())));
@@ -728,6 +951,11 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
             send(sender, "admin.backup-unavailable", "<red>Yedekleme hizmeti kullanılamıyor.</red>", null);
             return;
         }
+        PluginConfiguration configuration = context != null ? context.config() : null;
+        if (configuration != null && DatabaseBackend.from(configuration.database().backend()) == DatabaseBackend.MYSQL) {
+            send(sender, "admin.backup-mysql", "<yellow>MySQL yedekleri sunucu sağlayıcınızın snapshot/mysqldump sistemiyle alınmalıdır; dosya tabanlı /petadmin backup yalnızca SQLite içindir.</yellow>", null);
+            return;
+        }
 
         File dbFile = com.petsistemi.persistence.DatabaseManager.databaseFile(plugin);
         File backupDir = com.petsistemi.persistence.DatabaseManager.backupDirectory(plugin);
@@ -741,7 +969,7 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
                 send(sender, "admin.backup-failed", "<red>Yedekleme dosyası oluşturulamadı.</red>", null);
             }
         })).exceptionally(ex -> {
-            send(sender, "admin.backup-error", "<red>Yedek alma hatası: " + ex.getMessage() + "</red>", PlaceholderMap.of("error", ex.getMessage()));
+            sendMessageOnMain(sender, () -> send(sender, "admin.backup-error", "<red>Yedek alma hatası: " + rootMessage(ex) + "</red>", PlaceholderMap.of("error", rootMessage(ex))));
             return null;
         });
     }
@@ -857,7 +1085,7 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
 
     @Override
     public List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String alias, @NotNull String[] args) {
-        List<String> allSubs = Arrays.asList("give", "giveall", "remove", "list", "info", "addxp", "setxp", "setlevel", "summon", "dismiss", "reload", "inspect", "health", "backup", "reconcile", "disable", "enable", "benchmark", "vacuum");
+        List<String> allSubs = Arrays.asList("give", "giveall", "unlockitem", "pack", "marketplace", "remove", "list", "info", "addxp", "setxp", "setlevel", "summon", "dismiss", "reload", "editor", "inspect", "health", "backup", "reconcile", "disable", "enable", "benchmark", "vacuum");
 
         List<String> allowedSubs = allSubs.stream()
                 .filter(sub -> sender.hasPermission("companionpets.admin") || sender.hasPermission("companionpets.admin." + sub))
@@ -876,7 +1104,16 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
 
         if (args.length == 2) {
             String sub = args[0].toLowerCase(java.util.Locale.ROOT);
-            if (sub.equals("give") || sub.equals("remove") || sub.equals("list") || sub.equals("addxp") || sub.equals("setxp") || sub.equals("setlevel") || sub.equals("summon") || sub.equals("dismiss")) {
+            if (sub.equals("pack")) return filterPrefix(java.util.List.of("list", "install", "uninstall", "export"), args[1]);
+            if (sub.equals("marketplace")) return filterPrefix(java.util.List.of("list", "refresh", "install"), args[1]);
+            if (sub.equals("editor")) {
+                return definitionRegistry.getAll().stream()
+                        .map(PetDefinition::id)
+                        .filter(id -> id.startsWith(args[1].toLowerCase(java.util.Locale.ROOT)))
+                        .sorted()
+                        .collect(Collectors.toList());
+            }
+            if (sub.equals("give") || sub.equals("unlockitem") || sub.equals("remove") || sub.equals("list") || sub.equals("addxp") || sub.equals("setxp") || sub.equals("setlevel") || sub.equals("summon") || sub.equals("dismiss")) {
                 return Bukkit.getOnlinePlayers().stream()
                         .map(Player::getName)
                         .filter(name -> name.toLowerCase(java.util.Locale.ROOT).startsWith(args[1].toLowerCase(java.util.Locale.ROOT)))
@@ -886,7 +1123,13 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
 
         if (args.length == 3) {
             String sub = args[0].toLowerCase(java.util.Locale.ROOT);
-            if (sub.equals("give")) {
+            if (sub.equals("pack") && args[1].equalsIgnoreCase("uninstall") && context != null && context.petPackService() != null) {
+                return filterPrefix(context.petPackService().installed().stream().map(com.petsistemi.pack.PetPackManifest::id).toList(), args[2]);
+            }
+            if (sub.equals("marketplace") && args[1].equalsIgnoreCase("install") && context != null && context.marketplaceService() != null) {
+                return filterPrefix(context.marketplaceService().entries().stream().map(com.petsistemi.marketplace.MarketplaceEntry::id).toList(), args[2]);
+            }
+            if (sub.equals("give") || sub.equals("unlockitem")) {
                 return definitionRegistry.getAll().stream()
                         .map(PetDefinition::id)
                         .filter(id -> id.startsWith(args[2].toLowerCase(java.util.Locale.ROOT)))
@@ -903,7 +1146,23 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
             }
         }
 
+        if (args.length == 4 && args[0].equalsIgnoreCase("unlockitem")) {
+            return Arrays.asList("1", "8", "16", "32", "64").stream()
+                    .filter(value -> value.startsWith(args[3])).collect(Collectors.toList());
+        }
+
+        if (args.length == 5 && args[0].equalsIgnoreCase("unlockitem")) {
+            String prefix = args[4].toUpperCase(java.util.Locale.ROOT);
+            return Arrays.stream(Material.values()).filter(material -> material.isItem() && !material.isAir())
+                    .map(Material::name).filter(name -> name.startsWith(prefix)).limit(50).collect(Collectors.toList());
+        }
+
         return Collections.emptyList();
+    }
+
+    private static List<String> filterPrefix(Collection<String> values, String prefix) {
+        String lower = prefix == null ? "" : prefix.toLowerCase(java.util.Locale.ROOT);
+        return values.stream().filter(value -> value.toLowerCase(java.util.Locale.ROOT).startsWith(lower)).sorted().toList();
     }
 
     private void handleBenchmark(CommandSender sender) {
@@ -943,12 +1202,18 @@ public class PetAdminCommand implements CommandExecutor, TabCompleter {
             send(sender, "admin.vacuum-failed", "<red>Veritabanı servisleri aktif değil.</red>", null);
             return;
         }
-        send(sender, "admin.vacuum-starting", "<yellow>⚡ Veritabanı VACUUM & ANALYZE optimizasyonu başlatılıyor...</yellow>", null);
+        boolean mysqlBackend = context != null && context.config() != null
+                && DatabaseBackend.from(context.config().database().backend()) == DatabaseBackend.MYSQL;
+        send(sender, "admin.vacuum-starting", mysqlBackend
+                ? "<yellow>⚡ MySQL ANALYZE TABLE optimizasyonu başlatılıyor...</yellow>"
+                : "<yellow>⚡ Veritabanı VACUUM & ANALYZE optimizasyonu başlatılıyor...</yellow>", null);
         adminPersistenceService.vacuumDatabaseAsync().thenAccept(success -> sendMessageOnMain(sender, () -> {
             if (success) {
-                send(sender, "admin.vacuum-success", "<green>✔ Veritabanı optimizasyonu (VACUUM & ANALYZE) başarıyla tamamlandı!</green>", null);
+                send(sender, "admin.vacuum-success", mysqlBackend
+                        ? "<green>✔ MySQL tablo istatistikleri başarıyla güncellendi!</green>"
+                        : "<green>✔ Veritabanı optimizasyonu (VACUUM & ANALYZE) başarıyla tamamlandı!</green>", null);
             } else {
-                send(sender, "admin.vacuum-failed", "<red>✖ VACUUM optimizasyonu çalıştırılamadı (sadece SQLite destekler).</red>", null);
+                send(sender, "admin.vacuum-failed", "<red>✖ Veritabanı optimizasyonu çalıştırılamadı.</red>", null);
             }
         }));
     }

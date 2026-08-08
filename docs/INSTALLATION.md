@@ -12,5 +12,16 @@
 
 ## Eski Veritabanından Yükseltme (Upgrade from V1/V2/V3)
 - Eski veritabanı `pets.db` otomatik olarak algılanır.
-- Migration V4–V8 adımları otomatik çalışarak şemayı ve veri bütünlüğünü bozmadan `0.2.0-alpha.1` sürümüne yükseltir (V8, kalıcı takip modu için `follow_mode` kolonunu ekler).
+- Migration V4–V9 adımları otomatik çalışarak şemayı ve veri bütünlüğünü bozmadan `0.2.0-alpha.1` sürümüne yükseltir (V8 kalıcı takip modunu, V9 MF8 event/pack tablolarını ekler).
 - Otomatik veritabanı yedeği `plugins/PetSistemi/database-backups/` klasörüne kaydedilir.
+
+## MySQL / Network Kurulumu
+
+1. Boş bir MySQL 8.x veritabanı ve sınırlı yetkili kullanıcı oluşturun.
+2. `database.backend: MYSQL` seçip `database.mysql` bağlantı bilgilerini doldurun.
+3. Network kullanılacaksa her sunucuda `ecosystem.network.enabled: true`, ortak DB ve
+   benzersiz `server-id` ayarlayın.
+4. Sunucuları başlatın; V9 MySQL şeması otomatik oluşturulur.
+
+SQLite verisi MySQL'e otomatik taşınmaz. Geçiş ve sağlayıcı yedeği ayrıntıları için
+[ECOSYSTEM.md](ECOSYSTEM.md).

@@ -19,11 +19,18 @@ public class AdminPersistenceService {
     private final DatabaseExecutor dbExecutor;
     private final ConnectionProvider connectionProvider;
     private final Logger logger;
+    private final DatabaseBackend backend;
 
     public AdminPersistenceService(DatabaseExecutor dbExecutor, ConnectionProvider connectionProvider, Logger logger) {
+        this(dbExecutor, connectionProvider, logger, DatabaseBackend.SQLITE);
+    }
+
+    public AdminPersistenceService(DatabaseExecutor dbExecutor, ConnectionProvider connectionProvider, Logger logger,
+                                   DatabaseBackend backend) {
         this.dbExecutor = Objects.requireNonNull(dbExecutor, "dbExecutor null olamaz.");
         this.connectionProvider = Objects.requireNonNull(connectionProvider, "connectionProvider null olamaz.");
         this.logger = Objects.requireNonNull(logger, "logger null olamaz.");
+        this.backend = Objects.requireNonNull(backend, "backend null olamaz.");
     }
 
     public record DatabaseHealthReport(boolean ok, String integrity, boolean fkClean, String errorMessage) {}
@@ -33,14 +40,22 @@ public class AdminPersistenceService {
             try (Connection conn = connectionProvider.getConnection();
                  Statement stmt = conn.createStatement()) {
 
-                String integrity = "Bilinmiyor";
-                try (ResultSet rs = stmt.executeQuery("PRAGMA integrity_check;")) {
-                    if (rs.next()) integrity = rs.getString(1);
-                }
-
+                String integrity = "ok";
                 boolean fkClean = true;
-                try (ResultSet rs = stmt.executeQuery("PRAGMA foreign_key_check;")) {
-                    if (rs.next()) fkClean = false;
+                if (backend == DatabaseBackend.MYSQL) {
+                    try (ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM schema_migrations")) {
+                        if (!rs.next() || rs.getInt(1) < MysqlSchemaMigrator.CURRENT_VERSION) {
+                            return new DatabaseHealthReport(false, "migration-incomplete", false,
+                                    "MySQL şema migration kayıtları eksik.");
+                        }
+                    }
+                } else {
+                    try (ResultSet rs = stmt.executeQuery("PRAGMA integrity_check;")) {
+                        if (rs.next()) integrity = rs.getString(1);
+                    }
+                    try (ResultSet rs = stmt.executeQuery("PRAGMA foreign_key_check;")) {
+                        if (rs.next()) fkClean = false;
+                    }
                 }
 
                 return new DatabaseHealthReport(true, integrity, fkClean, null);
@@ -67,9 +82,14 @@ public class AdminPersistenceService {
         return dbExecutor.submit(() -> {
             try (Connection conn = connectionProvider.getConnection();
                  Statement stmt = conn.createStatement()) {
-                stmt.execute("VACUUM;");
-                stmt.execute("ANALYZE;");
-                logger.info("Veritabanı optimizasyonu (VACUUM & ANALYZE) başarıyla uygulandı.");
+                if (backend == DatabaseBackend.MYSQL) {
+                    stmt.execute("ANALYZE TABLE pets, player_selected_pets, pet_network_events");
+                    logger.info("MySQL tablo istatistikleri ANALYZE TABLE ile güncellendi.");
+                } else {
+                    stmt.execute("VACUUM;");
+                    stmt.execute("ANALYZE;");
+                    logger.info("Veritabanı optimizasyonu (VACUUM & ANALYZE) başarıyla uygulandı.");
+                }
                 return true;
             } catch (Exception e) {
                 logger.warning("VACUUM optimizasyonu çalıştırılamadı: " + e.getMessage());

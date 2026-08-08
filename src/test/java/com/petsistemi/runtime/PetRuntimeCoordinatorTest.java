@@ -5,6 +5,9 @@ import com.petsistemi.domain.PetAvailabilityState;
 import com.petsistemi.domain.PetDefinition;
 import com.petsistemi.domain.PetInstance;
 import com.petsistemi.domain.PetRuntimeState;
+import com.petsistemi.domain.PetRepresentationDefinition;
+import com.petsistemi.domain.PetVector3;
+import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.LivingEntity;
@@ -87,5 +90,64 @@ class PetRuntimeCoordinatorTest {
         coordinator.despawnRuntime(ownerId);
 
         assertTrue(activeRegistry.getByOwner(ownerId).isEmpty());
+    }
+
+    @Test
+    void missingExternalProviderRejectsSummonInsteadOfSilentlySpawningVanillaEntity() {
+        UUID ownerId = UUID.randomUUID();
+        UUID petId = UUID.randomUUID();
+        NamespacedKey providerKey = new NamespacedKey("modelengine", "model");
+        PetRepresentationDefinition representation = new PetRepresentationDefinition(
+                providerKey, "phoenix", "ARMOR_STAND", false, false, true, true, false,
+                null, null, PetVector3.ONE, null, 0, 0, 0, 0, null);
+        PetDefinition definition = PetDefinition.builder("phoenix", "Phoenix")
+                .representation(representation).build();
+        PetInstance instance = new PetInstance(petId, ownerId, "phoenix", "Phoenix", 1, 0,
+                PetAvailabilityState.AVAILABLE, 0, 0);
+        Player owner = org.mockito.Mockito.mock(Player.class);
+        org.mockito.Mockito.when(owner.getUniqueId()).thenReturn(ownerId);
+        PetEntityController legacy = org.mockito.Mockito.mock(PetEntityController.class);
+        coordinator = new PetRuntimeCoordinator(null, null, activeRegistry, legacy, null,
+                new PetRepresentationRegistry(), new PetMovementRegistry());
+
+        IllegalStateException error = assertThrows(IllegalStateException.class,
+                () -> coordinator.spawnRuntimeUncommittedHandle(owner, instance, definition));
+
+        assertTrue(error.getMessage().contains("modelengine:model"));
+        org.mockito.Mockito.verifyNoInteractions(legacy);
+    }
+
+    @Test
+    void mountedPetSkipsNormalMovementController() {
+        UUID ownerId = UUID.randomUUID();
+        org.bukkit.World world = org.mockito.Mockito.mock(org.bukkit.World.class);
+        org.mockito.Mockito.when(world.isChunkLoaded(org.mockito.ArgumentMatchers.anyInt(),
+                org.mockito.ArgumentMatchers.anyInt())).thenReturn(true);
+        org.bukkit.Location location = new org.bukkit.Location(world, 0, 64, 0);
+        Player owner = org.mockito.Mockito.mock(Player.class);
+        org.mockito.Mockito.when(owner.isOnline()).thenReturn(true);
+        org.mockito.Mockito.when(owner.getLocation()).thenReturn(location);
+        org.mockito.Mockito.when(owner.getWorld()).thenReturn(world);
+        Entity entity = org.mockito.Mockito.mock(Entity.class);
+        org.mockito.Mockito.when(entity.isValid()).thenReturn(true);
+        org.mockito.Mockito.when(entity.getLocation()).thenReturn(location);
+        org.mockito.Mockito.when(entity.getWorld()).thenReturn(world);
+        ActivePet active = new ActivePet(UUID.randomUUID(), ownerId, "wolf", 1,
+                UUID.randomUUID(), entity, PetRuntimeState.ACTIVE);
+        active.setUpdateIntervalTicks(0);
+
+        PetMovementController movement = org.mockito.Mockito.mock(PetMovementController.class);
+        PetMovementRegistry movements = new PetMovementRegistry();
+        movements.register(com.petsistemi.domain.PetMovementType.GROUND_FOLLOW, movement);
+        coordinator = new PetRuntimeCoordinator(null, null, activeRegistry, null, null, null, movements);
+        com.petsistemi.runtime.mount.PetMountController mounts =
+                org.mockito.Mockito.mock(com.petsistemi.runtime.mount.PetMountController.class);
+        org.mockito.Mockito.when(mounts.tick(active, owner)).thenReturn(true);
+        coordinator.setMountController(mounts);
+
+        coordinator.tickEach(java.util.List.of(active), ignored -> owner);
+
+        org.mockito.Mockito.verify(mounts).tick(active, owner);
+        org.mockito.Mockito.verify(movement, org.mockito.Mockito.never()).tick(active, entity, owner);
     }
 }

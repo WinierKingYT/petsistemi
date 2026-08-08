@@ -34,8 +34,71 @@ public record PetDefinition(
         List<PetFollowMode> allowedModes,
         PetSpawnStyleDefinition spawnStyle,
         PetMountDefinition mount,
-        PetPresenceDefinition presence
+        PetPresenceDefinition presence,
+        List<com.petsistemi.domain.behavior.PetBehaviorDefinition> behaviors,
+        java.util.Map<org.bukkit.NamespacedKey, com.petsistemi.domain.ability.PetAbilityDefinition> abilities,
+        List<com.petsistemi.domain.item.PetItemActionDefinition> itemActions
 ) {
+
+    /** Backward-compatible overload retaining the former ability-aware signature. */
+    public PetDefinition(
+            String id, String displayName, List<String> description, String entityType,
+            boolean baby, boolean glowing, boolean invulnerable, boolean silent, boolean gravity,
+            boolean progressionEnabled, int maxLevel, boolean nameplateEnabled, List<String> nameplateFormat,
+            PetRepresentationDefinition representation, PetMovementDefinition movement, PetStatesDefinition states,
+            java.util.List<PetTransformDefinition> transforms,
+            java.util.Map<PetReactionType, PetReactionDefinition> reactions,
+            java.util.Map<String, PetEmoteDefinition> emotes, String guiMaterial, String permission,
+            List<PetBuffDefinition> buffs, PetPersonalityType personality, List<PetEvolutionDefinition> evolutions,
+            PetHitboxDefinition hitbox, List<PetLevelRewardDefinition> levelRewards, List<PetFollowMode> allowedModes,
+            PetSpawnStyleDefinition spawnStyle, PetMountDefinition mount, PetPresenceDefinition presence,
+            List<com.petsistemi.domain.behavior.PetBehaviorDefinition> behaviors,
+            java.util.Map<org.bukkit.NamespacedKey, com.petsistemi.domain.ability.PetAbilityDefinition> abilities
+    ) {
+        this(id, displayName, description, entityType, baby, glowing, invulnerable, silent, gravity,
+                progressionEnabled, maxLevel, nameplateEnabled, nameplateFormat, representation, movement,
+                states, transforms, reactions, emotes, guiMaterial, permission, buffs, personality, evolutions,
+                hitbox, levelRewards, allowedModes, spawnStyle, mount, presence, behaviors, abilities, null);
+    }
+
+    /** Backward-compatible overload retaining the former behavior-aware signature. */
+    public PetDefinition(
+            String id, String displayName, List<String> description, String entityType,
+            boolean baby, boolean glowing, boolean invulnerable, boolean silent, boolean gravity,
+            boolean progressionEnabled, int maxLevel, boolean nameplateEnabled, List<String> nameplateFormat,
+            PetRepresentationDefinition representation, PetMovementDefinition movement, PetStatesDefinition states,
+            java.util.List<PetTransformDefinition> transforms,
+            java.util.Map<PetReactionType, PetReactionDefinition> reactions,
+            java.util.Map<String, PetEmoteDefinition> emotes, String guiMaterial, String permission,
+            List<PetBuffDefinition> buffs, PetPersonalityType personality, List<PetEvolutionDefinition> evolutions,
+            PetHitboxDefinition hitbox, List<PetLevelRewardDefinition> levelRewards, List<PetFollowMode> allowedModes,
+            PetSpawnStyleDefinition spawnStyle, PetMountDefinition mount, PetPresenceDefinition presence,
+            List<com.petsistemi.domain.behavior.PetBehaviorDefinition> behaviors
+    ) {
+        this(id, displayName, description, entityType, baby, glowing, invulnerable, silent, gravity,
+                progressionEnabled, maxLevel, nameplateEnabled, nameplateFormat, representation, movement,
+                states, transforms, reactions, emotes, guiMaterial, permission, buffs, personality, evolutions,
+                hitbox, levelRewards, allowedModes, spawnStyle, mount, presence, behaviors, null);
+    }
+
+    /** Backward-compatible overload retaining the former 30-component canonical signature. */
+    public PetDefinition(
+            String id, String displayName, List<String> description, String entityType,
+            boolean baby, boolean glowing, boolean invulnerable, boolean silent, boolean gravity,
+            boolean progressionEnabled, int maxLevel, boolean nameplateEnabled, List<String> nameplateFormat,
+            PetRepresentationDefinition representation, PetMovementDefinition movement, PetStatesDefinition states,
+            java.util.List<PetTransformDefinition> transforms,
+            java.util.Map<PetReactionType, PetReactionDefinition> reactions,
+            java.util.Map<String, PetEmoteDefinition> emotes, String guiMaterial, String permission,
+            List<PetBuffDefinition> buffs, PetPersonalityType personality, List<PetEvolutionDefinition> evolutions,
+            PetHitboxDefinition hitbox, List<PetLevelRewardDefinition> levelRewards, List<PetFollowMode> allowedModes,
+            PetSpawnStyleDefinition spawnStyle, PetMountDefinition mount, PetPresenceDefinition presence
+    ) {
+        this(id, displayName, description, entityType, baby, glowing, invulnerable, silent, gravity,
+                progressionEnabled, maxLevel, nameplateEnabled, nameplateFormat, representation, movement,
+                states, transforms, reactions, emotes, guiMaterial, permission, buffs, personality, evolutions,
+                hitbox, levelRewards, allowedModes, spawnStyle, mount, presence, null, null);
+    }
 
     /** Backward-compatible canonical overload without new fields. */
     public PetDefinition(
@@ -218,7 +281,11 @@ public record PetDefinition(
 
     /** Starts a builder pre-filled with this definition's values, for copy-with-changes. */
     public Builder toBuilder() {
-        return new Builder(id, displayName)
+        return copyBuilder(displayName);
+    }
+
+    private Builder copyBuilder(String copiedDisplayName) {
+        return new Builder(id, copiedDisplayName)
                 .description(description)
                 .entityType(entityType)
                 .baby(baby).glowing(glowing).invulnerable(invulnerable).silent(silent).gravity(gravity)
@@ -229,7 +296,23 @@ public record PetDefinition(
                 .guiMaterial(guiMaterial).permission(permission)
                 .buffs(buffs).personality(personality).evolutions(evolutions).hitbox(hitbox)
                 .levelRewards(levelRewards).allowedModes(allowedModes)
-                .spawnStyle(spawnStyle).mount(mount).presence(presence);
+                .spawnStyle(spawnStyle).mount(mount).presence(presence).behaviors(behaviors).abilities(abilities)
+                .itemActions(itemActions);
+    }
+
+    /** Applies a level-derived evolution stage without changing the persisted pet identity. */
+    public PetDefinition withEvolutionApplied(PetEvolutionDefinition evolution, PetDefinition target) {
+        if (evolution == null) return this;
+        PetDefinition source = target != null ? target : this;
+        String evolvedName = evolution.displayNameOverride() != null
+                ? evolution.displayNameOverride() : source.displayName();
+        Builder builder = source.copyBuilder(evolvedName);
+        if (evolution.scaleOverride() != null) {
+            PetVisualOverride override = new PetVisualOverride(null, null, null,
+                    evolution.scaleOverride(), null, null, null, null, null);
+            builder.representation(source.representationOrEntity().applyOverride(override));
+        }
+        return builder.build();
     }
 
     public static final class Builder {
@@ -263,6 +346,9 @@ public record PetDefinition(
         private PetSpawnStyleDefinition spawnStyle;
         private PetMountDefinition mount;
         private PetPresenceDefinition presence;
+        private List<com.petsistemi.domain.behavior.PetBehaviorDefinition> behaviors;
+        private java.util.Map<org.bukkit.NamespacedKey, com.petsistemi.domain.ability.PetAbilityDefinition> abilities;
+        private List<com.petsistemi.domain.item.PetItemActionDefinition> itemActions;
 
         private Builder(String id, String displayName) {
             this.id = id;
@@ -297,6 +383,9 @@ public record PetDefinition(
         public Builder spawnStyle(PetSpawnStyleDefinition v) { this.spawnStyle = v; return this; }
         public Builder mount(PetMountDefinition v) { this.mount = v; return this; }
         public Builder presence(PetPresenceDefinition v) { this.presence = v; return this; }
+        public Builder behaviors(List<com.petsistemi.domain.behavior.PetBehaviorDefinition> v) { this.behaviors = v; return this; }
+        public Builder abilities(java.util.Map<org.bukkit.NamespacedKey, com.petsistemi.domain.ability.PetAbilityDefinition> v) { this.abilities = v; return this; }
+        public Builder itemActions(List<com.petsistemi.domain.item.PetItemActionDefinition> v) { this.itemActions = v; return this; }
 
         public PetDefinition build() {
             return new PetDefinition(id, displayName, description, entityType,
@@ -304,7 +393,7 @@ public record PetDefinition(
                     progressionEnabled, maxLevel, nameplateEnabled, nameplateFormat,
                     representation, movement, states, transforms, reactions, emotes,
                     guiMaterial, permission, buffs, personality, evolutions, hitbox,
-                    levelRewards, allowedModes, spawnStyle, mount, presence);
+                    levelRewards, allowedModes, spawnStyle, mount, presence, behaviors, abilities, itemActions);
         }
     }
 }

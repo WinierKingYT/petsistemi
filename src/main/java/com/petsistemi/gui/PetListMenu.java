@@ -31,6 +31,12 @@ import java.util.concurrent.atomic.AtomicReference;
 public class PetListMenu {
 
     private static final MiniMessage MINI_MESSAGE = MiniMessage.miniMessage();
+    private static final int[] CONTENT_SLOTS = {
+            10, 11, 12, 13, 14, 15, 16,
+            19, 20, 21, 22, 23, 24, 25,
+            28, 29, 30, 31, 32, 33, 34,
+            37, 38, 39, 40, 41, 42, 43
+    };
 
     public static void open(
             Player viewer,
@@ -97,13 +103,16 @@ public class PetListMenu {
         });
 
         Component title = text(messageService, "list.menu-title", "<gold><bold>Pet Koleksiyonunuz</bold></gold>", null);
-        PetMenuHolder holder = new PetMenuHolder("PET_LIST_ALL", Math.max(0, page));
+        int pageCount = Math.max(1, (sortedPets.size() + CONTENT_SLOTS.length - 1) / CONTENT_SLOTS.length);
+        int safePage = Math.min(Math.max(0, page), pageCount - 1);
+        PetMenuHolder holder = new PetMenuHolder("PET_LIST_ALL", safePage);
         Inventory inv = Bukkit.createInventory(holder, 54, title);
 
-        int slot = 10;
-        for (PetSnapshot pet : sortedPets) {
-            if (slot >= 44) break;
-            if ((slot + 1) % 9 == 0) slot += 2; // skip borders
+        int start = safePage * CONTENT_SLOTS.length;
+        int end = Math.min(sortedPets.size(), start + CONTENT_SLOTS.length);
+        for (int index = start; index < end; index++) {
+            PetSnapshot pet = sortedPets.get(index);
+            int slot = CONTENT_SLOTS[index - start];
 
             PetDefinition def = definitionRegistry != null ? definitionRegistry.find(pet.definitionId()).orElse(null) : null;
             Material mat = resolveMaterial(def != null ? def.guiMaterial() : null);
@@ -142,8 +151,12 @@ public class PetListMenu {
                 item.setItemMeta(meta);
             }
 
-            inv.setItem(slot++, item);
+            inv.setItem(slot, item);
         }
+
+        if (safePage > 0) inv.setItem(45, navigationItem(Material.ARROW, "<yellow>Önceki Sayfa</yellow>"));
+        inv.setItem(49, navigationItem(Material.BARRIER, "<red>Kapat</red>"));
+        if (safePage + 1 < pageCount) inv.setItem(53, navigationItem(Material.ARROW, "<yellow>Sonraki Sayfa</yellow>"));
 
         viewer.openInventory(inv);
     }
@@ -171,6 +184,16 @@ public class PetListMenu {
         } catch (Exception e) {
             return Material.BONE;
         }
+    }
+
+    private static ItemStack navigationItem(Material material, String name) {
+        ItemStack item = new ItemStack(material);
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            meta.displayName(MINI_MESSAGE.deserialize(name));
+            item.setItemMeta(meta);
+        }
+        return item;
     }
 
     private static Component text(MessageService service, String key, String fallback, PlaceholderMap placeholders) {

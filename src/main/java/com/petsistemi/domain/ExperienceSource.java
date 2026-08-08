@@ -10,5 +10,6 @@ public enum ExperienceSource {
     BLOCK_BREAK,
     ONLINE_TIME,
     FISHING,
-    CRAFTING
+    CRAFTING,
+    ITEM_ACTION
 }

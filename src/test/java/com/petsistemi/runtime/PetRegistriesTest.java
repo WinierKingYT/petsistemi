@@ -6,6 +6,7 @@ import com.petsistemi.domain.PetMovementType;
 import com.petsistemi.domain.RuntimeRepresentationType;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
+import org.bukkit.NamespacedKey;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -46,7 +47,7 @@ class PetRegistriesTest {
     @Test
     void representationRegistryIgnoresNullArguments() {
         PetRepresentationRegistry registry = new PetRepresentationRegistry();
-        registry.register(null, dummyRep());
+        registry.register((RuntimeRepresentationType) null, dummyRep());
         registry.register(RuntimeRepresentationType.ENTITY, null);
         assertTrue(registry.supported().isEmpty());
     }
@@ -69,6 +70,18 @@ class PetRegistriesTest {
         PetMovementRegistry registry = new PetMovementRegistry();
         PetMovementController ground = dummyMovement();
         registry.register(PetMovementType.GROUND_FOLLOW, ground);
-        assertSame(ground, registry.get(null));
+        assertSame(ground, registry.get((PetMovementType) null));
+    }
+
+    @Test
+    void movementRegistrySupportsThirdPartyNamespacedKeys() {
+        PetMovementRegistry registry = new PetMovementRegistry();
+        PetMovementController custom = dummyMovement();
+        NamespacedKey key = new NamespacedKey("test", "custom_movement");
+
+        registry.register(key, custom);
+
+        assertSame(custom, registry.get(key));
+        assertTrue(registry.supportedKeys().contains(key));
     }
 }

@@ -15,6 +15,10 @@ import com.petsistemi.domain.PetDefinition;
 import com.petsistemi.runtime.ActivePet;
 import com.petsistemi.runtime.ActivePetRegistry;
 import com.petsistemi.runtime.PetEmoteController;
+import com.petsistemi.runtime.ability.AbilityOutcome;
+import com.petsistemi.runtime.ability.PetAbilityEngine;
+import com.petsistemi.runtime.ability.PetAbilityBindingController;
+import com.petsistemi.runtime.order.PetOrderEngine;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -41,8 +45,11 @@ public class PetCommand implements CommandExecutor, TabCompleter {
     private final MessageService messageService;
     private final AtomicReference<RuntimeConfigurationSnapshot> configSnapshot;
     private final PetEmoteController emoteController;
+    private final PetAbilityEngine abilityEngine;
+    private final PetAbilityBindingController abilityBindings;
+    private final PetOrderEngine orderEngine;
 
-    public PetCommand(JavaPlugin plugin, PetRuntimeOperationService operationService, PetService petService, PetDefinitionRegistry definitionRegistry, PlayerPetProfileCache profileCache, ActivePetRegistry activeRegistry, MessageService messageService, AtomicReference<RuntimeConfigurationSnapshot> configSnapshot, PetEmoteController emoteController) {
+    public PetCommand(JavaPlugin plugin, PetRuntimeOperationService operationService, PetService petService, PetDefinitionRegistry definitionRegistry, PlayerPetProfileCache profileCache, ActivePetRegistry activeRegistry, MessageService messageService, AtomicReference<RuntimeConfigurationSnapshot> configSnapshot, PetEmoteController emoteController, PetAbilityEngine abilityEngine, PetAbilityBindingController abilityBindings, PetOrderEngine orderEngine) {
         this.plugin = plugin;
         this.operationService = operationService;
         this.petService = petService;
@@ -52,6 +59,24 @@ public class PetCommand implements CommandExecutor, TabCompleter {
         this.messageService = messageService;
         this.configSnapshot = configSnapshot;
         this.emoteController = emoteController;
+        this.abilityEngine = abilityEngine;
+        this.abilityBindings = abilityBindings;
+        this.orderEngine = orderEngine;
+    }
+
+    public PetCommand(JavaPlugin plugin, PetRuntimeOperationService operationService, PetService petService, PetDefinitionRegistry definitionRegistry, PlayerPetProfileCache profileCache, ActivePetRegistry activeRegistry, MessageService messageService, AtomicReference<RuntimeConfigurationSnapshot> configSnapshot, PetEmoteController emoteController, PetAbilityEngine abilityEngine, PetAbilityBindingController abilityBindings) {
+        this(plugin, operationService, petService, definitionRegistry, profileCache, activeRegistry,
+                messageService, configSnapshot, emoteController, abilityEngine, abilityBindings, null);
+    }
+
+    public PetCommand(JavaPlugin plugin, PetRuntimeOperationService operationService, PetService petService, PetDefinitionRegistry definitionRegistry, PlayerPetProfileCache profileCache, ActivePetRegistry activeRegistry, MessageService messageService, AtomicReference<RuntimeConfigurationSnapshot> configSnapshot, PetEmoteController emoteController, PetAbilityEngine abilityEngine) {
+        this(plugin, operationService, petService, definitionRegistry, profileCache, activeRegistry,
+                messageService, configSnapshot, emoteController, abilityEngine, null);
+    }
+
+    public PetCommand(JavaPlugin plugin, PetRuntimeOperationService operationService, PetService petService, PetDefinitionRegistry definitionRegistry, PlayerPetProfileCache profileCache, ActivePetRegistry activeRegistry, MessageService messageService, AtomicReference<RuntimeConfigurationSnapshot> configSnapshot, PetEmoteController emoteController) {
+        this(plugin, operationService, petService, definitionRegistry, profileCache, activeRegistry,
+                messageService, configSnapshot, emoteController, null);
     }
 
     public PetCommand(JavaPlugin plugin, PetRuntimeOperationService operationService, PetService petService, PetDefinitionRegistry definitionRegistry, PlayerPetProfileCache profileCache, ActivePetRegistry activeRegistry, MessageService messageService, AtomicReference<RuntimeConfigurationSnapshot> configSnapshot) {
@@ -99,12 +124,16 @@ public class PetCommand implements CommandExecutor, TabCompleter {
         switch (sub) {
             case "list" -> handleList(player);
             case "menu", "gui" -> com.petsistemi.gui.PetListMenu.open(player, petService, plugin, definitionRegistry, configSnapshot, messageService);
+            case "collection", "koleksiyon" -> com.petsistemi.gui.PetCollectionMenu.open(
+                    player, petService, plugin, definitionRegistry, 0, com.petsistemi.gui.PetCollectionMenu.ALL);
             case "summon" -> handleSummon(player, args);
             case "dismiss" -> handleDismiss(player);
             case "info" -> handleInfo(player, args);
             case "rename" -> handleRename(player, args);
             case "mode" -> handleMode(player, args);
+            case "order", "emir" -> handleOrder(player, args, false);
             case "emote" -> handleEmote(player, args);
+            case "ability", "skill" -> handleAbility(player, args);
             case "stats" -> handleStats(player);
             case "toggle" -> handleToggle(player);
             default -> sendHelp(player);
@@ -125,13 +154,70 @@ public class PetCommand implements CommandExecutor, TabCompleter {
         send(player, "command.help",
                 "<gold>=== Minecraft Pet Sistemi ===</gold>" +
                 "<newline><yellow>/pet list - Sahip olduğunuz petleri listeler.</yellow>" +
+                "<newline><yellow>/pet collection - Tüm pet kataloğunu gösterir.</yellow>" +
                 "<newline><yellow>/pet summon <pet_id> - Belirtilen peti çağırır.</yellow>" +
                 "<newline><yellow>/pet dismiss - Aktif petinizi kaldırır.</yellow>" +
                 "<newline><yellow>/pet info [pet_id] - Pet detaylarını gösterir.</yellow>" +
                 "<newline><yellow>/pet rename <pet_id> <isim> - Petinizi yeniden adlandırır.</yellow>" +
                 "<newline><yellow>/pet mode <follow|stay|wander> - Petinizin takip modunu ayarlar.</yellow>" +
-                "<newline><yellow>/pet emote <ad> - Petinizin tanımlı bir emotesini oynatır.</yellow>",
+                "<newline><yellow>/pet order <follow|stay|wander|come> - Petinize emir verir.</yellow>" +
+                "<newline><yellow>/pet emote <ad> - Petinizin tanımlı bir emotesini oynatır.</yellow>" +
+                "<newline><yellow>/pet ability <ad> - Petinizin yeteneğini kullanır.</yellow>",
                 null);
+    }
+
+    private void handleAbility(Player player, String[] args) {
+        if (args.length < 2) {
+            send(player, "ability.usage", "<red>Kullanım: /pet ability <ad></red>", null);
+            return;
+        }
+        if (abilityEngine == null || activeRegistry == null || definitionRegistry == null) {
+            send(player, "ability.unavailable", "<red>Ability sistemi şu anda kullanılamıyor.</red>", null);
+            return;
+        }
+        Optional<ActivePet> active = activeRegistry.getByOwner(player.getUniqueId());
+        if (active.isEmpty()) {
+            send(player, "ability.no-active-pet", "<red>Önce petinizi çağırın (/pet list).</red>", null);
+            return;
+        }
+        PetDefinition definition = definitionRegistry.find(active.get().getDefinitionId()).orElse(null);
+        if (definition == null || definition.abilities() == null || definition.abilities().isEmpty()) {
+            send(player, "ability.none-defined", "<red>Bu pet için tanımlı ability yok.</red>", null);
+            return;
+        }
+        if (args[1].equalsIgnoreCase("unbind")) {
+            if (abilityBindings != null) abilityBindings.unbind(player.getUniqueId());
+            send(player, "ability.unbound", "<green>Ability tuş bağı kaldırıldı.</green>", null);
+            return;
+        }
+        if (args[1].equalsIgnoreCase("bind")) {
+            if (args.length < 3) {
+                send(player, "ability.bind-usage", "<red>Kullanım: /pet ability bind <ad></red>", null);
+                return;
+            }
+            if (abilityBindings != null && abilityBindings.bind(player.getUniqueId(), definition, args[2])) {
+                send(player, "ability.bound",
+                        "<green>Ability bağlandı. Çömelirken el değiştirme tuşuna basın.</green>",
+                        PlaceholderMap.of("ability", args[2]));
+            } else {
+                send(player, "ability.invalid", "<red>Geçersiz ability: " + args[2] + ".</red>",
+                        PlaceholderMap.of("ability", args[2]));
+            }
+            return;
+        }
+        AbilityOutcome outcome = abilityEngine.activate(player, active.get(), definition, args[1]);
+        switch (outcome.result()) {
+            case ACTIVATED -> send(player, "ability.activated",
+                    "<green>Petiniz '" + args[1].toLowerCase(java.util.Locale.ROOT) + "' yeteneğini kullandı!</green>",
+                    PlaceholderMap.of("ability", args[1].toLowerCase(java.util.Locale.ROOT)));
+            case COOLDOWN -> send(player, "ability.cooldown",
+                    "<yellow>Bu yetenek henüz kullanılamaz. Kalan süre: " + outcome.remainingSeconds() + " saniye.</yellow>",
+                    PlaceholderMap.of("seconds", String.valueOf(outcome.remainingSeconds())));
+            case NO_TARGET -> send(player, "ability.no-target", "<yellow>Bu yetenek için uygun hedef bulunamadı.</yellow>", null);
+            case NO_REGISTERED_ACTION -> send(player, "ability.no-action", "<red>Yeteneğin action kaydı bulunamadı.</red>", null);
+            default -> send(player, "ability.invalid", "<red>Geçersiz ability: " + args[1] + ".</red>",
+                    PlaceholderMap.of("ability", args[1]));
+        }
     }
 
     private void handleEmote(Player player, String[] args) {
@@ -156,8 +242,8 @@ public class PetCommand implements CommandExecutor, TabCompleter {
             return;
         }
 
-        PetEmoteController.EmoteOutcome outcome = emoteController.play(
-                player.getUniqueId(), active.get().getSpawnedEntity(), definition.emotes(), args[1]);
+        PetEmoteController.EmoteOutcome outcome = emoteController.playDefinition(
+                player.getUniqueId(), active.get().getSpawnedEntity(), definition, args[1]);
 
         switch (outcome.result()) {
             case PLAYED -> send(player, "emote.played",
@@ -360,6 +446,10 @@ public class PetCommand implements CommandExecutor, TabCompleter {
     }
 
     private void handleMode(Player player, String[] args) {
+        if (orderEngine != null) {
+            handleOrder(player, args, true);
+            return;
+        }
         if (args.length < 2) {
             send(player, "mode.usage", "<red>Kullanım: /pet mode <follow|stay|wander></red>", null);
             return;
@@ -407,6 +497,42 @@ public class PetCommand implements CommandExecutor, TabCompleter {
         } else {
             send(player, "mode.set", "<green>Petinizin takip modu '" + mode.name().toLowerCase(java.util.Locale.ROOT) + "' olarak ayarlandı.</green>", PlaceholderMap.of("mode", mode.name().toLowerCase(java.util.Locale.ROOT)));
         }
+    }
+
+    private void handleOrder(Player player, String[] args, boolean legacyMode) {
+        if (args.length < 2) {
+            String usage = legacyMode ? "/pet mode <follow|stay|wander>" : "/pet order <follow|stay|wander|come>";
+            send(player, "order.usage", "<red>Kullanım: " + usage + "</red>", null);
+            return;
+        }
+        if (orderEngine == null) {
+            send(player, "order.unavailable", "<red>Pet emir sistemi şu anda kullanılamıyor.</red>", null);
+            return;
+        }
+        String raw = args[1].trim().toLowerCase(java.util.Locale.ROOT);
+        if (legacyMode && PetFollowMode.fromString(raw) == null) {
+            send(player, "mode.invalid", "<red>Geçersiz mod! Seçenekler: follow, stay, wander</red>", null);
+            return;
+        }
+        org.bukkit.NamespacedKey key = org.bukkit.NamespacedKey.fromString(
+                raw.contains(":") ? raw : "petsistemi:" + raw);
+        if (key == null) {
+            send(player, "order.invalid", "<red>Geçersiz emir anahtarı: " + raw + "</red>", null);
+            return;
+        }
+        orderEngine.executeOrder(player, key).thenAccept(result -> {
+            Runnable reply = () -> {
+                String resultMessage = result.message() != null ? result.message() : "Pet emri tamamlanamadı.";
+                String fallback = resultMessage.startsWith("<") ? resultMessage
+                        : (result.success() ? "<green>" + resultMessage + "</green>" : "<red>" + resultMessage + "</red>");
+                send(player, result.success() ? "order.success" : "order.failed", fallback, null);
+            };
+            if (plugin != null && org.bukkit.Bukkit.getServer() != null && !org.bukkit.Bukkit.isPrimaryThread()) {
+                plugin.getServer().getScheduler().runTask(plugin, reply);
+            } else {
+                reply.run();
+            }
+        });
     }
 
     private enum SearchStatus { FOUND, NOT_FOUND, AMBIGUOUS }
@@ -466,7 +592,7 @@ public class PetCommand implements CommandExecutor, TabCompleter {
         }
 
         if (args.length == 1) {
-            return Arrays.asList("dismiss", "emote", "info", "list", "mode", "rename", "stats", "summon", "toggle").stream()
+            return Arrays.asList("ability", "collection", "dismiss", "emote", "info", "list", "mode", "order", "rename", "stats", "summon", "toggle").stream()
                     .filter(sub -> sub.startsWith(args[0].toLowerCase(java.util.Locale.ROOT)))
                     .sorted()
                     .collect(Collectors.toList());
@@ -490,6 +616,18 @@ public class PetCommand implements CommandExecutor, TabCompleter {
                         .sorted()
                         .collect(Collectors.toList());
             }
+            if (sub.equals("order") || sub.equals("emir")) {
+                java.util.stream.Stream<org.bukkit.NamespacedKey> keys = orderEngine != null
+                        ? orderEngine.availableOrders(player).stream()
+                        : java.util.stream.Stream.of(
+                                com.petsistemi.runtime.order.BuiltInPetOrders.FOLLOW,
+                                com.petsistemi.runtime.order.BuiltInPetOrders.STAY,
+                                com.petsistemi.runtime.order.BuiltInPetOrders.WANDER,
+                                com.petsistemi.runtime.order.BuiltInPetOrders.COME);
+                return keys.map(key -> key.getNamespace().equals("petsistemi") ? key.getKey() : key.toString())
+                        .filter(name -> name.startsWith(args[1].toLowerCase(java.util.Locale.ROOT)))
+                        .sorted().toList();
+            }
             if (sub.equals("emote")) {
                 if (definitionRegistry != null && activeRegistry != null) {
                     Optional<ActivePet> active = activeRegistry.getByOwner(player.getUniqueId());
@@ -500,6 +638,24 @@ public class PetCommand implements CommandExecutor, TabCompleter {
                                     .filter(name -> name.startsWith(args[1].toLowerCase(java.util.Locale.ROOT)))
                                     .sorted()
                                     .collect(Collectors.toList());
+                        }
+                    }
+                }
+                return Collections.emptyList();
+            }
+            if (sub.equals("ability") || sub.equals("skill")) {
+                if (definitionRegistry != null && activeRegistry != null) {
+                    Optional<ActivePet> active = activeRegistry.getByOwner(player.getUniqueId());
+                    if (active.isPresent()) {
+                        PetDefinition definition = definitionRegistry.find(active.get().getDefinitionId()).orElse(null);
+                        if (definition != null && definition.abilities() != null) {
+                            java.util.List<String> values = new java.util.ArrayList<>(List.of("bind", "unbind"));
+                            values.addAll(definition.abilities().keySet().stream()
+                                    .map(org.bukkit.NamespacedKey::getKey)
+                                    .filter(name -> name.startsWith(args[1].toLowerCase(java.util.Locale.ROOT)))
+                                    .sorted().toList());
+                            return values.stream().filter(name -> name.startsWith(args[1].toLowerCase(java.util.Locale.ROOT)))
+                                    .distinct().sorted().toList();
                         }
                     }
                 }
@@ -528,6 +684,19 @@ public class PetCommand implements CommandExecutor, TabCompleter {
                     }
                 }
                 return Collections.emptyList();
+            }
+        }
+
+        if (args.length == 3 && (args[0].equalsIgnoreCase("ability") || args[0].equalsIgnoreCase("skill"))
+                && args[1].equalsIgnoreCase("bind") && definitionRegistry != null && activeRegistry != null) {
+            Optional<ActivePet> active = activeRegistry.getByOwner(player.getUniqueId());
+            if (active.isPresent()) {
+                PetDefinition definition = definitionRegistry.find(active.get().getDefinitionId()).orElse(null);
+                if (definition != null && definition.abilities() != null) {
+                    return definition.abilities().keySet().stream().map(org.bukkit.NamespacedKey::getKey)
+                            .filter(name -> name.startsWith(args[2].toLowerCase(java.util.Locale.ROOT)))
+                            .sorted().toList();
+                }
             }
         }
 

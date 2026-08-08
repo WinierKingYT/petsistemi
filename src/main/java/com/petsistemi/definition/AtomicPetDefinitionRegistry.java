@@ -63,24 +63,32 @@ public class AtomicPetDefinitionRegistry implements PetDefinitionRegistry {
 
         Map<String, PetDefinition> definitions = new HashMap<>();
         Map<String, List<String>> errorsPerFile = new HashMap<>();
+        Map<String, String> sourceFiles = new HashMap<>();
 
         if (files != null) {
             for (File file : files) {
                 try {
                     YamlConfiguration yaml = YamlConfiguration.loadConfiguration(file);
                     int schemaVersion = yaml.getInt("schema-version", 1);
-                    String id = file.getName().replace(".yml", "").replace(".yaml", "").toLowerCase(java.util.Locale.ROOT);
+                    String fileId = file.getName().replace(".yml", "").replace(".yaml", "").toLowerCase(java.util.Locale.ROOT);
+                    String id = yaml.getString("id", fileId).trim().toLowerCase(java.util.Locale.ROOT);
 
                     PetDefinitionYamlParser.Parsed parsed = PetDefinitionYamlParser.parse(id, yaml);
                     List<String> errors = new java.util.ArrayList<>(parsed.errors());
+                    if (!id.matches("[a-z0-9][a-z0-9._-]{1,63}(?::[a-z0-9][a-z0-9._-]{1,63})?")) {
+                        errors.add("Geçersiz pet kimliği: " + id);
+                    }
                     if (parsed.definition() != null) {
                         errors.addAll(PetDefinitionValidator.validate(parsed.definition(), schemaVersion));
                     }
 
                     if (!errors.isEmpty()) {
                         errorsPerFile.put(file.getName(), errors);
+                    } else if (parsed.definition() != null && definitions.containsKey(id)) {
+                        errorsPerFile.put(file.getName(), List.of("Pet kimliği başka bir dosyada zaten tanımlı: " + id));
                     } else if (parsed.definition() != null) {
                         definitions.put(id, parsed.definition());
+                        sourceFiles.put(id, file.getName());
                         PetConfigValidator.validateAndLog(parsed.definition(), plugin != null ? plugin.getLogger() : null);
                     }
                 } catch (Exception e) {
@@ -89,7 +97,72 @@ public class AtomicPetDefinitionRegistry implements PetDefinitionRegistry {
             }
         }
 
+        validateEvolutionReferences(definitions, sourceFiles, errorsPerFile);
+
         return new ScanResult(Collections.unmodifiableMap(definitions), Collections.unmodifiableMap(errorsPerFile));
+    }
+
+    public static void validateEvolutionReferences(Map<String, PetDefinition> definitions,
+                                            Map<String, String> sourceFiles,
+                                            Map<String, List<String>> errorsPerFile) {
+        boolean removed;
+        do {
+            Map<String, List<String>> crossErrors = new HashMap<>();
+            for (Map.Entry<String, PetDefinition> entry : definitions.entrySet()) {
+                PetDefinition source = entry.getValue();
+                if (source.evolutions() != null) {
+                    for (int i = 0; i < source.evolutions().size(); i++) {
+                        com.petsistemi.domain.PetEvolutionDefinition evolution = source.evolutions().get(i);
+                        if (evolution == null || evolution.targetDefinitionId() == null) continue;
+                        PetDefinition target = definitions.get(evolution.targetDefinitionId().toLowerCase(java.util.Locale.ROOT));
+                        String path = "evolutions[" + i + "]";
+                        if (target == null) {
+                            crossErrors.computeIfAbsent(entry.getKey(), ignored -> new java.util.ArrayList<>())
+                                    .add(path + ".target-id bulunamadı: " + evolution.targetDefinitionId());
+                        } else if (!source.representationOrEntity().key().equals(target.representationOrEntity().key())) {
+                            crossErrors.computeIfAbsent(entry.getKey(), ignored -> new java.util.ArrayList<>())
+                                    .add(path + " farklı representation sağlayıcısına geçemez ("
+                                            + source.representationOrEntity().key() + " -> " + target.representationOrEntity().key() + ").");
+                        } else if (!java.util.Objects.equals(
+                                source.movement() != null ? source.movement().key() : null,
+                                target.movement() != null ? target.movement().key() : null)) {
+                            crossErrors.computeIfAbsent(entry.getKey(), ignored -> new java.util.ArrayList<>())
+                                    .add(path + " farklı movement sağlayıcısına geçemez.");
+                        }
+                    }
+                }
+                validateItemActionReferences(entry.getKey(), source, definitions, crossErrors);
+            }
+            crossErrors.forEach((id, errors) -> {
+                definitions.remove(id);
+                errorsPerFile.put(sourceFiles.getOrDefault(id, id + ".yml"), List.copyOf(errors));
+            });
+            removed = !crossErrors.isEmpty();
+        } while (removed);
+    }
+
+    private static void validateItemActionReferences(String sourceId, PetDefinition source,
+                                                     Map<String, PetDefinition> definitions,
+                                                     Map<String, List<String>> errors) {
+        if (source.itemActions() == null) return;
+        for (int i = 0; i < source.itemActions().size(); i++) {
+            com.petsistemi.domain.item.PetItemActionDefinition action = source.itemActions().get(i);
+            if (action == null || action.action() == null) continue;
+            String parameter = null;
+            if (com.petsistemi.runtime.item.BuiltInPetItemActions.UNLOCK_PET.equals(action.action())) {
+                parameter = "definition-id";
+            } else if (com.petsistemi.runtime.item.BuiltInPetItemActions.EVOLVE_PET.equals(action.action())) {
+                parameter = "target-id";
+            }
+            if (parameter == null) continue;
+            Object rawTarget = action.parameters().get(parameter);
+            if (rawTarget == null || rawTarget.toString().isBlank()) continue;
+            String targetId = rawTarget.toString().trim().toLowerCase(java.util.Locale.ROOT);
+            if (!definitions.containsKey(targetId)) {
+                errors.computeIfAbsent(sourceId, ignored -> new java.util.ArrayList<>())
+                        .add("item-actions[" + i + "].parameters." + parameter + " bulunamadı: " + targetId);
+            }
+        }
     }
 
     /**

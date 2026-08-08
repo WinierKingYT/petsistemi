@@ -9,6 +9,8 @@ import com.petsistemi.domain.PetIdleAnimation;
 import com.petsistemi.domain.PetStateDefinition;
 import com.petsistemi.domain.PetStatesDefinition;
 import com.petsistemi.domain.RuntimeRepresentationType;
+import com.petsistemi.domain.animation.PetAnimationState;
+import com.petsistemi.runtime.animation.PetAnimationStateMachine;
 import org.bukkit.Location;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
@@ -39,6 +41,7 @@ public class PetIdleSleepController {
     private final PetReactionEngine reactionEngine;
 
     private volatile PetTransformController transformController;
+    private volatile PetAnimationStateMachine animationStateMachine;
 
     private final Map<UUID, Location> lastOwnerPosition = new HashMap<>();
     private final Map<UUID, Long> lastMoveTime = new HashMap<>();
@@ -70,6 +73,10 @@ public class PetIdleSleepController {
         this.transformController = transformController;
     }
 
+    public void setAnimationStateMachine(PetAnimationStateMachine animationStateMachine) {
+        this.animationStateMachine = animationStateMachine;
+    }
+
     /** Called once per pet per tick from the coordinator. */
     public void tick(Player owner, ActivePet active, Entity entity) {
         if (owner == null || active == null || entity == null || !entity.isValid()) {
@@ -79,11 +86,13 @@ public class PetIdleSleepController {
 
         PetDefinition definition = resolveDefinition(active);
         PetStatesDefinition states = definition != null ? definition.states() : null;
-        PetStateDefinition idleState = states != null ? states.idle() : null;
+        PetStateDefinition idleState = states != null && states.sleeping() != null
+                ? states.sleeping() : (states != null ? states.idle() : null);
 
         PluginConfiguration.FeaturesConfiguration features = features();
         boolean enabled = idleState != null || (features != null && features.idleSleepEnabled());
-        if (!enabled || (idleState != null && idleState.animation() == PetIdleAnimation.NONE)) {
+        if (!enabled || (idleState != null && idleState.animation() == PetIdleAnimation.NONE
+                && idleState.clip() == null)) {
             wake(ownerId, active, entity);
             rememberMove(owner, true);
             return;
@@ -149,7 +158,14 @@ public class PetIdleSleepController {
     }
 
     private void applyRest(ActivePet active, Entity entity, PetDefinition definition, boolean resting) {
-        PetRepresentationController rep = resolveRepresentation(active.getRepresentationType());
+        PetAnimationStateMachine animations = animationStateMachine;
+        if (animations != null) {
+            animations.updateBaseState(active, entity, definition,
+                    resting ? PetAnimationState.SLEEPING : PetAnimationState.IDLE);
+            return;
+        }
+        PetRepresentationController rep = active != null && representationRegistry != null
+                ? representationRegistry.get(active.getRepresentationKey()) : null;
         if (rep == null) return;
         if (definition != null) {
             rep.applyRestState(entity, active.getPetInstance(), definition, resting);
@@ -167,10 +183,6 @@ public class PetIdleSleepController {
         }
         PetDefinition derived = transforms.activeDefinition(active);
         return derived != null ? derived : base;
-    }
-
-    private PetRepresentationController resolveRepresentation(RuntimeRepresentationType type) {
-        return representationRegistry != null && type != null ? representationRegistry.get(type) : null;
     }
 
     private long thresholdMs(PetStateDefinition idleState, PluginConfiguration.FeaturesConfiguration features) {

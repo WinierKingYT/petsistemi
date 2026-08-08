@@ -34,6 +34,32 @@ public final class PluginConfigurationLoader {
         boolean backupEnabled = config.getBoolean("database.migration-backup.enabled", true);
         boolean failOnBackupError = config.getBoolean("database.migration-backup.fail-startup-on-backup-error", true);
         int maxBackups = config.getInt("database.migration-backup.maximum-backups", 5);
+        String databaseBackend = config.getString("database.backend", "SQLITE").trim().toUpperCase(java.util.Locale.ROOT);
+        PluginConfiguration.MysqlConfiguration mysql = new PluginConfiguration.MysqlConfiguration(
+                config.getString("database.mysql.host", "127.0.0.1"),
+                config.getInt("database.mysql.port", 3306),
+                config.getString("database.mysql.database", "petsistemi"),
+                config.getString("database.mysql.username", "root"),
+                config.getString("database.mysql.password", ""),
+                config.getBoolean("database.mysql.use-ssl", false),
+                config.getInt("database.mysql.connect-timeout-ms", 10000));
+
+        PluginConfiguration.NetworkConfiguration network = new PluginConfiguration.NetworkConfiguration(
+                config.getBoolean("ecosystem.network.enabled", false),
+                config.getString("ecosystem.network.server-id", "server-1"),
+                config.getLong("ecosystem.network.poll-interval-ticks", 20L),
+                config.getInt("ecosystem.network.batch-size", 100),
+                config.getLong("ecosystem.network.retention-hours", 24L) * 3_600_000L);
+        PluginConfiguration.PetPackConfiguration petPacks = new PluginConfiguration.PetPackConfiguration(
+                config.getInt("ecosystem.pet-packs.maximum-files", 128),
+                config.getLong("ecosystem.pet-packs.maximum-archive-bytes", 10_485_760L),
+                config.getLong("ecosystem.pet-packs.maximum-expanded-bytes", 52_428_800L));
+        PluginConfiguration.MarketplaceConfiguration marketplace = new PluginConfiguration.MarketplaceConfiguration(
+                config.getBoolean("ecosystem.marketplace.enabled", false),
+                config.getString("ecosystem.marketplace.catalog-url", ""),
+                config.getBoolean("ecosystem.marketplace.require-sha256", true),
+                config.getLong("ecosystem.marketplace.maximum-download-bytes", 10_485_760L),
+                config.getInt("ecosystem.marketplace.request-timeout-ms", 10000));
 
         // Replaces the old features.abilities.enabled switch, which gated a Java-side buff table
         // rather than the pets' own `buffs:` blocks. On by default: a pet that declares no buffs
@@ -64,7 +90,7 @@ public final class PluginConfigurationLoader {
                         killXpMultiplier
                 ),
                 new PluginConfiguration.RuntimeConfiguration(tickInterval, startDist, stopDist, teleportDist, followSpeed),
-                new PluginConfiguration.DatabaseConfiguration(backupEnabled, failOnBackupError, maxBackups),
+                new PluginConfiguration.DatabaseConfiguration(databaseBackend, backupEnabled, failOnBackupError, maxBackups, mysql),
                 new PluginConfiguration.GuiConfiguration(config.getString("gui.title", "Pet Menüsü"), 6),
                 new PluginConfiguration.DiagnosticsConfiguration(100L),
                 new PluginConfiguration.DefinitionConfiguration("KEEP_OLD_ON_ANY_ERROR"),
@@ -72,6 +98,7 @@ public final class PluginConfigurationLoader {
                         buffsEnabled, particlesEnabled, magnetEnabled, ridingEnabled,
                         idleSleepEnabled, idleSleepSeconds, reactionsEnabled,
                         levelScalingEnabled, levelScalingGrowth, levelScalingMax),
+                new PluginConfiguration.EcosystemConfiguration(network, petPacks, marketplace),
                 locale
         );
 

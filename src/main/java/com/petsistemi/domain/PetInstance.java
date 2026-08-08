@@ -13,6 +13,10 @@ public record PetInstance(
         long createdAt,
         long updatedAt
 ) {
+    public PetInstance withDefinitionId(String newDefinitionId) {
+        return new PetInstance(petId, ownerId, newDefinitionId, customName, level, experience, availabilityState, createdAt, System.currentTimeMillis());
+    }
+
     public PetInstance withLevelAndExperience(int newLevel, long newExperience) {
         return new PetInstance(petId, ownerId, definitionId, customName, newLevel, newExperience, availabilityState, createdAt, System.currentTimeMillis());
     }

@@ -102,14 +102,15 @@ public class SqlitePetRepository implements PetRepository {
     @Override
     public synchronized void update(PetInstance pet) {
         DatabaseThreadGuard.requireDatabaseThread();
-        String sql = "UPDATE pets SET custom_name = ?, level = ?, experience = ?, availability_state = ?, updated_at = ? WHERE pet_id = ?;";
+        String sql = "UPDATE pets SET definition_id = ?, custom_name = ?, level = ?, experience = ?, availability_state = ?, updated_at = ? WHERE pet_id = ?;";
         try (PreparedStatement ps = connectionProvider.getConnection().prepareStatement(sql)) {
-            ps.setString(1, pet.customName());
-            ps.setInt(2, pet.level());
-            ps.setLong(3, pet.experience());
-            ps.setString(4, pet.availabilityState().name());
-            ps.setLong(5, pet.updatedAt());
-            ps.setString(6, pet.petId().toString());
+            ps.setString(1, pet.definitionId());
+            ps.setString(2, pet.customName());
+            ps.setInt(3, pet.level());
+            ps.setLong(4, pet.experience());
+            ps.setString(5, pet.availabilityState().name());
+            ps.setLong(6, pet.updatedAt());
+            ps.setString(7, pet.petId().toString());
             int affected = ps.executeUpdate();
             if (affected == 0) {
                 throw new PetPersistenceException("Güncellenecek pet kaydı veritabanında bulunamadı.");

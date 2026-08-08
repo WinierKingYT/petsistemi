@@ -14,6 +14,11 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.UUID;
+import java.util.Map;
+import org.bukkit.NamespacedKey;
+import com.petsistemi.domain.behavior.BehaviorActionDefinition;
+import com.petsistemi.domain.behavior.BehaviorConditionDefinition;
+import com.petsistemi.domain.behavior.PetBehaviorDefinition;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -142,5 +147,24 @@ class PetBuffControllerTest {
         controller.apply(petAtLevel(1), owner, null);
 
         assertTrue(owner.getActivePotionEffects().isEmpty());
+    }
+
+    @Test
+    void nativeTickBehaviorCanApplyAPotionEffect() {
+        PetBehaviorDefinition behavior = new PetBehaviorDefinition(
+                new NamespacedKey("petsistemi", "tick"), true,
+                List.of(new BehaviorConditionDefinition(new NamespacedKey("petsistemi", "min_level"),
+                        Map.of("level", 4))),
+                List.of(new BehaviorActionDefinition(new NamespacedKey("petsistemi", "apply_potion_effect"),
+                        Map.of("effect", "SPEED", "amplifier", 2, "duration-ticks", 90))));
+        PetDefinition definition = PetDefinition.builder("native", "Native")
+                .behaviors(List.of(behavior)).build();
+
+        controller.apply(petAtLevel(4), owner, definition);
+
+        PotionEffect effect = owner.getPotionEffect(PotionEffectType.SPEED);
+        assertNotNull(effect);
+        assertEquals(2, effect.getAmplifier());
+        assertEquals(90, effect.getDuration());
     }
 }

@@ -505,4 +505,17 @@ class PetDefinitionValidatorTest {
         assertFalse(errors.isEmpty());
         assertTrue(errors.stream().anyMatch(e -> e.contains("delay-ticks")));
     }
+
+    @Test
+    void builtInExternalProviderRequiresModelId() {
+        org.bukkit.NamespacedKey key = new org.bukkit.NamespacedKey("modelengine", "model");
+        com.petsistemi.domain.PetRepresentationDefinition rep = new com.petsistemi.domain.PetRepresentationDefinition(
+                key, null, "ARMOR_STAND", false, false, true, true, false,
+                null, null, com.petsistemi.domain.PetVector3.ONE, null, 0, 0, 0, 0, null);
+        PetDefinition definition = PetDefinition.builder("external", "External").representation(rep).build();
+
+        List<String> errors = PetDefinitionValidator.validate(definition, 1);
+
+        assertTrue(errors.stream().anyMatch(error -> error.contains("representation.model-id")));
+    }
 }

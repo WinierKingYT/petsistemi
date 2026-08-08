@@ -7,6 +7,9 @@ import com.petsistemi.application.PetRuntimeOperationService;
 import com.petsistemi.bootstrap.MainThreadDispatcher;
 import com.petsistemi.config.RuntimeConfigurationSnapshot;
 import com.petsistemi.definition.PetDefinitionRegistry;
+import com.petsistemi.definition.editor.PetDefinitionEditorService;
+import com.petsistemi.definition.editor.PetEditorField;
+import com.petsistemi.definition.editor.PetEditorSessionManager;
 import com.petsistemi.message.MessageService;
 import com.petsistemi.message.PlaceholderMap;
 import net.kyori.adventure.text.Component;
@@ -43,6 +46,7 @@ public class PetMenuListener implements Listener {
     private final MainThreadDispatcher dispatcher;
     private final MessageService messageService;
     private final AtomicReference<RuntimeConfigurationSnapshot> configSnapshot;
+    private final PetEditorSessionManager editorSessions;
 
     private final Set<UUID> processingPlayers = ConcurrentHashMap.newKeySet();
     private final ConcurrentHashMap<UUID, Long> lastClickTime = new ConcurrentHashMap<>();
@@ -54,7 +58,8 @@ public class PetMenuListener implements Listener {
                            PetDefinitionRegistry definitionRegistry,
                            MainThreadDispatcher dispatcher,
                            MessageService messageService,
-                           AtomicReference<RuntimeConfigurationSnapshot> configSnapshot) {
+                           AtomicReference<RuntimeConfigurationSnapshot> configSnapshot,
+                           PetEditorSessionManager editorSessions) {
         this.plugin = plugin;
         this.operationService = operationService;
         this.petService = petService;
@@ -63,6 +68,19 @@ public class PetMenuListener implements Listener {
         this.dispatcher = dispatcher;
         this.messageService = messageService;
         this.configSnapshot = configSnapshot;
+        this.editorSessions = editorSessions;
+    }
+
+    public PetMenuListener(JavaPlugin plugin,
+                           PetRuntimeOperationService operationService,
+                           PetService petService,
+                           PlayerInputSessionManager sessionManager,
+                           PetDefinitionRegistry definitionRegistry,
+                           MainThreadDispatcher dispatcher,
+                           MessageService messageService,
+                           AtomicReference<RuntimeConfigurationSnapshot> configSnapshot) {
+        this(plugin, operationService, petService, sessionManager, definitionRegistry, dispatcher,
+                messageService, configSnapshot, null);
     }
 
     public PetMenuListener(JavaPlugin plugin,
@@ -71,7 +89,7 @@ public class PetMenuListener implements Listener {
                            PlayerInputSessionManager sessionManager,
                            PetDefinitionRegistry definitionRegistry,
                            MainThreadDispatcher dispatcher) {
-        this(plugin, operationService, petService, sessionManager, definitionRegistry, dispatcher, null, null);
+        this(plugin, operationService, petService, sessionManager, definitionRegistry, dispatcher, null, null, null);
     }
 
     public PetMenuListener(JavaPlugin plugin, PetService petService, PlayerInputSessionManager sessionManager, PetDefinitionRegistry definitionRegistry) {
@@ -106,14 +124,14 @@ public class PetMenuListener implements Listener {
 
         if (slot == 45 && holder.page() > 0) {
             player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 0.7f, 1.2f);
-            PetListMenu.openAsync(player, petService, holder.page() - 1, plugin, definitionRegistry, dispatcher, configSnapshot, messageService);
+            openPage(player, holder, holder.page() - 1);
             processingPlayers.remove(uuid);
             return;
         }
 
         if (slot == 53) {
             player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 0.7f, 1.2f);
-            PetListMenu.openAsync(player, petService, holder.page() + 1, plugin, definitionRegistry, dispatcher, configSnapshot, messageService);
+            openPage(player, holder, holder.page() + 1);
             processingPlayers.remove(uuid);
             return;
         }
@@ -134,14 +152,32 @@ public class PetMenuListener implements Listener {
         ItemMeta meta = clicked.getItemMeta();
         NamespacedKey key = new NamespacedKey(plugin, "pet_id");
         NamespacedKey actionKey = new NamespacedKey(plugin, "action");
+        String actionStr = meta.getPersistentDataContainer().get(actionKey, PersistentDataType.STRING);
+
+        if (holder.menuType().startsWith("PET_EDITOR")) {
+            handleEditorClick(player, holder, actionStr, meta);
+            processingPlayers.remove(uuid);
+            return;
+        }
+
+        if ("PET_COLLECTION".equals(holder.menuType()) && "collection_filter".equals(actionStr)) {
+            String filter = meta.getPersistentDataContainer().get(new NamespacedKey(plugin, "filter"), PersistentDataType.STRING);
+            player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 0.7f, 1.2f);
+            PetCollectionMenu.open(player, petService, plugin, definitionRegistry, 0, filter);
+            processingPlayers.remove(uuid);
+            return;
+        }
 
         if (!meta.getPersistentDataContainer().has(key, PersistentDataType.STRING)) {
+            if ("PET_COLLECTION".equals(holder.menuType()) && "collection_pet".equals(actionStr)) {
+                player.playSound(player.getLocation(), Sound.BLOCK_CHEST_LOCKED, 0.7f, 1.0f);
+                send(player, "collection.locked", "<red>Bu pet henüz koleksiyonunuzda açık değil.</red>");
+            }
             processingPlayers.remove(uuid);
             return;
         }
 
         String petIdStr = meta.getPersistentDataContainer().get(key, PersistentDataType.STRING);
-        String actionStr = meta.getPersistentDataContainer().get(actionKey, PersistentDataType.STRING);
 
         if (petIdStr == null) {
             processingPlayers.remove(uuid);
@@ -163,6 +199,7 @@ public class PetMenuListener implements Listener {
             switch (actionStr) {
                 case "rename" -> {
                     player.closeInventory();
+                    if (editorSessions != null) editorSessions.discard(player.getUniqueId());
                     if (sessionManager != null) {
                         sessionManager.startRenameSession(player.getUniqueId(), petId);
                         send(player, "command.rename-prompt", "<yellow>Lütfen chat ekranına yeni pet ismini yazın ('iptal' yazarak iptal edebilirsiniz):</yellow>");
@@ -208,9 +245,22 @@ public class PetMenuListener implements Listener {
             return;
         }
 
+        if ("PET_COLLECTION".equals(holder.menuType())) {
+            player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 0.7f, 1.2f);
+            if (event.isRightClick()) {
+                PetInspectMenu.open(player, petService, petId, player.getUniqueId(), plugin, definitionRegistry, configSnapshot, messageService);
+            } else {
+                player.closeInventory();
+                player.performCommand("pet summon " + petId.toString().substring(0, 6));
+            }
+            processingPlayers.remove(uuid);
+            return;
+        }
+
         if (event.isShiftClick()) {
             player.playSound(player.getLocation(), Sound.UI_BUTTON_CLICK, 0.8f, 1.4f);
             player.closeInventory();
+            if (editorSessions != null) editorSessions.discard(player.getUniqueId());
             if (sessionManager != null) {
                 sessionManager.startRenameSession(player.getUniqueId(), petId);
                 send(player, "command.rename-prompt",
@@ -272,7 +322,7 @@ public class PetMenuListener implements Listener {
                             sendError(player, errorKey, message);
                         } else {
                             player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 0.8f, 1.2f);
-                            PetListMenu.openAsync(player, petService, holder.page(), plugin, definitionRegistry, dispatcher, configSnapshot, messageService);
+                            openPage(player, holder, holder.page());
                         }
                     }
                 } finally {
@@ -282,6 +332,84 @@ public class PetMenuListener implements Listener {
             if (dispatcher != null) dispatcher.run(refreshAction);
             else refreshAction.run();
         });
+    }
+
+    private void openPage(Player player, PetMenuHolder holder, int page) {
+        if ("PET_COLLECTION".equals(holder.menuType())) {
+            PetCollectionMenu.open(player, petService, plugin, definitionRegistry, page, holder.context());
+        } else if ("PET_EDITOR_LIST".equals(holder.menuType())) {
+            PetDefinitionEditorMenu.openCatalogue(player, plugin, definitionRegistry, page);
+        } else {
+            PetListMenu.openAsync(player, petService, page, plugin, definitionRegistry, dispatcher, configSnapshot, messageService);
+        }
+    }
+
+    private void handleEditorClick(Player player, PetMenuHolder holder, String action, ItemMeta meta) {
+        if (!player.hasPermission("companionpets.admin.editor") || editorSessions == null || action == null) return;
+        try {
+            if ("PET_EDITOR_LIST".equals(holder.menuType()) && "editor_open".equals(action)) {
+                String id = meta.getPersistentDataContainer().get(
+                        new NamespacedKey(plugin, "definition_id"), PersistentDataType.STRING);
+                if (id != null) {
+                    if (sessionManager != null) sessionManager.removeSession(player.getUniqueId());
+                    editorSessions.begin(player.getUniqueId(), id);
+                    PetDefinitionEditorMenu.openDefinition(player, plugin, editorSessions);
+                }
+                return;
+            }
+            if (!"PET_EDITOR_DETAIL".equals(holder.menuType())) return;
+            switch (action) {
+                case "editor_input" -> {
+                    String rawField = meta.getPersistentDataContainer().get(
+                            new NamespacedKey(plugin, "editor_field"), PersistentDataType.STRING);
+                    if (rawField == null) return;
+                    PetEditorField field = PetEditorField.valueOf(rawField);
+                    editorSessions.await(player.getUniqueId(), field);
+                    player.closeInventory();
+                    player.sendMessage(net.kyori.adventure.text.minimessage.MiniMessage.miniMessage().deserialize(
+                            "<yellow>" + field.label() + " için yeni değeri yazın. İptal: 'iptal'"
+                                    + (field.removable() ? ", alanı sil: '-'.</yellow>" : ".</yellow>")));
+                }
+                case "editor_toggle_glowing" -> {
+                    editorSessions.draft(player.getUniqueId()).ifPresent(PetDefinitionEditorService.Draft::toggleGlowing);
+                    PetDefinitionEditorMenu.openDefinition(player, plugin, editorSessions);
+                }
+                case "editor_validate" -> {
+                    PetDefinitionEditorService.Validation validation = editorSessions.validate(player.getUniqueId());
+                    showValidation(player, validation);
+                    PetDefinitionEditorMenu.openDefinition(player, plugin, editorSessions);
+                }
+                case "editor_save" -> {
+                    PetDefinitionEditorService.SaveResult result = editorSessions.save(player.getUniqueId());
+                    if (result.success()) {
+                        player.sendMessage(net.kyori.adventure.text.minimessage.MiniMessage.miniMessage().deserialize("<green>" + result.message() + "</green>"));
+                        editorSessions.discard(player.getUniqueId());
+                        PetDefinitionEditorMenu.openCatalogue(player, plugin, definitionRegistry, 0);
+                    } else {
+                        player.sendMessage(net.kyori.adventure.text.minimessage.MiniMessage.miniMessage().deserialize("<red>" + result.message() + "</red>"));
+                        result.errors().stream().limit(8).forEach(error -> player.sendMessage(Component.text("• " + error, NamedTextColor.RED)));
+                        PetDefinitionEditorMenu.openDefinition(player, plugin, editorSessions);
+                    }
+                }
+                case "editor_discard" -> {
+                    editorSessions.discard(player.getUniqueId());
+                    PetDefinitionEditorMenu.openCatalogue(player, plugin, definitionRegistry, 0);
+                }
+                default -> { }
+            }
+        } catch (Exception e) {
+            player.sendMessage(Component.text("Editör işlemi başarısız: " + e.getMessage(), NamedTextColor.RED));
+        }
+    }
+
+    private void showValidation(Player player, PetDefinitionEditorService.Validation validation) {
+        if (validation.valid()) {
+            player.sendMessage(Component.text("Taslak geçerli; kaydedilebilir.", NamedTextColor.GREEN));
+            return;
+        }
+        player.sendMessage(Component.text("Taslakta " + validation.errors().size() + " hata var:", NamedTextColor.RED));
+        validation.errors().stream().limit(8)
+                .forEach(error -> player.sendMessage(Component.text("• " + error, NamedTextColor.RED)));
     }
 
     private void sendError(Player player, String key, String error) {

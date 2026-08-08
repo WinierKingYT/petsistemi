@@ -2,6 +2,7 @@ package com.petsistemi.definition;
 
 import com.petsistemi.domain.PetDefinition;
 import com.petsistemi.domain.PetEmoteDefinition;
+import com.petsistemi.domain.PetEvolutionDefinition;
 import com.petsistemi.domain.PetIdleAnimation;
 import com.petsistemi.domain.PetMovementDefinition;
 import com.petsistemi.domain.PetMovementType;
@@ -12,6 +13,11 @@ import com.petsistemi.domain.PetStatesDefinition;
 import com.petsistemi.domain.PetTransformDefinition;
 import com.petsistemi.domain.PetVisualOverride;
 import com.petsistemi.domain.RuntimeRepresentationType;
+import com.petsistemi.domain.behavior.BehaviorActionDefinition;
+import com.petsistemi.domain.behavior.BehaviorConditionDefinition;
+import com.petsistemi.domain.behavior.PetBehaviorDefinition;
+import com.petsistemi.runtime.behavior.BuiltInBehaviorKeys;
+import com.petsistemi.domain.ability.PetAbilityDefinition;
 import org.bukkit.Material;
 import org.bukkit.Particle;
 import org.bukkit.entity.EntityType;
@@ -24,7 +30,7 @@ import java.util.regex.Pattern;
 
 public final class PetDefinitionValidator {
 
-    private static final Pattern ID_PATTERN = Pattern.compile("^[a-z0-9_-]+$");
+    private static final Pattern ID_PATTERN = Pattern.compile("^[a-z0-9][a-z0-9._-]{1,63}(?::[a-z0-9][a-z0-9._-]{1,63})?$");
     private static final Pattern EMOTE_NAME_PATTERN = Pattern.compile("^([a-z0-9_-]+)(,[a-z0-9_-]+)*$");
 
     private PetDefinitionValidator() {}
@@ -42,7 +48,7 @@ public final class PetDefinitionValidator {
         }
 
         if (def.id() == null || !ID_PATTERN.matcher(def.id()).matches()) {
-            errors.add("Geçersiz pet ID formatı: '" + def.id() + "'. Sadece küçük harf, rakam, alt çizgi ve tire içerebilir.");
+            errors.add("Geçersiz pet ID formatı: '" + def.id() + "'. Küçük harfli yerel-id veya namespace:yerel-id bekleniyor.");
         }
 
         if (def.displayName() == null || def.displayName().trim().isEmpty()) {
@@ -55,15 +61,32 @@ public final class PetDefinitionValidator {
 
         validateRepresentation(def, errors);
         validateMovement(def, errors);
+        validateEvolutions(def, errors);
         validateStates(def, errors);
         validateTransforms(def, errors);
         validateReactionsAndEmotes(def, errors);
+        validateBehaviors(def, errors);
+        validateAbilities(def, errors);
+        validateItemActions(def, errors);
+        validateMount(def, errors);
 
         if (def.maxLevel() <= 0) {
             errors.add("Maksimum seviye (maxLevel) 0'dan büyük olmalıdır.");
         }
 
         return errors;
+    }
+
+    private static void validateMount(PetDefinition def, List<String> errors) {
+        com.petsistemi.domain.PetMountDefinition mount = def.mount();
+        if (mount == null) return;
+        if (!Double.isFinite(mount.speedMultiplier())
+                || mount.speedMultiplier() < 0.1D || mount.speedMultiplier() > 3.0D) {
+            errors.add("mount.speed-multiplier 0.1 ile 3.0 arasında olmalıdır.");
+        }
+        if (mount.permission() != null && mount.permission().isBlank()) {
+            errors.add("mount.permission boş olamaz.");
+        }
     }
 
     private static void validateRepresentation(PetDefinition def, List<String> errors) {
@@ -115,6 +138,18 @@ public final class PetDefinitionValidator {
         if (rep.scale() != null && !rep.scale().isValidScale()) {
             errors.add("Görsel ölçek (representation.scale) değerleri 0'dan büyük olmalıdır.");
         }
+        if (isBuiltInModelProvider(rep.key()) && (rep.modelId() == null || rep.modelId().isBlank())) {
+            errors.add("Harici model representation için representation.model-id zorunludur (type: "
+                    + rep.key() + ").");
+        }
+    }
+
+    private static boolean isBuiltInModelProvider(org.bukkit.NamespacedKey key) {
+        if (key == null) return false;
+        return ("modelengine".equals(key.getNamespace())
+                || "itemsadder".equals(key.getNamespace())
+                || "oraxen".equals(key.getNamespace()))
+                && "model".equals(key.getKey());
     }
 
     private static void validateEntityType(String entityType, List<String> errors) {
@@ -176,13 +211,34 @@ public final class PetDefinitionValidator {
         }
     }
 
+    private static void validateEvolutions(PetDefinition def, List<String> errors) {
+        if (def.evolutions() == null) return;
+        java.util.Set<Integer> levels = new java.util.HashSet<>();
+        for (int i = 0; i < def.evolutions().size(); i++) {
+            PetEvolutionDefinition evolution = def.evolutions().get(i);
+            String path = "evolutions[" + i + "]";
+            if (evolution == null) {
+                errors.add(path + " null olamaz.");
+                continue;
+            }
+            if (evolution.minLevel() < 1) errors.add(path + ".min-level en az 1 olmalıdır.");
+            if (!levels.add(evolution.minLevel())) errors.add(path + ".min-level tekrarlı olamaz: " + evolution.minLevel());
+            if (evolution.targetDefinitionId() == null || evolution.targetDefinitionId().isBlank()) {
+                errors.add(path + ".target-id zorunludur.");
+            }
+            if (evolution.scaleOverride() != null && !evolution.scaleOverride().isValidScale()) {
+                errors.add(path + ".scale değerleri 0'dan büyük olmalıdır.");
+            }
+        }
+    }
+
     private static void validateStates(PetDefinition def, List<String> errors) {
         PetStatesDefinition states = def.states();
         if (states == null) {
             return;
         }
         if (!states.defined()) {
-            errors.add("states bölümü en az bir durum (MOVING veya IDLE) içermelidir.");
+            errors.add("states bölümü en az bir animasyon durumu içermelidir.");
             return;
         }
         if (states.moving() != null) {
@@ -297,6 +353,140 @@ public final class PetDefinitionValidator {
             return org.bukkit.Sound.valueOf(raw.trim().toUpperCase(java.util.Locale.ROOT));
         } catch (IllegalArgumentException e) {
             return null;
+        }
+    }
+
+    private static void validateBehaviors(PetDefinition def, List<String> errors) {
+        if (def.behaviors() == null) return;
+        for (int i = 0; i < def.behaviors().size(); i++) {
+            PetBehaviorDefinition behavior = def.behaviors().get(i);
+            String path = "behaviors[" + i + "]";
+            if (behavior == null) {
+                errors.add(path + " null olamaz.");
+                continue;
+            }
+            if (behavior.actions().isEmpty()) errors.add(path + ".actions en az bir action içermelidir.");
+            for (int j = 0; j < behavior.conditions().size(); j++) {
+                BehaviorConditionDefinition condition = behavior.conditions().get(j);
+                if (condition == null) {
+                    errors.add(path + ".conditions[" + j + "] null olamaz.");
+                    continue;
+                }
+                if (BuiltInBehaviorKeys.MIN_LEVEL.equals(condition.key())) {
+                    Object level = condition.parameters().get("level");
+                    if (!(level instanceof Number number) || number.intValue() < 1) {
+                        errors.add(path + ".conditions[" + j + "] min_level için pozitif 'level' gerektirir.");
+                    }
+                }
+            }
+            for (int j = 0; j < behavior.actions().size(); j++) {
+                BehaviorActionDefinition action = behavior.actions().get(j);
+                if (action == null) {
+                    errors.add(path + ".actions[" + j + "] null olamaz.");
+                    continue;
+                }
+                if (BuiltInBehaviorKeys.APPLY_POTION_EFFECT.equals(action.key())) {
+                    Object effect = action.parameters().get("effect");
+                    if (effect == null || effect.toString().isBlank()) {
+                        errors.add(path + ".actions[" + j + "] apply_potion_effect için 'effect' gerektirir.");
+                    }
+                    Object duration = action.parameters().get("duration-ticks");
+                    if (duration != null && (!(duration instanceof Number number) || number.intValue() <= 0)) {
+                        errors.add(path + ".actions[" + j + "] duration-ticks pozitif olmalıdır.");
+                    }
+                }
+            }
+        }
+    }
+
+    private static void validateAbilities(PetDefinition def, List<String> errors) {
+        if (def.abilities() == null) return;
+        for (Map.Entry<org.bukkit.NamespacedKey, PetAbilityDefinition> entry : def.abilities().entrySet()) {
+            PetAbilityDefinition ability = entry.getValue();
+            String path = "abilities." + entry.getKey();
+            if (ability == null) {
+                errors.add(path + " null olamaz.");
+                continue;
+            }
+            if (!entry.getKey().equals(ability.key())) errors.add(path + " map anahtarı ile ability.key eşleşmelidir.");
+            if (ability.cooldownSeconds() < 0) errors.add(path + ".cooldown-seconds negatif olamaz.");
+            if (!Double.isFinite(ability.range()) || ability.range() <= 0.0 || ability.range() > 64.0) {
+                errors.add(path + ".range 0-64 aralığında olmalıdır.");
+            }
+            if (ability.behavior() == null || ability.behavior().actions().isEmpty()) {
+                errors.add(path + ".actions en az bir action içermelidir.");
+            } else {
+                for (int i = 0; i < ability.behavior().actions().size(); i++) {
+                    BehaviorActionDefinition action = ability.behavior().actions().get(i);
+                    String actionPath = path + ".actions[" + i + "]";
+                    if (BuiltInBehaviorKeys.LAUNCH_PROJECTILE.equals(action.key())) {
+                        String projectile = String.valueOf(action.parameters().getOrDefault("projectile", "SNOWBALL"));
+                        if (!java.util.Set.of("ARROW", "SMALL_FIREBALL", "SNOWBALL")
+                                .contains(projectile.toUpperCase(java.util.Locale.ROOT))) {
+                            errors.add(actionPath + " projectile ARROW, SMALL_FIREBALL veya SNOWBALL olmalıdır.");
+                        }
+                    }
+                    if (BuiltInBehaviorKeys.AREA_POTION_EFFECT.equals(action.key())) {
+                        Object effect = action.parameters().get("effect");
+                        if (effect == null || effect.toString().isBlank()) {
+                            errors.add(actionPath + " area_potion_effect için 'effect' gerektirir.");
+                        }
+                    }
+                    if (BuiltInBehaviorKeys.DAMAGE_TARGETS.equals(action.key())) {
+                        Object amount = action.parameters().get("amount");
+                        if (amount != null && (!(amount instanceof Number number) || number.doubleValue() <= 0.0)) {
+                            errors.add(actionPath + " amount pozitif olmalıdır.");
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private static void validateItemActions(PetDefinition def, List<String> errors) {
+        if (def.itemActions() == null) return;
+        java.util.Set<String> ids = new java.util.HashSet<>();
+        for (int i = 0; i < def.itemActions().size(); i++) {
+            com.petsistemi.domain.item.PetItemActionDefinition action = def.itemActions().get(i);
+            String path = "item-actions[" + i + "]";
+            if (action == null) {
+                errors.add(path + " null olamaz.");
+                continue;
+            }
+            if (action.id() == null || action.id().isBlank() || !ids.add(action.id())) {
+                errors.add(path + ".id boş veya tekrarlı olamaz: " + action.id());
+            }
+            if (action.material() == null || Material.matchMaterial(action.material()) == null) {
+                errors.add(path + ".item.material geçerli bir materyal olmalıdır: " + action.material());
+            }
+            if (action.customModelData() != null && action.customModelData() < 0) {
+                errors.add(path + ".item.custom-model-data negatif olamaz.");
+            }
+            if (action.consumeAmount() < 0) errors.add(path + ".consume negatif olamaz.");
+            if (action.cooldownSeconds() < 0) errors.add(path + ".cooldown-seconds negatif olamaz.");
+            if (action.minimumLevel() < 1) errors.add(path + ".min-level en az 1 olmalıdır.");
+            if (action.maximumLevel() > 0 && action.maximumLevel() < action.minimumLevel()) {
+                errors.add(path + ".max-level, min-level değerinden küçük olamaz.");
+            }
+            if (action.action() == null) errors.add(path + ".action geçerli bir namespaced key olmalıdır.");
+            if (com.petsistemi.runtime.item.BuiltInPetItemActions.GAIN_EXPERIENCE.equals(action.action())) {
+                Object amount = action.parameters().get("amount");
+                if (!(amount instanceof Number number) || number.longValue() <= 0) {
+                    errors.add(path + ".parameters.amount pozitif bir sayı olmalıdır.");
+                }
+            }
+            if (com.petsistemi.runtime.item.BuiltInPetItemActions.UNLOCK_PET.equals(action.action())) {
+                Object target = action.parameters().get("definition-id");
+                if (target == null || target.toString().isBlank()) {
+                    errors.add(path + ".parameters.definition-id zorunludur.");
+                }
+            }
+            if (com.petsistemi.runtime.item.BuiltInPetItemActions.EVOLVE_PET.equals(action.action())) {
+                Object target = action.parameters().get("target-id");
+                if (target == null || target.toString().isBlank()) {
+                    errors.add(path + ".parameters.target-id zorunludur.");
+                }
+            }
         }
     }
 }

@@ -70,9 +70,10 @@ class PetTickIsolationTest {
         when(owner.isOnline()).thenReturn(true);
         // The tick loop skips owners whose chunk is unloaded, so give them a loaded one.
         org.bukkit.World world = mock(org.bukkit.World.class);
-        when(world.isChunkLoaded(org.mockito.ArgumentMatchers.anyInt(), org.mockito.ArgumentMatchers.anyInt()))
-                .thenReturn(true);
-        when(owner.getLocation()).thenReturn(new org.bukkit.Location(world, 0.0, 64.0, 0.0));
+        org.bukkit.Location location = mock(org.bukkit.Location.class);
+        when(location.getWorld()).thenReturn(world);
+        when(location.isChunkLoaded()).thenReturn(true);
+        when(owner.getLocation()).thenReturn(location);
         owners.add(owner);
 
         ActivePet active = new ActivePet(petId, ownerId, "wolf", 1,

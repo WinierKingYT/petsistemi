@@ -66,7 +66,7 @@ class SchemaMigratorTest {
 
         try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM schema_migrations;")) {
             assertTrue(rs.next());
-            assertEquals(8, rs.getInt(1));
+            assertEquals(9, rs.getInt(1));
         }
     }
 
@@ -80,7 +80,7 @@ class SchemaMigratorTest {
 
         try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM schema_migrations;")) {
             assertTrue(rs.next());
-            assertEquals(8, rs.getInt(1));
+            assertEquals(9, rs.getInt(1));
         }
     }
 
@@ -165,7 +165,7 @@ class SchemaMigratorTest {
 
         try (Statement stmt = connection.createStatement(); ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM schema_migrations;")) {
             assertTrue(rs.next());
-            assertEquals(8, rs.getInt(1));
+            assertEquals(9, rs.getInt(1));
         }
     }
 
@@ -291,7 +291,7 @@ class SchemaMigratorTest {
         try (Statement stmt = connection.createStatement();
              ResultSet rs = stmt.executeQuery("SELECT COUNT(*) FROM schema_migrations;")) {
             assertTrue(rs.next());
-            assertEquals(8, rs.getInt(1));
+            assertEquals(9, rs.getInt(1));
         }
 
         try (Statement stmt = connection.createStatement();

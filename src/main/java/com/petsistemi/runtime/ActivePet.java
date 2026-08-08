@@ -7,6 +7,10 @@ import com.petsistemi.domain.PetMovementType;
 import com.petsistemi.domain.PetRuntimeState;
 import com.petsistemi.domain.RuntimeRepresentationType;
 import org.bukkit.entity.Entity;
+import org.bukkit.NamespacedKey;
+import com.petsistemi.domain.RuntimeKeyResolver;
+import com.petsistemi.domain.animation.PetAnimationClipDefinition;
+import com.petsistemi.domain.animation.PetAnimationState;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -30,6 +34,8 @@ public final class ActivePet implements PetRuntimeHandle {
 
     private RuntimeRepresentationType representationType = RuntimeRepresentationType.ENTITY;
     private PetMovementType movementType = PetMovementType.GROUND_FOLLOW;
+    private NamespacedKey representationKey = RuntimeKeyResolver.representationKey(RuntimeRepresentationType.ENTITY);
+    private NamespacedKey movementKey = RuntimeKeyResolver.movementKey(PetMovementType.GROUND_FOLLOW);
     private PetMovementDefinition movementDefinition;
     private int updateIntervalTicks = 0;
     private int tickAccumulator = 0;
@@ -37,6 +43,8 @@ public final class ActivePet implements PetRuntimeHandle {
     private final java.util.List<Entity> children = new java.util.ArrayList<>();
 
     private boolean resting;
+    private PetAnimationState animationState;
+    private PetAnimationClipDefinition animationClip;
 
     public ActivePet(UUID petId, UUID ownerId, String definitionId, int level, UUID entityId, Entity spawnedEntity, PetRuntimeState runtimeState) {
         this.petId = petId;
@@ -135,13 +143,32 @@ public final class ActivePet implements PetRuntimeHandle {
         this.resting = resting;
     }
 
+    public PetAnimationState getAnimationState() {
+        return animationState;
+    }
+
+    public void setAnimationState(PetAnimationState animationState) {
+        this.animationState = animationState;
+    }
+
+    public PetAnimationClipDefinition getAnimationClip() {
+        return animationClip;
+    }
+
+    public void setAnimationClip(PetAnimationClipDefinition animationClip) {
+        this.animationClip = animationClip;
+    }
+
     public RuntimeRepresentationType getRepresentationType() {
         return representationType;
     }
 
     public void setRepresentationType(RuntimeRepresentationType representationType) {
         this.representationType = representationType != null ? representationType : RuntimeRepresentationType.ENTITY;
+        this.representationKey = RuntimeKeyResolver.representationKey(this.representationType);
     }
+    public NamespacedKey getRepresentationKey() { return representationKey; }
+    public void setRepresentationKey(NamespacedKey key) { this.representationKey = key != null ? key : RuntimeKeyResolver.representationKey(representationType); }
 
     public PetMovementType getMovementType() {
         return movementType;
@@ -149,7 +176,10 @@ public final class ActivePet implements PetRuntimeHandle {
 
     public void setMovementType(PetMovementType movementType) {
         this.movementType = movementType != null ? movementType : PetMovementType.GROUND_FOLLOW;
+        this.movementKey = RuntimeKeyResolver.movementKey(this.movementType);
     }
+    public NamespacedKey getMovementKey() { return movementKey; }
+    public void setMovementKey(NamespacedKey key) { this.movementKey = key != null ? key : RuntimeKeyResolver.movementKey(movementType); }
 
     public PetMovementDefinition getMovementDefinition() {
         return movementDefinition;

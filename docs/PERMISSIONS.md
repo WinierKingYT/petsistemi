@@ -20,6 +20,8 @@
 | `companionpets.admin.health` | Eklenti sağlık raporunu görüntüleme yetkisi | `op` |
 | `companionpets.admin.backup` | Manuel veritabanı yedeği alma yetkisi | `op` |
 | `companionpets.admin.reconcile` | Veritabanı ve dünyadaki pet durumlarını uzlaştırma yetkisi | `op` |
+| `companionpets.admin.pack` | Pet Pack listeleme, kurma, kaldırma ve dışa aktarma yetkisi | `op` |
+| `companionpets.admin.marketplace` | Marketplace katalog yenileme, listeleme ve paket kurma yetkisi | `op` |
 
 ## Pet Bazlı Yetkiler
 

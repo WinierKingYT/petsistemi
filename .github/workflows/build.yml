@@ -9,6 +9,19 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: petsistemi_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -proot"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
 
     steps:
     - uses: actions/checkout@v4
@@ -27,6 +40,10 @@ jobs:
 
     - name: Build with Gradle
       run: ./gradlew clean build
+      env:
+        PETSISTEMI_TEST_MYSQL_URL: jdbc:mysql://127.0.0.1:3306/petsistemi_test?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
+        PETSISTEMI_TEST_MYSQL_USER: root
+        PETSISTEMI_TEST_MYSQL_PASSWORD: root
 
     # Version is never hardcoded here: a version bump used to leave this step matching
     # nothing, and upload-artifact only warns by default — CI stayed green while

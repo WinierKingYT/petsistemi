@@ -13,6 +13,7 @@ import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
+import com.petsistemi.runtime.animation.PetAnimationStateMachine;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -57,9 +58,12 @@ public class PetRuntimeCoordinator {
     private volatile PetRecoveryHandler recoveryHandler;
     private volatile PetIdleSleepController idleSleepController;
     private volatile PetTransformController transformController;
+    private volatile PetEvolutionController evolutionController;
     private volatile PetEmoteController emoteController;
     private volatile InteractionHitboxController hitboxController;
     private volatile PetBuffController buffController;
+    private volatile PetAnimationStateMachine animationStateMachine;
+    private volatile com.petsistemi.runtime.mount.PetMountController mountController;
 
     public PetRuntimeCoordinator(JavaPlugin plugin,
                                  PetDefinitionRegistry definitionRegistry,
@@ -100,6 +104,10 @@ public class PetRuntimeCoordinator {
         this.transformController = transformController;
     }
 
+    public void setEvolutionController(PetEvolutionController evolutionController) {
+        this.evolutionController = evolutionController;
+    }
+
     /** Wires the emote controller (set after construction). */
     public void setEmoteController(PetEmoteController emoteController) {
         this.emoteController = emoteController;
@@ -111,6 +119,14 @@ public class PetRuntimeCoordinator {
 
     public void setBuffController(PetBuffController buffController) {
         this.buffController = buffController;
+    }
+
+    public void setAnimationStateMachine(PetAnimationStateMachine animationStateMachine) {
+        this.animationStateMachine = animationStateMachine;
+    }
+
+    public void setMountController(com.petsistemi.runtime.mount.PetMountController mountController) {
+        this.mountController = mountController;
     }
 
     /**
@@ -127,7 +143,14 @@ public class PetRuntimeCoordinator {
         despawnRuntime(ownerId);
 
         RuntimeRepresentationType repType = definition.representationOrEntity().type();
-        PetRepresentationController repController = resolveRepresentation(repType);
+        org.bukkit.NamespacedKey repKey = definition.representationOrEntity().key();
+        PetRepresentationController repController = representationRegistry != null
+                ? representationRegistry.get(repKey) : resolveRepresentation(repType);
+        if (representationRegistry != null && repController == null
+                && com.petsistemi.domain.RuntimeKeyResolver.builtInRepresentation(repKey) == null) {
+            throw new IllegalStateException("Representation provider kayıtlı değil: " + repKey
+                    + " (pet=" + definition.id() + ")");
+        }
         if (repController != null) {
             Entity spawnedEntity = Objects.requireNonNull(
                     repController.spawn(pet, definition, owner),
@@ -140,7 +163,9 @@ public class PetRuntimeCoordinator {
             PetMovementDefinition movementDef = definition.movement();
             PetMovementType movementType = movementDef != null ? movementDef.type() : PetMovementType.GROUND_FOLLOW;
             uncommitted.setRepresentationType(repType);
+            uncommitted.setRepresentationKey(definition.representationOrEntity().key());
             uncommitted.setMovementType(movementType);
+            uncommitted.setMovementKey(movementDef != null ? movementDef.key() : null);
             uncommitted.setMovementDefinition(movementDef);
             uncommitted.setUpdateIntervalTicks(movementDef != null ? movementDef.updateIntervalTicks() : 5);
 
@@ -189,6 +214,9 @@ public class PetRuntimeCoordinator {
             ActivePet pending = pendingSpawns.remove(ownerId);
             if (pending != null) {
                 removeChildren(pending);
+                if (entity == null) {
+                    entity = pending.getSpawnedEntity();
+                }
             }
         }
         if (entity != null) {
@@ -213,6 +241,8 @@ public class PetRuntimeCoordinator {
         if (emotes != null) {
             emotes.cleanup(ownerId);
         }
+        com.petsistemi.runtime.mount.PetMountController mounts = mountController;
+        if (mounts != null) mounts.cleanup(ownerId);
         Optional<ActivePet> activeOpt = activeRegistry.getByOwner(ownerId);
         if (activeOpt.isPresent()) {
             ActivePet active = activeOpt.get();
@@ -323,6 +353,9 @@ public class PetRuntimeCoordinator {
             hitboxController.updateHitbox(active, definitionRegistry);
         }
 
+        com.petsistemi.runtime.mount.PetMountController mounts = mountController;
+        boolean mounted = mounts != null && mounts.tick(active, owner);
+
         int interval = active.getUpdateIntervalTicks();
         if (interval > 0) {
             active.incrementTickAccumulator();
@@ -330,11 +363,18 @@ public class PetRuntimeCoordinator {
             active.setTickAccumulator(0);
         }
 
-        PetMovementController movement = resolveMovement(active);
-        if (movement != null) {
-            movement.tick(active, entity, owner);
-        } else if (entity instanceof LivingEntity living && behaviorController != null) {
-            behaviorController.tick(active, living, owner);
+        if (!mounted) {
+            PetMovementController movement = resolveMovement(active);
+            if (movement != null) {
+                movement.tick(active, entity, owner);
+            } else if (entity instanceof LivingEntity living && behaviorController != null) {
+                behaviorController.tick(active, living, owner);
+            }
+        }
+
+        PetEvolutionController evolutions = evolutionController;
+        if (evolutions != null) {
+            evolutions.tick(active, entity);
         }
 
         PetTransformController transforms = transformController;
@@ -345,6 +385,11 @@ public class PetRuntimeCoordinator {
         PetIdleSleepController idle = idleSleepController;
         if (idle != null) {
             idle.tick(owner, active, entity);
+        }
+
+        PetAnimationStateMachine animations = animationStateMachine;
+        if (animations != null) {
+            animations.tick(active, entity, owner, resolveVisualDefinition(active));
         }
 
         tickVisual(active, entity, owner);
@@ -360,7 +405,8 @@ public class PetRuntimeCoordinator {
     }
 
     private void tickVisual(ActivePet active, Entity entity, Player owner) {
-        PetRepresentationController rep = resolveRepresentation(active.getRepresentationType());
+        PetRepresentationController rep = representationRegistry != null
+                ? representationRegistry.get(active.getRepresentationKey()) : null;
         if (rep == null) return;
         PetDefinition definition = resolveVisualDefinition(active);
         if (definition != null) {
@@ -372,12 +418,14 @@ public class PetRuntimeCoordinator {
         PetDefinition base = definitionRegistry != null
                 ? definitionRegistry.find(active.getDefinitionId()).orElse(null)
                 : null;
+        PetEvolutionController evolutions = evolutionController;
+        PetDefinition evolved = evolutions != null ? evolutions.activeDefinition(active) : base;
         PetTransformController transforms = transformController;
-        if (transforms == null || base == null) {
-            return base;
+        if (transforms == null || evolved == null) {
+            return evolved;
         }
         PetDefinition derived = transforms.activeDefinition(active);
-        return derived != null ? derived : base;
+        return derived != null ? derived : evolved;
     }
 
     /**
@@ -392,7 +440,8 @@ public class PetRuntimeCoordinator {
         ActivePet active = activeOpt.get();
         active.setPetInstance(freshInstance);
 
-        PetRepresentationController rep = resolveRepresentation(active.getRepresentationType());
+        PetRepresentationController rep = representationRegistry != null
+                ? representationRegistry.get(active.getRepresentationKey()) : null;
         if (rep == null) return;
         PetDefinition definition = resolveVisualDefinition(active);
         if (definition != null && active.getSpawnedEntity() != null) {
@@ -499,6 +548,16 @@ public class PetRuntimeCoordinator {
     private void cleanupRuntime(ActivePet active, Entity entity) {
         if (active != null) {
             tickFailureLogged.remove(active.getPetId());
+            com.petsistemi.runtime.mount.PetMountController mounts = mountController;
+            if (mounts != null) mounts.cleanup(active.getOwnerId());
+            PetAnimationStateMachine animations = animationStateMachine;
+            if (animations != null) {
+                animations.cleanup(active.getPetId());
+            }
+            PetEvolutionController evolutions = evolutionController;
+            if (evolutions != null) {
+                evolutions.cleanup(active.getPetId());
+            }
             // Hitbox removal belongs here, not in despawnRuntime alone: shutdown goes
             // through forceCleanupAll -> cleanupRuntime and would otherwise leave every
             // hitbox behind in the world.
@@ -533,7 +592,8 @@ public class PetRuntimeCoordinator {
     }
 
     private void removeEntityFromRegistry(ActivePet active, Entity entity) {
-        PetRepresentationController rep = resolveRepresentation(active != null ? active.getRepresentationType() : null);
+        PetRepresentationController rep = active != null && representationRegistry != null
+                ? representationRegistry.get(active.getRepresentationKey()) : resolveRepresentation(null);
         if (rep != null) {
             rep.remove(entity);
         } else if (entityController != null) {
@@ -549,6 +609,7 @@ public class PetRuntimeCoordinator {
     private PetMovementController resolveMovement(ActivePet active) {
         if (movementRegistry == null || active == null) return null;
         PetMovementType type = active.getMovementType();
-        return type != null ? movementRegistry.get(type) : null;
+        return active.getMovementKey() != null ? movementRegistry.get(active.getMovementKey())
+                : (type != null ? movementRegistry.get(type) : null);
     }
 }

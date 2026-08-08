@@ -4,6 +4,10 @@ import com.petsistemi.domain.PetDefinition;
 import com.petsistemi.domain.PetMovementType;
 import com.petsistemi.domain.RuntimeRepresentationType;
 import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.NamespacedKey;
+import be.seeseemelk.mockbukkit.MockBukkit;
+import org.junit.jupiter.api.AfterAll;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -12,6 +16,16 @@ import static org.junit.jupiter.api.Assertions.*;
 import static java.util.Objects.requireNonNull;
 
 class PetDefinitionYamlParserTest {
+
+    @BeforeAll
+    static void startBukkitRegistry() {
+        MockBukkit.mock();
+    }
+
+    @AfterAll
+    static void stopBukkitRegistry() {
+        MockBukkit.unmock();
+    }
 
     private static YamlConfiguration yaml(String content) {
         YamlConfiguration cfg = new YamlConfiguration();
@@ -297,6 +311,34 @@ class PetDefinitionYamlParserTest {
     }
 
     @Test
+    void animationStatesParseNamedClipPriorityAndBlending() {
+        YamlConfiguration cfg = yaml("""
+                display-name: "Runner"
+                entity-type: WOLF
+                states:
+                  SPRINTING:
+                    clip: modelengine:run_fast
+                    priority: 40
+                    blend-in-ticks: 3
+                    blend-out-ticks: 5
+                    loop: true
+                  ATTACKING:
+                    clip: bite
+                    priority: 100
+                    loop: false
+                """);
+
+        PetDefinition def = PetDefinitionYamlParser.parse("runner", cfg).definition();
+
+        assertEquals("modelengine:run_fast", def.states().sprinting().clip().toString());
+        assertEquals(40, def.states().sprinting().priority());
+        assertEquals(3, def.states().sprinting().blendInTicks());
+        assertEquals(5, def.states().sprinting().blendOutTicks());
+        assertEquals("petsistemi:bite", def.states().attacking().clip().toString());
+        assertFalse(def.states().attacking().loop());
+    }
+
+    @Test
     void statesSectionIsOptionalAndDefaultsToNull() {
         YamlConfiguration cfg = yaml("""
                 display-name: "Plain"
@@ -306,6 +348,22 @@ class PetDefinitionYamlParserTest {
         PetDefinition def = PetDefinitionYamlParser.parse("plain", cfg).definition();
 
         assertNull(def.states());
+    }
+
+    @Test
+    void externalModelRepresentationParsesNamespacedProviderAndModelId() {
+        YamlConfiguration cfg = yaml("""
+                display-name: "Phoenix"
+                representation:
+                  type: modelengine:model
+                  model-id: phoenix_pet
+                  entity-type: ARMOR_STAND
+                """);
+
+        PetDefinition def = PetDefinitionYamlParser.parse("phoenix", cfg).definition();
+
+        assertEquals("modelengine:model", def.representation().key().toString());
+        assertEquals("phoenix_pet", def.representation().modelId());
     }
 
     @Test
@@ -592,5 +650,86 @@ class PetDefinitionYamlParserTest {
         PetDefinitionYamlParser.Parsed shadow = PetDefinitionYamlParser.parse("shadow_test", cfg);
         assertTrue(shadow.errors().isEmpty(), () -> "shadow errors: " + shadow.errors());
         assertEquals(com.petsistemi.domain.PetMovementType.SHADOW_TRAIL, shadow.definition().movement().type());
+    }
+
+    @Test
+    void customNamespacedMovementKeyIsPreservedForRuntimeDispatch() {
+        YamlConfiguration cfg = yaml("""
+                display-name: "Extension pet"
+                representation:
+                  type: ENTITY
+                movement:
+                  type: test:custom_movement
+                """);
+
+        PetDefinitionYamlParser.Parsed parsed = PetDefinitionYamlParser.parse("extension_pet", cfg);
+
+        assertTrue(parsed.errors().isEmpty(), () -> "parser errors: " + parsed.errors());
+        assertEquals(new NamespacedKey("test", "custom_movement"), parsed.definition().movement().key());
+    }
+
+    @Test
+    void nativeBehaviorsParseNamespacedTriggerConditionsActionsAndParameters() {
+        YamlConfiguration cfg = yaml("""
+                display-name: "Behavior pet"
+                behaviors:
+                  - trigger: petsistemi:tick
+                    conditions:
+                      - type: petsistemi:min_level
+                        parameters:
+                          level: 5
+                    actions:
+                      - type: petsistemi:apply_potion_effect
+                        parameters:
+                          effect: SPEED
+                          amplifier: 1
+                          duration-ticks: 80
+                """);
+
+        PetDefinitionYamlParser.Parsed parsed = PetDefinitionYamlParser.parse("behavior_pet", cfg);
+
+        assertTrue(parsed.errors().isEmpty(), () -> "parser errors: " + parsed.errors());
+        assertNotNull(parsed.definition().behaviors());
+        assertEquals(new NamespacedKey("petsistemi", "tick"), parsed.definition().behaviors().get(0).trigger());
+        assertEquals(5, parsed.definition().behaviors().get(0).conditions().get(0).parameters().get("level"));
+        assertEquals("SPEED", parsed.definition().behaviors().get(0).actions().get(0).parameters().get("effect"));
+    }
+
+    @Test
+    void malformedNativeBehaviorReportsPathSpecificErrors() {
+        PetDefinitionYamlParser.Parsed parsed = PetDefinitionYamlParser.parse("broken", yaml("""
+                display-name: "Broken"
+                behaviors:
+                  - trigger: missing_namespace
+                    actions: []
+                """));
+
+        assertFalse(parsed.errors().isEmpty());
+        assertTrue(parsed.errors().stream().anyMatch(error -> error.contains("behaviors[0].trigger")));
+    }
+
+    @Test
+    void abilityParsesAsCooldownAndTargetedBehavior() {
+        PetDefinitionYamlParser.Parsed parsed = PetDefinitionYamlParser.parse("mage", yaml("""
+                display-name: "Mage"
+                abilities:
+                  arcane_burst:
+                    cooldown-seconds: 12
+                    target: OWNER_TARGET
+                    range: 16.0
+                    actions:
+                      - type: test:record_target
+                        parameters:
+                          power: 3
+                """));
+
+        assertTrue(parsed.errors().isEmpty(), () -> "parser errors: " + parsed.errors());
+        var key = new NamespacedKey("petsistemi", "arcane_burst");
+        var ability = parsed.definition().abilities().get(key);
+        assertNotNull(ability);
+        assertEquals(12, ability.cooldownSeconds());
+        assertEquals(com.petsistemi.domain.ability.AbilityTargetType.OWNER_TARGET, ability.targetType());
+        assertEquals(16.0, ability.range());
+        assertEquals(new NamespacedKey("petsistemi", "ability"), ability.behavior().trigger());
     }
 }

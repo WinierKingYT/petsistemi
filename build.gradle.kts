@@ -21,6 +21,7 @@ dependencies {
     compileOnly("io.papermc.paper:paper-api:1.20.4-R0.1-SNAPSHOT")
     compileOnly("me.clip:placeholderapi:2.11.5")
     implementation("org.xerial:sqlite-jdbc:3.45.1.0")
+    implementation("com.mysql:mysql-connector-j:8.4.0")
 
     testImplementation("io.papermc.paper:paper-api:1.20.4-R0.1-SNAPSHOT")
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")

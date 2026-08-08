@@ -2,6 +2,8 @@ package com.petsistemi.runtime;
 
 import com.petsistemi.domain.PetDefinition;
 import com.petsistemi.domain.PetInstance;
+import com.petsistemi.domain.animation.PetAnimationState;
+import com.petsistemi.runtime.animation.PetAnimationTransition;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 
@@ -28,6 +30,21 @@ public interface PetRepresentationController {
      */
     default void applyRestState(Entity primaryEntity, PetInstance pet, PetDefinition definition, boolean resting) {
         // no-op
+    }
+
+    /**
+     * Shared animation-provider seam. Vanilla and display controllers get a meaningful
+     * default adapter; model providers can override this method and consume named clip,
+     * priority and blend metadata directly.
+     */
+    default void applyAnimation(Entity primaryEntity, PetInstance pet, PetDefinition definition,
+                                PetAnimationTransition transition) {
+        if (transition == null) return;
+        boolean wasResting = transition.previousState() == PetAnimationState.SLEEPING;
+        boolean resting = transition.state() == PetAnimationState.SLEEPING;
+        if (wasResting != resting) {
+            applyRestState(primaryEntity, pet, definition, resting);
+        }
     }
 
     /**

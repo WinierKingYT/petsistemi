@@ -29,5 +29,12 @@ yetkiye sahip olması gerekir; alan yoksa pet herkese açıktır. Bkz. [PERMISSI
 - `/petadmin inspect`: Baktığınız varlığın pet verilerini gösterir.
 - `/petadmin reload`: Config, mesajlar ve pet tanımlarını atomik olarak yeniden yükler.
 - `/petadmin health`: Veritabanı ve runtime durum raporunu sunar.
-- `/petadmin backup`: Manuel veritabanı yedeği oluşturur.
+- `/petadmin backup`: SQLite için WAL-safe dosya yedeği oluşturur; MySQL'de sağlayıcı yedeğine yönlendirir.
 - `/petadmin reconcile all [--dry-run]`: Tutarsız durumları tarar ve uzlaştırır.
+- `/petadmin pack list`: Kurulu Pet Pack'leri listeler.
+- `/petadmin pack install <dosya.petpack>`: `packs/inbox/` altındaki paketi doğrulayıp atomik kurar.
+- `/petadmin pack uninstall <pack_id>`: Bağımlısı yoksa paketi kaldırır.
+- `/petadmin pack export <id> <namespace> <version> <pet_id...>`: Seçilen tanımlardan paket üretir.
+- `/petadmin marketplace refresh|list|install <id>`: Etkin marketplace kataloğunu yönetir.
+
+MF8 komutlarının güvenlik ve dosya yerleşimi ayrıntıları için [ECOSYSTEM.md](ECOSYSTEM.md).

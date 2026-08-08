@@ -30,10 +30,38 @@ runtime:
 
 # Veritabanı ve Otomatik Yüzey Yedeği
 database:
+  backend: SQLITE # MYSQL network/paylaşımlı veri için
+  mysql:
+    host: 127.0.0.1
+    port: 3306
+    database: petsistemi
+    username: root
+    password: ""
+    use-ssl: false
+    connect-timeout-ms: 10000
   migration-backup:
     enabled: true
     fail-startup-on-backup-error: true
     maximum-backups: 5
+
+# MF8 Ekosistemi
+ecosystem:
+  network:
+    enabled: false
+    server-id: server-1 # Aynı DB'deki her sunucuda benzersiz
+    poll-interval-ticks: 20
+    batch-size: 100
+    retention-hours: 24
+  pet-packs:
+    maximum-files: 128
+    maximum-archive-bytes: 10485760
+    maximum-expanded-bytes: 52428800
+  marketplace:
+    enabled: false
+    catalog-url: ""
+    require-sha256: true
+    maximum-download-bytes: 10485760
+    request-timeout-ms: 10000
 
 # Özellik Bayrakları
 features:
@@ -61,3 +89,6 @@ features:
     growth-per-level: 0.02
     max-multiplier: 1.5
 ```
+
+Network modu yalnız MySQL ile açılır. Pet Pack ve marketplace ayrıntıları için
+[ECOSYSTEM.md](ECOSYSTEM.md) belgesine bakın.

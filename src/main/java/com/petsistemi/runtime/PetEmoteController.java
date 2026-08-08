@@ -1,6 +1,7 @@
 package com.petsistemi.runtime;
 
 import com.petsistemi.domain.PetEmoteDefinition;
+import com.petsistemi.domain.PetDefinition;
 import org.bukkit.entity.Entity;
 
 import java.util.HashMap;
@@ -37,6 +38,15 @@ public class PetEmoteController {
      * Returns the remaining cooldown seconds via {@link EmoteOutcome} when blocked.
      */
     public EmoteOutcome play(UUID ownerId, Entity petEntity, Map<String, PetEmoteDefinition> emotes, String emoteName) {
+        return play(ownerId, petEntity, emotes, null, emoteName);
+    }
+
+    public EmoteOutcome playDefinition(UUID ownerId, Entity petEntity, PetDefinition definition, String emoteName) {
+        return play(ownerId, petEntity, definition != null ? definition.emotes() : null, definition, emoteName);
+    }
+
+    private EmoteOutcome play(UUID ownerId, Entity petEntity, Map<String, PetEmoteDefinition> emotes,
+                              PetDefinition definition, String emoteName) {
         if (emotes == null || emoteName == null) {
             return EmoteOutcome.unknown();
         }
@@ -61,7 +71,8 @@ public class PetEmoteController {
         }
 
         if (reactionEngine != null) {
-            reactionEngine.playEmote(petEntity, emote);
+            if (definition != null) reactionEngine.playEmote(petEntity, emote, definition);
+            else reactionEngine.playEmote(petEntity, emote);
         }
         if (cooldownMs > 0L) {
             cooldown(ownerId).put(emoteName.toLowerCase(java.util.Locale.ROOT), now);

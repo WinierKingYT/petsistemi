@@ -66,9 +66,11 @@ gui:
   no: "<red>No</red>"
 
 riding:
-  enter: "<green>You mounted <name>! Sneak + right-click again to dismount.</green>"
+  enter: "<green>You mounted <name>! Steer with WASD and jump with Space.</green>"
   exit: "<yellow>You dismounted <name>.</yellow>"
   no-permission: "<red>You don't have permission to ride <name>.</red>"
+  disabled: "<red>Riding is disabled for this pet.</red>"
+  failed: "<red>Pet riding could not be started.</red>"
 
 inspect:
   not-found: "<red>This pet could not be found in the database.</red>"

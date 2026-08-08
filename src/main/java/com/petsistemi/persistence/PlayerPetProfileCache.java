@@ -297,6 +297,20 @@ public class PlayerPetProfileCache {
         });
     }
 
+    public void updateDefinition(UUID ownerId, UUID petId, String definitionId) {
+        if (ownerId == null || petId == null || definitionId == null) return;
+        advanceGeneration(ownerId);
+        profiles.computeIfPresent(ownerId, (id, current) -> {
+            PetSnapshot old = current.pets().get(petId);
+            if (old == null) return current;
+            PetSnapshot updated = new PetSnapshot(old.petId(), old.ownerId(), definitionId,
+                    old.customName(), old.level(), old.experience(), old.availabilityState(), old.selected(), old.spawned());
+            Map<UUID, PetSnapshot> newMap = new HashMap<>(current.pets());
+            newMap.put(petId, updated);
+            return new PlayerPetProfile(ownerId, Collections.unmodifiableMap(newMap), current.selectedPetId(), System.currentTimeMillis(), current.version() + 1);
+        });
+    }
+
     public void updateAvailability(UUID ownerId, UUID petId, PetAvailabilityState state) {
         if (ownerId == null || petId == null) return;
         advanceGeneration(ownerId);

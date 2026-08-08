@@ -37,10 +37,39 @@ runtime:
   follow-speed: 1.2
 
 database:
+  # SQLITE tek sunucu için varsayılandır. MYSQL network modu ve paylaşımlı veri için kullanılır.
+  backend: SQLITE
+  mysql:
+    host: 127.0.0.1
+    port: 3306
+    database: petsistemi
+    username: root
+    password: ""
+    use-ssl: false
+    connect-timeout-ms: 10000
   migration-backup:
     enabled: true
     fail-startup-on-backup-error: true
     maximum-backups: 5
+
+ecosystem:
+  network:
+    enabled: false
+    # Aynı MySQL veritabanını kullanan her sunucuda benzersiz olmalıdır.
+    server-id: server-1
+    poll-interval-ticks: 20
+    batch-size: 100
+    retention-hours: 24
+  pet-packs:
+    maximum-files: 128
+    maximum-archive-bytes: 10485760
+    maximum-expanded-bytes: 52428800
+  marketplace:
+    enabled: false
+    catalog-url: ""
+    require-sha256: true
+    maximum-download-bytes: 10485760
+    request-timeout-ms: 10000
 
 features:
   # Petlerin sahiplerine verdiği pasif etkiler. Hangi etkinin verileceği her petin
@@ -53,7 +82,8 @@ features:
   magnet:
     enabled: false
   riding:
-    # Sahip shift + sağ tık ile kendi petine binebilir (inspect için normal sağ tık)
+    # Ana özellik anahtarı. Pet bazında mount.enabled:false ile ayrıca kapatılabilir.
+    # Sahip shift + sağ tıkla biner; WASD yön, Space zıplama, Shift inme kontrolüdür.
     enabled: false
   idle-sleep:
     # Sahip N saniye hareket etmezse pet uyku moduna geçer (ENTITY: oturur, display: küçülür)
