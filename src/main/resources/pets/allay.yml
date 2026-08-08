@@ -15,3 +15,38 @@ nameplate:
   enabled: true
   format:
     - "<cyan>{pet_name}</cyan> <gray>Lv.{level}</gray>"
+
+# Sahibine verilen pasif etkiler. Her iki kademe de seviyeyle birlikte güçlenir.
+buffs:
+  - type: REGENERATION
+    amplifier: 0
+    min-level: 1
+    duration-seconds: 4
+  - type: REGENERATION
+    amplifier: 1
+    min-level: 6
+    duration-seconds: 4
+  - type: REGENERATION
+    amplifier: 2
+    min-level: 11
+    duration-seconds: 4
+  - type: REGENERATION
+    amplifier: 3
+    min-level: 16
+    duration-seconds: 4
+  - type: HASTE
+    amplifier: 0
+    min-level: 1
+    duration-seconds: 4
+  - type: HASTE
+    amplifier: 1
+    min-level: 6
+    duration-seconds: 4
+  - type: HASTE
+    amplifier: 2
+    min-level: 11
+    duration-seconds: 4
+  - type: HASTE
+    amplifier: 3
+    min-level: 16
+    duration-seconds: 4

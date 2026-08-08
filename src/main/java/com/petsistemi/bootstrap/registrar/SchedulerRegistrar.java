@@ -54,17 +54,11 @@ public final class SchedulerRegistrar {
         );
         context.taskRegistry().registerNamed("passiveXpTask", passiveXpTask);
 
-        // 3. Ability Task
-        if (features != null && features.abilitiesEnabled()) {
-            BukkitTask abilityTask = Bukkit.getScheduler().runTaskTimer(
-                    context.plugin(),
-                    new com.petsistemi.runtime.task.PetAbilityTask(context.activePetRegistry()),
-                    40L, 40L
-            );
-            context.taskRegistry().registerNamed("abilityTask", abilityTask);
-        } else {
-            context.taskRegistry().cancelNamed("abilityTask");
-        }
+        // Buffs used to live in a separate task that switched on the pet's id in Java, so
+        // wolf/cat/allay granted effects no YAML could describe or turn off. They are now
+        // declared in each pet's `buffs:` block and applied by PetBuffController inside the
+        // runtime tick; `features.buffs.enabled` is the server-wide kill switch.
+        context.taskRegistry().cancelNamed("abilityTask");
 
         // 4. Magnet Task
         if (features != null && features.magnetEnabled()) {

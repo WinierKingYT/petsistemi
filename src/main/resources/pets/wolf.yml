@@ -18,3 +18,24 @@ nameplate:
   format:
     - "<gold>{pet_name}</gold> <gray>Lv.{level}</gray>"
 permission: companionpets.pet.wolf
+
+# Sahibine verilen pasif etkiler. Kademeler pet seviyesiyle açılır:
+# 1-5 -> I, 6-10 -> II, 11-15 -> III, 16+ -> IV. Kazanılan en güçlü kademe uygulanır.
+# Kaldırmak için bu bölümü silmek yeterli; tümünü kapatmak için config.yml -> features.buffs.enabled
+buffs:
+  - type: SPEED
+    amplifier: 0
+    min-level: 1
+    duration-seconds: 4
+  - type: SPEED
+    amplifier: 1
+    min-level: 6
+    duration-seconds: 4
+  - type: SPEED
+    amplifier: 2
+    min-level: 11
+    duration-seconds: 4
+  - type: SPEED
+    amplifier: 3
+    min-level: 16
+    duration-seconds: 4

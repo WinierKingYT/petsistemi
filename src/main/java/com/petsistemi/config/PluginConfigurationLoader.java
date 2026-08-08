@@ -35,7 +35,10 @@ public final class PluginConfigurationLoader {
         boolean failOnBackupError = config.getBoolean("database.migration-backup.fail-startup-on-backup-error", true);
         int maxBackups = config.getInt("database.migration-backup.maximum-backups", 5);
 
-        boolean abilitiesEnabled = config.getBoolean("features.abilities.enabled", false);
+        // Replaces the old features.abilities.enabled switch, which gated a Java-side buff table
+        // rather than the pets' own `buffs:` blocks. On by default: a pet that declares no buffs
+        // still grants none, so the switch only exists to silence every pet at once.
+        boolean buffsEnabled = config.getBoolean("features.buffs.enabled", true);
         boolean particlesEnabled = config.getBoolean("features.particles.enabled", false);
         boolean magnetEnabled = config.getBoolean("features.magnet.enabled", false);
         boolean ridingEnabled = config.getBoolean("features.riding.enabled", false);
@@ -66,7 +69,7 @@ public final class PluginConfigurationLoader {
                 new PluginConfiguration.DiagnosticsConfiguration(100L),
                 new PluginConfiguration.DefinitionConfiguration("KEEP_OLD_ON_ANY_ERROR"),
                 new PluginConfiguration.FeaturesConfiguration(
-                        abilitiesEnabled, particlesEnabled, magnetEnabled, ridingEnabled,
+                        buffsEnabled, particlesEnabled, magnetEnabled, ridingEnabled,
                         idleSleepEnabled, idleSleepSeconds, reactionsEnabled,
                         levelScalingEnabled, levelScalingGrowth, levelScalingMax),
                 locale

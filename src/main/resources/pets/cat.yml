@@ -15,3 +15,26 @@ nameplate:
   enabled: true
   format:
     - "<yellow>{pet_name}</yellow> <gray>Lv.{level}</gray>"
+
+# Sahibine verilen pasif etkiler. Gece görüşü sabittir; hız kademesi seviyeyle açılır.
+buffs:
+  - type: NIGHT_VISION
+    amplifier: 0
+    min-level: 1
+    duration-seconds: 15
+  - type: SPEED
+    amplifier: 0
+    min-level: 1
+    duration-seconds: 4
+  - type: SPEED
+    amplifier: 1
+    min-level: 6
+    duration-seconds: 4
+  - type: SPEED
+    amplifier: 2
+    min-level: 11
+    duration-seconds: 4
+  - type: SPEED
+    amplifier: 3
+    min-level: 16
+    duration-seconds: 4

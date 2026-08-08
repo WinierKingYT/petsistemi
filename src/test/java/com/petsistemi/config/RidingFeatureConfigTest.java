@@ -33,7 +33,7 @@ class RidingFeatureConfigTest {
     @Test
     void otherFeatureFlagsUnaffected() {
         PluginConfiguration config = load("features:\n  riding:\n    enabled: true\n");
-        assertFalse(config.features().abilitiesEnabled());
+        assertTrue(config.features().buffsEnabled(), "buff'lar varsayılan olarak açık");
         assertFalse(config.features().particlesEnabled());
         assertFalse(config.features().magnetEnabled());
         assertTrue(config.features().ridingEnabled());
@@ -42,7 +42,7 @@ class RidingFeatureConfigTest {
     @Test
     void threeArgConvenienceConstructorDisablesRiding() {
         PluginConfiguration.FeaturesConfiguration features = new PluginConfiguration.FeaturesConfiguration(true, true, true);
-        assertTrue(features.abilitiesEnabled());
+        assertTrue(features.buffsEnabled());
         assertFalse(features.ridingEnabled());
     }
 }

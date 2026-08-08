@@ -43,8 +43,11 @@ database:
     maximum-backups: 5
 
 features:
-  abilities:
-    enabled: false
+  # Petlerin sahiplerine verdiği pasif etkiler. Hangi etkinin verileceği her petin
+  # kendi pets/<id>.yml dosyasındaki `buffs:` bölümünde yazar; buradaki anahtar
+  # yalnızca hepsini birden kapatmak içindir.
+  buffs:
+    enabled: true
   particles:
     enabled: false
   magnet:

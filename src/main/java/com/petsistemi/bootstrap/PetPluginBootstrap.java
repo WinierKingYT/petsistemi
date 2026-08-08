@@ -106,7 +106,8 @@ public final class PetPluginBootstrap {
             PetReactionEngine reactionEngine = new PetReactionEngine(configSnapshot);
             PetEmoteController emoteController = new PetEmoteController(reactionEngine);
             InteractionHitboxController hitboxController = new InteractionHitboxController(plugin);
-            PetBuffController buffController = new PetBuffController();
+            PetBuffController buffController = new PetBuffController(
+                    configSnapshot.get().configuration().features().buffsEnabled());
 
             PetIdleSleepController idleSleepController = new PetIdleSleepController(
                     configSnapshot, definitionRegistry, representationRegistry, reactionEngine);

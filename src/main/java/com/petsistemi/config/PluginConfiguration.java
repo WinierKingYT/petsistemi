@@ -42,7 +42,7 @@ public record PluginConfiguration(
     public record DiagnosticsConfiguration(long slowQueryThresholdMs) {}
     public record DefinitionConfiguration(String reloadPolicy) {}
     public record FeaturesConfiguration(
-            boolean abilitiesEnabled,
+            boolean buffsEnabled,
             boolean particlesEnabled,
             boolean magnetEnabled,
             boolean ridingEnabled,
@@ -53,13 +53,13 @@ public record PluginConfiguration(
             double levelScalingGrowthPerLevel,
             double levelScalingMaxMultiplier
     ) {
-        public FeaturesConfiguration(boolean abilitiesEnabled, boolean particlesEnabled, boolean magnetEnabled, boolean ridingEnabled) {
-            this(abilitiesEnabled, particlesEnabled, magnetEnabled, ridingEnabled,
+        public FeaturesConfiguration(boolean buffsEnabled, boolean particlesEnabled, boolean magnetEnabled, boolean ridingEnabled) {
+            this(buffsEnabled, particlesEnabled, magnetEnabled, ridingEnabled,
                     false, 45, false, false, 0.02, 1.5);
         }
 
-        public FeaturesConfiguration(boolean abilitiesEnabled, boolean particlesEnabled, boolean magnetEnabled) {
-            this(abilitiesEnabled, particlesEnabled, magnetEnabled, false);
+        public FeaturesConfiguration(boolean buffsEnabled, boolean particlesEnabled, boolean magnetEnabled) {
+            this(buffsEnabled, particlesEnabled, magnetEnabled, false);
         }
     }
 }

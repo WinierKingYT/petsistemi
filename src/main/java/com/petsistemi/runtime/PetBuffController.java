@@ -12,6 +12,21 @@ import java.util.List;
  */
 public class PetBuffController {
 
+    private final boolean enabled;
+
+    /** Buffs on, which is the shipped default — each pet still opts in via its own {@code buffs:}. */
+    public PetBuffController() {
+        this(true);
+    }
+
+    /**
+     * @param enabled server-wide kill switch ({@code features.buffs.enabled}); when off, no pet
+     *                grants potion effects no matter what its definition declares.
+     */
+    public PetBuffController(boolean enabled) {
+        this.enabled = enabled;
+    }
+
     /**
      * Applies one pet's passive buffs to its owner.
      *
@@ -20,7 +35,7 @@ public class PetBuffController {
      * able to abort the tick for everyone else.</p>
      */
     public void apply(ActivePet pet, Player owner, PetDefinition definition) {
-        if (pet == null || owner == null || definition == null || !owner.isOnline()) {
+        if (!enabled || pet == null || owner == null || definition == null || !owner.isOnline()) {
             return;
         }
 
@@ -34,13 +49,16 @@ public class PetBuffController {
             if (buff == null || buff.effectType() == null) continue;
             if (petLevel < buff.minLevel()) continue;
 
-            // Re-apply potion effect with ambient and icon flags
+            // Pet buffs are refreshed for as long as the pet is out, so visible particles
+            // would wrap the owner in swirls permanently. The icon stays on: without it the
+            // player has no way to tell where the effect is coming from.
             PotionEffect effect = new PotionEffect(
                     buff.effectType(),
                     buff.durationTicks(),
                     buff.amplifier(),
-                    true, // ambient
-                    true  // particles & icon visible
+                    true,  // ambient
+                    false, // particles
+                    true   // icon
             );
             owner.addPotionEffect(effect);
         }
