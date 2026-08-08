@@ -25,6 +25,9 @@ dependencies {
     testImplementation("io.papermc.paper:paper-api:1.20.4-R0.1-SNAPSHOT")
     testImplementation("org.junit.jupiter:junit-jupiter:5.10.2")
     testImplementation("org.mockito:mockito-core:5.11.0")
+    // Headless Bukkit server for integration tests: real command dispatch, listener
+    // registration and inventory flows, none of which plain mocks can exercise.
+    testImplementation("com.github.seeseemelk:MockBukkit-v1.20:3.87.0")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
