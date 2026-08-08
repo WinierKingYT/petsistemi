@@ -123,4 +123,23 @@ class BundledPetDefinitionsTest {
         }
         assertTrue(missing.isEmpty(), () -> "schema-version: 1 eksik: " + missing);
     }
+
+    /** The startup summary is the first thing consulted when a pet misbehaves in game. */
+    @Test
+    void startupSummaryNamesEachPetWithItsRepresentationAndMovement() throws Exception {
+        java.util.Map<String, PetDefinition> loaded = new java.util.LinkedHashMap<>();
+        for (String id : bundledPetIds()) {
+            PetDefinition def = PetDefinitionYamlParser.parse(id, load(id)).definition();
+            if (def != null) {
+                loaded.put(id, def);
+            }
+        }
+
+        String summary = AtomicPetDefinitionRegistry.summarise(loaded);
+
+        assertTrue(summary.contains("spirit_flame(PARTICLE/HOVER)"),
+                () -> "spirit_flame PARTICLE+HOVER olarak görünmeli: " + summary);
+        assertTrue(summary.contains("wolf(ENTITY/"), () -> "wolf ENTITY olmalı: " + summary);
+        assertTrue(summary.contains("arcane_crystal(ITEM_DISPLAY/ORBIT)"), () -> summary);
+    }
 }

@@ -151,7 +151,28 @@ public class AtomicPetDefinitionRegistry implements PetDefinitionRegistry {
             log(Level.SEVERE, "Hiçbir pet tanımı yüklenemedi! pets/ klasörünü kontrol edin.");
         } else {
             log(Level.INFO, "Pet tanımları yüklendi. Aktif tanım sayısı: " + scan.definitions().size());
+            // What each pet actually resolved to. Without this, diagnosing "my particle pet
+            // does not hover" means guessing whether the server is running a stale YAML —
+            // saveDefaultPetFiles never overwrites a file that already exists.
+            log(Level.INFO, "Yüklenen petler: " + summarise(scan.definitions()));
         }
+    }
+
+    /** Renders each pet as {@code id(REPRESENTATION/MOVEMENT)} for the startup log. */
+    static String summarise(Map<String, PetDefinition> definitions) {
+        return definitions.entrySet().stream()
+                .sorted(Map.Entry.comparingByKey())
+                .map(entry -> {
+                    PetDefinition def = entry.getValue();
+                    String representation = def.representationOrEntity() != null
+                            ? String.valueOf(def.representationOrEntity().type())
+                            : "?";
+                    String movement = def.movement() != null
+                            ? String.valueOf(def.movement().type())
+                            : "config";
+                    return entry.getKey() + "(" + representation + "/" + movement + ")";
+                })
+                .collect(Collectors.joining(", "));
     }
 
     private void log(Level level, String message) {
