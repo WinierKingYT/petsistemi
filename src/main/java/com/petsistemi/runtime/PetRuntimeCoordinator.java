@@ -8,6 +8,7 @@ import com.petsistemi.domain.PetMovementType;
 import com.petsistemi.domain.PetRuntimeState;
 import com.petsistemi.domain.RuntimeRepresentationType;
 import org.bukkit.Bukkit;
+import org.bukkit.Location;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
@@ -225,7 +226,7 @@ public class PetRuntimeCoordinator {
      * to its registered movement controller (respecting per-pet update intervals),
      * falling back to the legacy behavior controller.
      */
-    public synchronized void tickAll() {
+    public void tickAll() {
         tickEach(new ArrayList<>(activeRegistry.getAllActive()), Bukkit::getPlayer);
     }
 
@@ -241,11 +242,12 @@ public class PetRuntimeCoordinator {
             Player owner = ownerLookup.find(active.getOwnerId());
             if (owner == null || !owner.isOnline()) continue;
 
-            // Skip the tick while the owner's chunk is unloaded. Must use isChunkLoaded():
-            // getChunk() is the *loading* accessor, so the old check both forced a chunk
-            // load and could then never see an unloaded chunk.
-            if (owner.getLocation() != null && owner.getLocation().getWorld() != null
-                    && !owner.getLocation().isChunkLoaded()) {
+            // Skip the tick while the owner's chunk is unloaded. Cache the location once
+            // to avoid 3 redundant Location object allocations per pet per tick.
+            // The null guard matters: this runs *before* the try block, so an NPE here
+            // would abort the loop and freeze every pet queued behind this one.
+            Location ownerLoc = owner.getLocation();
+            if (ownerLoc == null || ownerLoc.getWorld() == null || !ownerLoc.isChunkLoaded()) {
                 continue;
             }
 
@@ -301,11 +303,15 @@ public class PetRuntimeCoordinator {
         // Runaway guard: snap the pet back if it drifts absurdly far. The threshold honours
         // the pet's own movement.teleport-distance — a hard 50 blocks would silently cap any
         // definition that deliberately configures a longer leash.
-        if (entity.getWorld() != null && owner.getWorld() != null && entity.getWorld().equals(owner.getWorld()) && entity.getLocation() != null && owner.getLocation() != null) {
+        // Cache locations once to avoid repeated clone-on-access allocations.
+        Location entityLoc = entity.getLocation();
+        Location ownerLoc  = owner.getLocation();
+        if (entity.getWorld() != null && owner.getWorld() != null
+                && entity.getWorld().equals(owner.getWorld())) {
             try {
                 double limit = runawayDistance(active);
-                if (entity.getLocation().distanceSquared(owner.getLocation()) > limit * limit) {
-                    entity.teleport(SafePetLocationFinder.findSafeLocation(owner.getLocation()));
+                if (entityLoc.distanceSquared(ownerLoc) > limit * limit) {
+                    entity.teleport(SafePetLocationFinder.findSafeLocation(ownerLoc));
                     return;
                 }
             } catch (Exception ignored) {}

@@ -92,14 +92,27 @@ class PetRuntimeSyncListenerTest {
     }
 
     @Test
-    void cancelledRenameDoesNotRefresh() {
-        ActivePet active = registerActivePet(5);
-        PetRenameEvent event = new PetRenameEvent(null, ownerId,
-                new PetSnapshot(petId, ownerId, "wolf", "Eski", 5, 100, PetAvailabilityState.AVAILABLE, true, true),
-                "Eski", "Yeni");
-        event.setCancelled(true);
-        listener.onRename(event);
+    void cancelledRenameDoesNotRefresh() throws Exception {
+        // Cancellation is enforced by Bukkit via ignoreCancelled, not by an if-statement
+        // inside the handler — so the contract to pin down is the annotation itself.
+        // Calling the method directly would bypass the very mechanism under test.
+        org.bukkit.event.EventHandler handler = PetRuntimeSyncListener.class
+                .getMethod("onRename", PetRenameEvent.class)
+                .getAnnotation(org.bukkit.event.EventHandler.class);
 
-        assertNull(active.getPetInstance(), "cancelled rename must not refresh visuals");
+        assertNotNull(handler, "onRename bir @EventHandler olmalı");
+        assertTrue(handler.ignoreCancelled(),
+                "iptal edilmiş rename görselleri yenilememeli (ignoreCancelled = true)");
+    }
+
+    @Test
+    void cancelledLevelUpDoesNotRefresh() throws Exception {
+        org.bukkit.event.EventHandler handler = PetRuntimeSyncListener.class
+                .getMethod("onLevelUp", com.petsistemi.api.event.PetLevelUpEvent.class)
+                .getAnnotation(org.bukkit.event.EventHandler.class);
+
+        assertNotNull(handler, "onLevelUp bir @EventHandler olmalı");
+        assertTrue(handler.ignoreCancelled(),
+                "iptal edilmiş level-up görselleri yenilememeli (ignoreCancelled = true)");
     }
 }

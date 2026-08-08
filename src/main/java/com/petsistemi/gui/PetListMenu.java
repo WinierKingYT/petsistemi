@@ -56,7 +56,38 @@ public class PetListMenu {
             return;
         }
 
-        List<PetSnapshot> sortedPets = new ArrayList<>(petService.getOwnedPets(viewer.getUniqueId()));
+        // Fetch off the main thread, render on it. The synchronous PetService#getOwnedPets is
+        // a blocking join() on the single-threaded database executor, so opening the GUI used
+        // to stall the whole server for the duration of the query (ADR 0003).
+        java.util.concurrent.CompletableFuture<java.util.Collection<PetSnapshot>> petsFuture =
+                petService instanceof com.petsistemi.api.AsyncPetService async
+                        ? async.getOwnedPetsAsync(viewer.getUniqueId())
+                        : java.util.concurrent.CompletableFuture.completedFuture(petService.getOwnedPets(viewer.getUniqueId()));
+
+        petsFuture.thenAccept(pets -> {
+            Runnable render = () -> {
+                if (viewer.isOnline()) {
+                    render(viewer, pets, page, plugin, definitionRegistry, messageService);
+                }
+            };
+            if (plugin != null) {
+                Bukkit.getScheduler().runTask(plugin, render);
+            } else {
+                render.run();
+            }
+        });
+    }
+
+    /** Builds and shows the inventory. Must run on the main thread. */
+    private static void render(
+            Player viewer,
+            java.util.Collection<PetSnapshot> pets,
+            int page,
+            JavaPlugin plugin,
+            PetDefinitionRegistry definitionRegistry,
+            MessageService messageService
+    ) {
+        List<PetSnapshot> sortedPets = new ArrayList<>(pets);
         sortedPets.sort((a, b) -> {
             int stateA = a.spawned() ? 0 : (a.selected() ? 1 : 2);
             int stateB = b.spawned() ? 0 : (b.selected() ? 1 : 2);
@@ -127,11 +158,9 @@ public class PetListMenu {
             AtomicReference<RuntimeConfigurationSnapshot> configSnapshot,
             MessageService messageService
     ) {
-        if (dispatcher != null) {
-            dispatcher.run(() -> open(viewer, petService, page, plugin, definitionRegistry, configSnapshot, messageService));
-        } else {
-            open(viewer, petService, page, plugin, definitionRegistry, configSnapshot, messageService);
-        }
+        // open() is already async-fetch / main-thread-render, so this is now a thin alias
+        // kept for callers that pass a dispatcher.
+        open(viewer, petService, page, plugin, definitionRegistry, configSnapshot, messageService);
     }
 
     private static Material resolveMaterial(String raw) {

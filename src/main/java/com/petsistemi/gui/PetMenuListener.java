@@ -173,16 +173,10 @@ public class PetMenuListener implements Listener {
                     player.performCommand("pet mode");
                 }
                 case "emote" -> {
-                    com.petsistemi.domain.PetDefinition def = null;
-                    if (definitionRegistry != null) {
-                        def = definitionRegistry.getAll().stream().findFirst().orElse(null);
-                    }
-                    if (def != null && def.emotes() != null && !def.emotes().isEmpty()) {
-                        PetEmoteMenu.open(player, petId, plugin, definitionRegistry, configSnapshot, messageService, def);
-                    } else {
-                        player.closeInventory();
-                        player.performCommand("pet emote happy");
-                    }
+                    // Resolve the clicked pet's own definition, off the main thread: this is
+                    // an inventory click handler, and join() here would stall the server on
+                    // the single-threaded database executor (ADR 0003).
+                    openEmoteMenuAsync(player, petId);
                 }
             }
             processingPlayers.remove(uuid);
@@ -318,5 +312,42 @@ public class PetMenuListener implements Listener {
             UUID uuid = event.getPlayer().getUniqueId();
             processingPlayers.remove(uuid);
         }
+    }
+
+    /**
+     * Loads the clicked pet's definition asynchronously and opens the emote menu on the
+     * main thread. Falls back to the default emote when the pet declares none.
+     */
+    private void openEmoteMenuAsync(org.bukkit.entity.Player player, UUID petId) {
+        if (definitionRegistry == null || petService == null) {
+            player.closeInventory();
+            player.performCommand("pet emote happy");
+            return;
+        }
+
+        java.util.concurrent.CompletableFuture<java.util.Optional<com.petsistemi.api.PetSnapshot>> future =
+                petService instanceof com.petsistemi.api.AsyncPetService async
+                        ? async.findPetAsync(petId)
+                        : java.util.concurrent.CompletableFuture.completedFuture(petService.findPet(petId));
+
+        future.thenAccept(snapshot -> {
+            com.petsistemi.domain.PetDefinition def = snapshot
+                    .flatMap(snap -> definitionRegistry.find(snap.definitionId()))
+                    .orElse(null);
+            Runnable openMenu = () -> {
+                if (!player.isOnline()) return;
+                if (def != null && def.emotes() != null && !def.emotes().isEmpty()) {
+                    PetEmoteMenu.open(player, petId, plugin, definitionRegistry, configSnapshot, messageService, def);
+                } else {
+                    player.closeInventory();
+                    player.performCommand("pet emote happy");
+                }
+            };
+            if (plugin != null) {
+                org.bukkit.Bukkit.getScheduler().runTask(plugin, openMenu);
+            } else {
+                openMenu.run();
+            }
+        });
     }
 }

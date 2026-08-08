@@ -46,6 +46,9 @@ public class InteractionHitboxController {
     }
 
     public UUID getPetIdFromHitbox(UUID interactionEntityId) {
+        // ConcurrentHashMap#get throws on a null key; callers resolving an arbitrary clicked
+        // entity should just get "not a hitbox" back.
+        if (interactionEntityId == null) return null;
         return hitboxToPetId.get(interactionEntityId);
     }
 
