@@ -18,6 +18,12 @@ import com.petsistemi.domain.behavior.BehaviorConditionDefinition;
 import com.petsistemi.domain.behavior.PetBehaviorDefinition;
 import com.petsistemi.runtime.behavior.BuiltInBehaviorKeys;
 import com.petsistemi.domain.ability.PetAbilityDefinition;
+import com.petsistemi.domain.visual.PetVisualGraphDefinition;
+import com.petsistemi.domain.visual.PetVisualNodeDefinition;
+import com.petsistemi.domain.visual.PetDisplayModelDefinition;
+import com.petsistemi.domain.visual.PetSpriteDefinition;
+import com.petsistemi.domain.visual.PetParticleModelDefinition;
+import com.petsistemi.domain.visual.PetProceduralDefinition;
 import org.bukkit.Material;
 import org.bukkit.Particle;
 import org.bukkit.entity.EntityType;
@@ -132,6 +138,11 @@ public final class PetDefinitionValidator {
                 }
                 validateItemMaterial(rep.itemMaterial(), errors);
             }
+            case COMPOSITE -> validateComposite(rep.visualGraph(), errors);
+            case DISPLAY_MODEL -> validateDisplayModel(rep.displayModel(), errors);
+            case SPRITE -> validateSprite(rep.sprite(), errors);
+            case PARTICLE_MODEL -> validateParticleModel(rep.particleModel(), errors);
+            case PROCEDURAL -> validateProcedural(rep.procedural(), errors);
             default -> errors.add("Bu sürümde desteklenmeyen representation türü: " + rep.type());
         }
 
@@ -141,6 +152,137 @@ public final class PetDefinitionValidator {
         if (isBuiltInModelProvider(rep.key()) && (rep.modelId() == null || rep.modelId().isBlank())) {
             errors.add("Harici model representation için representation.model-id zorunludur (type: "
                     + rep.key() + ").");
+        }
+    }
+
+    private static void validateComposite(PetVisualGraphDefinition graph, List<String> errors) {
+        if (graph == null) {
+            errors.add("COMPOSITE için geçerli representation.root ve representation.components zorunludur.");
+            return;
+        }
+        if (graph.nodes().size() < 2 || graph.nodes().size() > 32) {
+            errors.add("COMPOSITE component sayısı 2-32 aralığında olmalıdır (mevcut: "
+                    + graph.nodes().size() + ").");
+        }
+        for (PetVisualNodeDefinition node : graph.nodes()) {
+            String path = "representation.components." + node.id();
+            PetRepresentationDefinition component = node.representation();
+            if (component.type() == RuntimeRepresentationType.COMPOSITE) {
+                errors.add(path + ": iç içe COMPOSITE component desteklenmez.");
+                continue;
+            }
+            List<String> componentErrors = new ArrayList<>();
+            validateAtomicRepresentation(component, componentErrors);
+            for (String error : componentErrors) errors.add(path + ": " + error);
+        }
+    }
+
+    private static void validateDisplayModel(PetDisplayModelDefinition model, List<String> errors) {
+        if (model == null) {
+            errors.add("DISPLAY_MODEL için geçerli representation.root ve representation.parts zorunludur.");
+            return;
+        }
+        PetVisualGraphDefinition skeleton = model.skeleton();
+        if (skeleton.nodes().isEmpty() || skeleton.nodes().size() > 64) {
+            errors.add("DISPLAY_MODEL part sayısı 1-64 aralığında olmalıdır.");
+        }
+        for (PetVisualNodeDefinition bone : skeleton.nodes()) {
+            RuntimeRepresentationType type = bone.representation().type();
+            if (type != RuntimeRepresentationType.ITEM_DISPLAY
+                    && type != RuntimeRepresentationType.BLOCK_DISPLAY
+                    && type != RuntimeRepresentationType.TEXT_DISPLAY) {
+                errors.add("representation.parts." + bone.id()
+                        + ": DISPLAY_MODEL yalnızca ITEM/BLOCK/TEXT display part kabul eder.");
+                continue;
+            }
+            List<String> partErrors = new ArrayList<>();
+            validateAtomicRepresentation(bone.representation(), partErrors);
+            for (String error : partErrors) errors.add("representation.parts." + bone.id() + ": " + error);
+        }
+        model.animations().forEach((state, animation) -> animation.channels().keySet().forEach(bone -> {
+            if (skeleton.find(bone).isEmpty()) {
+                errors.add("representation.animations." + state + " bilinmeyen bone kullanıyor: " + bone);
+            }
+        }));
+    }
+
+    private static void validateSprite(PetSpriteDefinition sprite, List<String> errors) {
+        if (sprite == null) {
+            errors.add("SPRITE için material ve en az bir animation state zorunludur.");
+            return;
+        }
+        validateItemMaterial(sprite.material(), errors);
+    }
+
+    private static void validateParticleModel(PetParticleModelDefinition model, List<String> errors) {
+        if (model == null) {
+            errors.add("PARTICLE_MODEL için representation.model part listesi zorunludur.");
+            return;
+        }
+        for (int index = 0; index < model.parts().size(); index++) {
+            String particle = model.parts().get(index).particleType();
+            Particle parsed = parseParticle(particle);
+            if (parsed == null) {
+                errors.add("PARTICLE_MODEL model[" + index + "] geçersiz particle kullanıyor: " + particle);
+            } else if (parsed.getDataType() != Void.class) {
+                errors.add("PARTICLE_MODEL model[" + index + "] data gerektiren particle kullanamaz: " + particle);
+            }
+        }
+    }
+
+    private static void validateProcedural(PetProceduralDefinition procedural, List<String> errors) {
+        if (procedural == null) {
+            errors.add("PROCEDURAL için shape ve content zorunludur.");
+            return;
+        }
+        RuntimeRepresentationType contentType = procedural.content().type();
+        if (contentType != RuntimeRepresentationType.ITEM_DISPLAY
+                && contentType != RuntimeRepresentationType.BLOCK_DISPLAY
+                && contentType != RuntimeRepresentationType.TEXT_DISPLAY) {
+            errors.add("PROCEDURAL content yalnızca ITEM/BLOCK/TEXT display olabilir.");
+            return;
+        }
+        List<String> contentErrors = new ArrayList<>();
+        validateAtomicRepresentation(procedural.content(), contentErrors);
+        for (String error : contentErrors) errors.add("PROCEDURAL content: " + error);
+    }
+
+    private static void validateAtomicRepresentation(PetRepresentationDefinition rep, List<String> errors) {
+        switch (rep.type()) {
+            case ENTITY -> validateEntityType(rep.entityType(), errors);
+            case ITEM_DISPLAY -> validateItemMaterial(rep.itemMaterial(), errors);
+            case BLOCK_DISPLAY -> {
+                Material block = rep.itemMaterial() != null ? Material.matchMaterial(rep.itemMaterial()) : null;
+                if (block == null || !block.isBlock()) {
+                    errors.add("Geçersiz BLOCK_DISPLAY material: " + rep.itemMaterial()
+                            + ". Geçerli bir blok adı olmalıdır.");
+                }
+            }
+            case TEXT_DISPLAY, INVISIBLE -> { }
+            case PARTICLE -> {
+                if (rep.particleType() == null || parseParticle(rep.particleType()) == null) {
+                    errors.add("PARTICLE için geçerli bir particle-type gerekli: " + rep.particleType());
+                }
+                if (rep.particleCount() <= 0 || rep.particleCount() > 500) {
+                    errors.add("particle-count 1-500 aralığında olmalıdır (mevcut: " + rep.particleCount() + ").");
+                }
+            }
+            case MULTI_ENTITY -> {
+                if (rep.childCount() <= 0 || rep.childCount() > 8) {
+                    errors.add("MULTI_ENTITY child-count 1-8 aralığında olmalıdır.");
+                }
+                validateItemMaterial(rep.itemMaterial(), errors);
+            }
+            case SPRITE -> validateSprite(rep.sprite(), errors);
+            case PARTICLE_MODEL -> validateParticleModel(rep.particleModel(), errors);
+            case PROCEDURAL -> validateProcedural(rep.procedural(), errors);
+            case COMPOSITE, DISPLAY_MODEL -> errors.add("İç içe graph representation component desteklenmez.");
+        }
+        if (rep.scale() != null && !rep.scale().isValidScale()) {
+            errors.add("scale değerleri 0'dan büyük olmalıdır.");
+        }
+        if (isBuiltInModelProvider(rep.key()) && (rep.modelId() == null || rep.modelId().isBlank())) {
+            errors.add("Harici model component için model-id zorunludur (type: " + rep.key() + ").");
         }
     }
 

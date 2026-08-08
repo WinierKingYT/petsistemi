@@ -3,6 +3,7 @@ package com.petsistemi.domain;
 /** Simple immutable 3D vector for YAML-driven scale/offset configuration. */
 public record PetVector3(double x, double y, double z) {
 
+    public static final PetVector3 ZERO = new PetVector3(0.0, 0.0, 0.0);
     public static final PetVector3 ONE = new PetVector3(1.0, 1.0, 1.0);
 
     public PetVector3 {

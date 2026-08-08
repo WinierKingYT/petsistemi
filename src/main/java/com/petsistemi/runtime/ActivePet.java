@@ -1,16 +1,18 @@
 package com.petsistemi.runtime;
 
+import com.petsistemi.domain.RuntimeKeyResolver;
 import com.petsistemi.domain.PetFollowMode;
 import com.petsistemi.domain.PetInstance;
 import com.petsistemi.domain.PetMovementDefinition;
 import com.petsistemi.domain.PetMovementType;
 import com.petsistemi.domain.PetRuntimeState;
 import com.petsistemi.domain.RuntimeRepresentationType;
-import org.bukkit.entity.Entity;
-import org.bukkit.NamespacedKey;
-import com.petsistemi.domain.RuntimeKeyResolver;
 import com.petsistemi.domain.animation.PetAnimationClipDefinition;
 import com.petsistemi.domain.animation.PetAnimationState;
+import com.petsistemi.runtime.visual.PetVisualHandle;
+import org.bukkit.NamespacedKey;
+import org.bukkit.entity.Entity;
+
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -41,6 +43,7 @@ public final class ActivePet implements PetRuntimeHandle {
     private int tickAccumulator = 0;
 
     private final java.util.List<Entity> children = new java.util.ArrayList<>();
+    private PetVisualHandle visualHandle;
 
     private boolean resting;
     private PetAnimationState animationState;
@@ -54,6 +57,9 @@ public final class ActivePet implements PetRuntimeHandle {
         this.entityId = entityId;
         this.spawnedEntity = spawnedEntity;
         this.runtimeState = runtimeState;
+        if (spawnedEntity != null) {
+            this.visualHandle = PetVisualHandle.legacy(representationKey, spawnedEntity, List.of());
+        }
     }
 
     public ActivePet(UUID petId, UUID ownerId, UUID entityId, Entity spawnedEntity, PetRuntimeState runtimeState) {
@@ -108,6 +114,18 @@ public final class ActivePet implements PetRuntimeHandle {
 
     public void setSpawnedEntity(Entity spawnedEntity) {
         this.spawnedEntity = spawnedEntity;
+        this.entityId = spawnedEntity != null ? spawnedEntity.getUniqueId() : null;
+    }
+
+    public PetVisualHandle getVisualHandle() { return visualHandle; }
+
+    /** Makes the visual graph authoritative while preserving legacy entity/children accessors. */
+    public void setVisualHandle(PetVisualHandle visualHandle) {
+        this.visualHandle = visualHandle;
+        this.spawnedEntity = visualHandle != null ? visualHandle.primaryEntity().orElse(null) : null;
+        this.entityId = spawnedEntity != null ? spawnedEntity.getUniqueId() : null;
+        this.children.clear();
+        if (visualHandle != null) this.children.addAll(visualHandle.secondaryEntities());
     }
 
     public PetRuntimeState getRuntimeState() {
@@ -248,27 +266,30 @@ public final class ActivePet implements PetRuntimeHandle {
 
     @Override
     public Collection<Entity> entities() {
-        if (spawnedEntity == null) {
-            return List.of();
+        java.util.Set<Entity> all = new java.util.LinkedHashSet<>();
+        if (visualHandle != null) {
+            all.addAll(visualHandle.serverEntities());
         }
-        if (children.isEmpty()) {
-            return List.of(spawnedEntity);
-        }
-        java.util.ArrayList<Entity> all = new java.util.ArrayList<>(children.size() + 1);
-        all.add(spawnedEntity);
-        all.addAll(children);
-        return all;
+        if (spawnedEntity != null) all.add(spawnedEntity);
+        for (Entity child : children) if (child != null) all.add(child);
+        return List.copyOf(all);
+    }
+
+    @Override
+    public Optional<PetVisualHandle> visualHandle() {
+        return Optional.ofNullable(visualHandle);
     }
 
     @Override
     public boolean isValid() {
-        return spawnedEntity != null && spawnedEntity.isValid() && !spawnedEntity.isDead();
+        return visualHandle != null ? visualHandle.isValid()
+                : spawnedEntity != null && spawnedEntity.isValid() && !spawnedEntity.isDead();
     }
 
     @Override
     public void remove() {
-        if (spawnedEntity != null && spawnedEntity.isValid()) {
-            spawnedEntity.remove();
+        for (Entity entity : entities()) {
+            if (entity != null && entity.isValid()) entity.remove();
         }
     }
 }

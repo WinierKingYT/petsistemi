@@ -121,15 +121,28 @@ public final class PetPluginBootstrap {
             PetRepresentationRegistry representationRegistry = new PetRepresentationRegistry();
             PetMovementRegistry movementRegistry = new PetMovementRegistry();
             representationRegistry.register(com.petsistemi.domain.RuntimeRepresentationType.ENTITY, paperEntityController);
-            representationRegistry.register(com.petsistemi.domain.RuntimeRepresentationType.ITEM_DISPLAY, new ItemDisplayPetRepresentation(plugin, configSnapshot));
+            ItemDisplayPetRepresentation itemDisplayRepresentation = new ItemDisplayPetRepresentation(plugin, configSnapshot);
+            representationRegistry.register(com.petsistemi.domain.RuntimeRepresentationType.ITEM_DISPLAY, itemDisplayRepresentation);
             representationRegistry.register(com.petsistemi.domain.RuntimeRepresentationType.BLOCK_DISPLAY, new BlockDisplayPetRepresentation(plugin, configSnapshot));
             representationRegistry.register(com.petsistemi.domain.RuntimeRepresentationType.TEXT_DISPLAY, new TextDisplayPetRepresentation(plugin, configSnapshot));
             representationRegistry.register(com.petsistemi.domain.RuntimeRepresentationType.PARTICLE, new ParticlePetRepresentation(plugin));
-            representationRegistry.register(com.petsistemi.domain.RuntimeRepresentationType.INVISIBLE, new InvisiblePetRepresentation(plugin));
+            InvisiblePetRepresentation invisibleRepresentation = new InvisiblePetRepresentation(plugin);
+            representationRegistry.register(com.petsistemi.domain.RuntimeRepresentationType.INVISIBLE, invisibleRepresentation);
             representationRegistry.register(com.petsistemi.domain.RuntimeRepresentationType.MULTI_ENTITY, new MultiEntityPetRepresentation(plugin, configSnapshot));
+            representationRegistry.register(com.petsistemi.domain.RuntimeRepresentationType.SPRITE,
+                    new SpritePetRepresentation(itemDisplayRepresentation));
+            representationRegistry.register(com.petsistemi.domain.RuntimeRepresentationType.PARTICLE_MODEL,
+                    new ParticleModelPetRepresentation(invisibleRepresentation));
             com.petsistemi.runtime.model.ModelProviderRegistry modelProviderRegistry =
                     com.petsistemi.integration.model.ModelProviderBootstrap.registerAvailable(
                             plugin, representationRegistry, configSnapshot);
+            CompositePetRepresentation compositeRepresentation = new CompositePetRepresentation(representationRegistry);
+            representationRegistry.register(com.petsistemi.domain.RuntimeRepresentationType.COMPOSITE,
+                    compositeRepresentation);
+            representationRegistry.register(com.petsistemi.domain.RuntimeRepresentationType.DISPLAY_MODEL,
+                    new DisplayModelPetRepresentation(compositeRepresentation));
+            representationRegistry.register(com.petsistemi.domain.RuntimeRepresentationType.PROCEDURAL,
+                    new ProceduralPetRepresentation(compositeRepresentation));
             movementRegistry.register(com.petsistemi.domain.PetMovementType.GROUND_FOLLOW, new GroundFollowMovement(configSnapshot));
             movementRegistry.register(com.petsistemi.domain.PetMovementType.FLYING_FOLLOW, new FlyingFollowMovement(configSnapshot));
             movementRegistry.register(com.petsistemi.domain.PetMovementType.ORBIT, new OrbitMovement(configSnapshot));

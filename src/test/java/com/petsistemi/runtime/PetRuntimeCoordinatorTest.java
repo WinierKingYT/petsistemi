@@ -7,6 +7,11 @@ import com.petsistemi.domain.PetInstance;
 import com.petsistemi.domain.PetRuntimeState;
 import com.petsistemi.domain.PetRepresentationDefinition;
 import com.petsistemi.domain.PetVector3;
+import com.petsistemi.domain.RuntimeRepresentationType;
+import com.petsistemi.domain.visual.PetVisualTransform;
+import com.petsistemi.runtime.visual.PetRenderBackend;
+import com.petsistemi.runtime.visual.PetVisualComponent;
+import com.petsistemi.runtime.visual.PetVisualHandle;
 import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.EntityType;
@@ -115,6 +120,56 @@ class PetRuntimeCoordinatorTest {
 
         assertTrue(error.getMessage().contains("modelengine:model"));
         org.mockito.Mockito.verifyNoInteractions(legacy);
+    }
+
+    @Test
+    void modularSpawnAdoptsGraphHandleAndNamedChildrenWithoutLegacyRespawn() throws Exception {
+        UUID ownerId = UUID.randomUUID();
+        Entity root = org.mockito.Mockito.mock(Entity.class);
+        Entity crown = org.mockito.Mockito.mock(Entity.class);
+        org.mockito.Mockito.when(root.getUniqueId()).thenReturn(UUID.randomUUID());
+        org.mockito.Mockito.when(crown.getUniqueId()).thenReturn(UUID.randomUUID());
+        org.mockito.Mockito.when(root.isValid()).thenReturn(true);
+        org.mockito.Mockito.when(crown.isValid()).thenReturn(true);
+
+        NamespacedKey key = com.petsistemi.domain.RuntimeKeyResolver
+                .representationKey(RuntimeRepresentationType.ITEM_DISPLAY);
+        PetVisualHandle visual = PetVisualHandle.builder("body", PetRenderBackend.SERVER)
+                .component(new PetVisualComponent("body", null, key, PetVisualTransform.IDENTITY, root))
+                .component(new PetVisualComponent("crown", "body", key, PetVisualTransform.IDENTITY, crown))
+                .build();
+        PetRepresentationController controller = new PetRepresentationController() {
+            @Override public Entity spawn(PetInstance pet, PetDefinition definition, Player owner) {
+                throw new AssertionError("Graph-aware spawn legacy spawn yoluna düşmemeli");
+            }
+            @Override public PetVisualHandle spawnVisual(PetInstance pet, PetDefinition definition, Player owner) {
+                return visual;
+            }
+            @Override public void updateVisual(Entity primaryEntity, PetInstance pet, PetDefinition definition) {}
+            @Override public void remove(Entity primaryEntity) {}
+            @Override public boolean isValid(Entity primaryEntity) { return true; }
+        };
+        PetRepresentationRegistry representations = new PetRepresentationRegistry();
+        representations.register(RuntimeRepresentationType.ITEM_DISPLAY, controller);
+        coordinator = new PetRuntimeCoordinator(null, null, activeRegistry, null, null,
+                representations, new PetMovementRegistry());
+
+        Player owner = org.mockito.Mockito.mock(Player.class);
+        org.mockito.Mockito.when(owner.getUniqueId()).thenReturn(ownerId);
+        PetDefinition definition = PetDefinition.builder("drone", "Drone")
+                .representation(PetRepresentationDefinition.display(
+                        RuntimeRepresentationType.ITEM_DISPLAY, "PAPER", 1001, PetVector3.ONE))
+                .build();
+        PetInstance instance = new PetInstance(UUID.randomUUID(), ownerId, "drone", "Drone", 1, 0,
+                PetAvailabilityState.AVAILABLE, 0, 0);
+
+        ActivePet active = coordinator.spawnRuntimeUncommittedHandle(owner, instance, definition);
+
+        assertSame(visual, active.getVisualHandle());
+        assertSame(root, active.getSpawnedEntity());
+        assertEquals(java.util.List.of(crown), active.getChildren());
+        assertEquals(java.util.Set.of("body", "crown"), active.getVisualHandle().components().stream()
+                .map(PetVisualComponent::id).collect(java.util.stream.Collectors.toSet()));
     }
 
     @Test

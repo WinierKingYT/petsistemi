@@ -1,0 +1,36 @@
+schema-version: 1
+display-name: "<green>Pixel Slime</green>"
+description:
+  - "<gray>Resource-pack frame'leriyle canlanan 2D billboard pet.</gray>"
+gui-material: SLIME_BALL
+representation:
+  type: SPRITE
+  material: PAPER
+  billboard: CENTER
+  scale: [0.8, 0.8, 0.8]
+  animations:
+    IDLE:
+      frame-ticks: 6
+      loop: true
+      frames: [14101, 14102, 14103, 14102]
+    MOVING:
+      frame-ticks: 3
+      loop: true
+      frames: [14111, 14112, 14113, 14112]
+    SLEEPING:
+      frame-ticks: 10
+      loop: true
+      frames: [14121, 14122]
+movement:
+  type: FLYING_FOLLOW
+  height: 1.25
+  side-offset: 0.8
+  follow-speed: 0.18
+  update-interval-ticks: 1
+progression:
+  enabled: true
+  maximum-level: 100
+nameplate:
+  enabled: true
+  format:
+    - "<green>{pet_name}</green> <gray>Lv.{level}</gray>"

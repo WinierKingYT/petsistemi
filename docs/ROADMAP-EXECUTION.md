@@ -56,7 +56,7 @@ kataloğu ve Faz A/B/C yol haritası.
 
 ---
 
-## 🏗️ Motor Fazları (MF1-MF8)
+## 🏗️ Motor Fazları (MF1-MF9)
 
 Yukarıdaki Faz A/B/C **hangi özelliklerin** geleceğini söyler. Bu özelliklerin üzerine
 oturacağı motor katmanları ayrı bir eksende ilerler ve `ENGINE-ROADMAP.md`'de tanımlıdır:
@@ -71,6 +71,7 @@ oturacağı motor katmanları ayrı bir eksende ilerler ve `ENGINE-ROADMAP.md`'d
 | **MF6** | Collection GUI + oyun içi editör | `COMPLETED` |
 | **MF7** | Gameplay (item action, evolution, orders, mount) | `COMPLETED` — MF7a + MF7b + MF7c + MF7d + MF7e |
 | **MF8** | Ekosistem (MySQL/network, Pet Packs, marketplace) | `COMPLETED` |
+| **MF9** | Visual Graph (foundation + yeni görsel türleri) | `IN PROGRESS` — PROCEDURAL tamamlandı |
 
 Kilitlenen kararlar, çıkış kriterleri, kapsam dışı maddeler ve borç kaydı için bkz.
 [ENGINE-ROADMAP.md](ENGINE-ROADMAP.md).
@@ -131,3 +132,32 @@ Kilitlenen kararlar, çıkış kriterleri, kapsam dışı maddeler ve borç kayd
   ve HTTPS/SHA-256 korumalı marketplace tamamlandı. Bukkit network/pack/marketplace
   servisleri üçüncü taraflara açıldı; tam regresyon paketi 587/587 yeşil. Kullanım:
   [ECOSYSTEM.md](ECOSYSTEM.md).
+- **[2026-08-08 · MF9 foundation tamamlandı]**: Adlandırılmış parent-child visual graph,
+  server/virtual render backend ayrımı ve tek `PetVisualHandle` yaşam döngüsü eklendi.
+  Mevcut controller'lar otomatik `root` + `child-n` graph'ına adapte edilirken coordinator,
+  registry, refresh, evolution, transform, idle ve animation yolları handle-aware hale
+  getirildi. Sonraki dilim `COMPOSITE` YAML/controller uygulamasıdır. Kullanım ve sınırlar:
+  [VISUAL-GRAPH.md](VISUAL-GRAPH.md).
+- **[2026-08-08 · MF9 COMPOSITE tamamlandı]**: `representation.components` şeması,
+  graph doğrulaması, mevcut ve harici controller'lara node delegasyonu, parent-relative
+  transform senkronizasyonu ve atomik cleanup eklendi. İlk örnek `fire_familiar`, body +
+  crown + particle aura'yı tek runtime handle altında birleştirir. Sonraki dilim
+  `DISPLAY_MODEL` animasyon kanallarıdır. Kullanım: [COMPOSITE.md](COMPOSITE.md).
+- **[2026-08-08 · MF9 DISPLAY_MODEL tamamlandı]**: Item/Block/Text Display part'larından
+  oluşan skeleton, parent quaternion/scale/translation bileşimi ve state tabanlı keyframe
+  interpolation eklendi. `mechanical_bird`, IDLE ve MOVING kanallarıyla çalışan paketli
+  örnektir. Sonraki dilim `SPRITE` representation'dır. Kullanım:
+  [DISPLAY-MODEL.md](DISPLAY-MODEL.md).
+- **[2026-08-08 · MF9 SPRITE tamamlandı]**: ItemDisplay tabanlı billboard, ortak animation
+  state'lerine bağlı custom-model-data frame dizileri, loop/hold davranışı ve COMPOSITE
+  component desteği eklendi. `pixel_slime` paketli örnektir. Sonraki dilim
+  `PARTICLE_MODEL` representation'dır. Kullanım: [SPRITE.md](SPRITE.md).
+- **[2026-08-08 · MF9 PARTICLE_MODEL tamamlandı]**: Ring, sphere, helix, cube ve cone
+  nokta örnekleyicileri; part/toplam nokta bütçesi; güncelleme aralığı ve animation-state
+  hızları eklendi. `astral_spirit` paketli örnektir. Sonraki dilim `PROCEDURAL`
+  representation'dır. Kullanım: [PARTICLE-MODEL.md](PARTICLE-MODEL.md).
+- **[2026-08-08 · MF9 PROCEDURAL tamamlandı]**: Ring, sphere, helix, spiral, cube, wave,
+  cone ve constellation dağılımlarından kalıcı Item/Block/Text Display graph'ı; rotation,
+  pulse, state hızları ve topology-safe refresh/evolution eklendi. `arcane_galaxy` paketli
+  örnektir. Sonraki dilim packet render backend ve owner-only görünürlüktür. Kullanım:
+  [PROCEDURAL.md](PROCEDURAL.md).

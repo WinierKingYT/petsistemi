@@ -160,5 +160,10 @@ class BundledPetDefinitionsTest {
                 () -> "spirit_flame PARTICLE+HOVER olarak görünmeli: " + summary);
         assertTrue(summary.contains("wolf(ENTITY/"), () -> "wolf ENTITY olmalı: " + summary);
         assertTrue(summary.contains("arcane_crystal(ITEM_DISPLAY/ORBIT)"), () -> summary);
+        assertTrue(summary.contains("fire_familiar(COMPOSITE/FLYING_FOLLOW)"), () -> summary);
+        assertTrue(summary.contains("mechanical_bird(DISPLAY_MODEL/FLYING_FOLLOW)"), () -> summary);
+        assertTrue(summary.contains("pixel_slime(SPRITE/FLYING_FOLLOW)"), () -> summary);
+        assertTrue(summary.contains("astral_spirit(PARTICLE_MODEL/HOVER)"), () -> summary);
+        assertTrue(summary.contains("arcane_galaxy(PROCEDURAL/HOVER)"), () -> summary);
     }
 }

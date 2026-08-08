@@ -123,6 +123,13 @@ public class AtomicPetDefinitionRegistry implements PetDefinitionRegistry {
                             crossErrors.computeIfAbsent(entry.getKey(), ignored -> new java.util.ArrayList<>())
                                     .add(path + " farklı representation sağlayıcısına geçemez ("
                                             + source.representationOrEntity().key() + " -> " + target.representationOrEntity().key() + ").");
+                        } else if (!compatibleVisualGraph(source, target)) {
+                            String topologyError = source.representationOrEntity().type()
+                                    == com.petsistemi.domain.RuntimeRepresentationType.PROCEDURAL
+                                    ? " farklı PROCEDURAL node sayısına veya content provider'ına geçemez."
+                                    : " farklı COMPOSITE/DISPLAY_MODEL topolojisine veya provider'ına geçemez.";
+                            crossErrors.computeIfAbsent(entry.getKey(), ignored -> new java.util.ArrayList<>())
+                                    .add(path + topologyError);
                         } else if (!java.util.Objects.equals(
                                 source.movement() != null ? source.movement().key() : null,
                                 target.movement() != null ? target.movement().key() : null)) {
@@ -139,6 +146,42 @@ public class AtomicPetDefinitionRegistry implements PetDefinitionRegistry {
             });
             removed = !crossErrors.isEmpty();
         } while (removed);
+    }
+
+    private static boolean compatibleVisualGraph(PetDefinition source, PetDefinition target) {
+        com.petsistemi.domain.RuntimeRepresentationType type = source.representationOrEntity().type();
+        if (type == com.petsistemi.domain.RuntimeRepresentationType.PROCEDURAL) {
+            com.petsistemi.domain.visual.PetProceduralDefinition sourceProcedural =
+                    source.representationOrEntity().procedural();
+            com.petsistemi.domain.visual.PetProceduralDefinition targetProcedural =
+                    target.representationOrEntity().procedural();
+            return sourceProcedural != null && targetProcedural != null
+                    && sourceProcedural.points() == targetProcedural.points()
+                    && sourceProcedural.content().key().equals(targetProcedural.content().key());
+        }
+        if (type != com.petsistemi.domain.RuntimeRepresentationType.COMPOSITE
+                && type != com.petsistemi.domain.RuntimeRepresentationType.DISPLAY_MODEL) return true;
+        com.petsistemi.domain.visual.PetDisplayModelDefinition sourceModel = source.representationOrEntity().displayModel();
+        com.petsistemi.domain.visual.PetDisplayModelDefinition targetModel = target.representationOrEntity().displayModel();
+        com.petsistemi.domain.visual.PetVisualGraphDefinition sourceGraph = type
+                == com.petsistemi.domain.RuntimeRepresentationType.COMPOSITE
+                ? source.representationOrEntity().visualGraph()
+                : (sourceModel != null ? sourceModel.skeleton() : null);
+        com.petsistemi.domain.visual.PetVisualGraphDefinition targetGraph = type
+                == com.petsistemi.domain.RuntimeRepresentationType.COMPOSITE
+                ? target.representationOrEntity().visualGraph()
+                : (targetModel != null ? targetModel.skeleton() : null);
+        if (sourceGraph == null || targetGraph == null
+                || !sourceGraph.rootId().equals(targetGraph.rootId())
+                || sourceGraph.nodes().size() != targetGraph.nodes().size()) return false;
+        for (com.petsistemi.domain.visual.PetVisualNodeDefinition node : sourceGraph.nodes()) {
+            com.petsistemi.domain.visual.PetVisualNodeDefinition targetNode =
+                    targetGraph.find(node.id()).orElse(null);
+            if (targetNode == null
+                    || !java.util.Objects.equals(node.parentId(), targetNode.parentId())
+                    || !node.representation().key().equals(targetNode.representation().key())) return false;
+        }
+        return true;
     }
 
     private static void validateItemActionReferences(String sourceId, PetDefinition source,
@@ -266,7 +309,8 @@ public class AtomicPetDefinitionRegistry implements PetDefinitionRegistry {
             "familiar_swarm.yml", "void_cube.yml", "spirit_flame.yml",
             "sleepy_cat.yml", "wisplight.yml",
             "shadow_wisp.yml", "mirror_doll.yml", "echo_phantom.yml", "roam_fox.yml",
-            "phoenix.yml", "swarm_bees.yml");
+            "phoenix.yml", "swarm_bees.yml", "fire_familiar.yml", "mechanical_bird.yml",
+            "pixel_slime.yml", "astral_spirit.yml", "arcane_galaxy.yml");
 
     private void saveDefaultPetFiles(File petsFolder) {
         for (String defFile : DEFAULT_PET_FILES) {

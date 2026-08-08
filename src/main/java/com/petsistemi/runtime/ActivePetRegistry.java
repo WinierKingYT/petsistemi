@@ -11,15 +11,18 @@ public class ActivePetRegistry {
 
     public synchronized void register(ActivePet activePet) {
         activePetsByOwner.put(activePet.getOwnerId(), activePet);
-        if (activePet.getEntityId() != null) {
-            activePetsByEntity.put(activePet.getEntityId(), activePet);
+        for (Entity entity : activePet.entities()) {
+            if (entity != null && entity.getUniqueId() != null) {
+                activePetsByEntity.put(entity.getUniqueId(), activePet);
+            }
         }
+        if (activePet.getEntityId() != null) activePetsByEntity.put(activePet.getEntityId(), activePet);
     }
 
     public synchronized void unregister(UUID ownerId) {
         ActivePet removed = activePetsByOwner.remove(ownerId);
-        if (removed != null && removed.getEntityId() != null) {
-            activePetsByEntity.remove(removed.getEntityId());
+        if (removed != null) {
+            activePetsByEntity.entrySet().removeIf(entry -> entry.getValue() == removed);
         }
     }
 
@@ -33,13 +36,13 @@ public class ActivePetRegistry {
 
     /** Resolves a pet by its primary entity OR any tracked child entity (e.g. MULTI_ENTITY swarms). */
     public synchronized Optional<ActivePet> getByAnyEntity(UUID entityId) {
-        Optional<ActivePet> direct = getByEntity(entityId);
+        Optional<ActivePet> direct = Optional.ofNullable(activePetsByEntity.get(entityId));
         if (direct.isPresent()) {
             return direct;
         }
         for (ActivePet pet : activePetsByOwner.values()) {
             for (Entity child : pet.getChildren()) {
-                if (child != null && child.getUniqueId().equals(entityId)) {
+                if (child != null && entityId != null && entityId.equals(child.getUniqueId())) {
                     return Optional.of(pet);
                 }
             }

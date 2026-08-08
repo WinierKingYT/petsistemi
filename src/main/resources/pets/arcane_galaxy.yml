@@ -1,0 +1,33 @@
+schema-version: 1
+display-name: "<gradient:#b56cff:#64ddff>Arcane Galaxy</gradient>"
+description:
+  - "<gray>Kalıcı display yıldızlarından prosedürel olarak kurulan dönen galaksi.</gray>"
+gui-material: AMETHYST_SHARD
+representation:
+  type: PROCEDURAL
+  shape: CONSTELLATION
+  points: 16
+  radius: 1.15
+  height: 1.0
+  rotation-speed: 1.6
+  pulse-amplitude: 0.12
+  pulse-speed: 4.0
+  update-interval-ticks: 1
+  scale: [1.0, 1.0, 1.0]
+  content:
+    type: ITEM
+    material: AMETHYST_SHARD
+    model-data: 15201
+    glowing: true
+    scale: [0.18, 0.18, 0.18]
+movement:
+  type: HOVER
+  height: 1.35
+  side-offset: 0.85
+  follow-speed: 0.17
+  update-interval-ticks: 1
+progression:
+  enabled: true
+  maximum-level: 100
+nameplate:
+  enabled: false

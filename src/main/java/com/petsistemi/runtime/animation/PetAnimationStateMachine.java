@@ -107,8 +107,12 @@ public final class PetAnimationStateMachine {
         PetRepresentationController controller = representationRegistry != null
                 ? representationRegistry.get(active.getRepresentationKey()) : null;
         PetAnimationTransition transition = new PetAnimationTransition(previousState, previousClip, state, clip);
-        if (controller != null && entity != null) {
-            controller.applyAnimation(entity, active.getPetInstance(), definition, transition);
+        if (controller != null) {
+            if (active.getVisualHandle() != null) {
+                controller.applyAnimationHandle(active.getVisualHandle(), active.getPetInstance(), definition, transition);
+            } else if (entity != null) {
+                controller.applyAnimation(entity, active.getPetInstance(), definition, transition);
+            }
         }
         active.setAnimationState(state);
         active.setAnimationClip(clip);

@@ -1,6 +1,7 @@
 package com.petsistemi.runtime;
 
 import com.petsistemi.domain.RuntimeRepresentationType;
+import com.petsistemi.runtime.visual.PetVisualHandle;
 import org.bukkit.entity.Entity;
 
 import java.util.Collection;
@@ -23,6 +24,8 @@ public interface PetRuntimeHandle {
     Optional<Entity> primaryEntity();
 
     Collection<Entity> entities();
+
+    default Optional<PetVisualHandle> visualHandle() { return Optional.empty(); }
 
     boolean isValid();
 

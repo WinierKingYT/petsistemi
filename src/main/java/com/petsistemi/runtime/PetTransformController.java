@@ -95,14 +95,17 @@ public class PetTransformController {
 
     private void reRender(ActivePet active, Entity entity, PetDefinition definition) {
         PetRepresentationController rep = representationRegistry != null
-                ? representationRegistry.get(active.getRepresentationType())
+                ? representationRegistry.get(active.getRepresentationKey())
                 : null;
-        if (rep == null || definition == null || entity == null || !entity.isValid()) {
+        if (rep == null || definition == null) {
             return;
         }
-        rep.updateVisual(entity, active.getPetInstance(), definition);
-        if (active.isResting()) {
-            rep.applyRestState(entity, active.getPetInstance(), definition, true);
+        if (active.getVisualHandle() != null) {
+            rep.updateVisualHandle(active.getVisualHandle(), active.getPetInstance(), definition);
+            if (active.isResting()) rep.applyRestStateHandle(active.getVisualHandle(), active.getPetInstance(), definition, true);
+        } else if (entity != null && entity.isValid()) {
+            rep.updateVisual(entity, active.getPetInstance(), definition);
+            if (active.isResting()) rep.applyRestState(entity, active.getPetInstance(), definition, true);
         }
     }
 

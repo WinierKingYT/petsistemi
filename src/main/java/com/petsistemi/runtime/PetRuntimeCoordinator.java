@@ -152,9 +152,11 @@ public class PetRuntimeCoordinator {
                     + " (pet=" + definition.id() + ")");
         }
         if (repController != null) {
-            Entity spawnedEntity = Objects.requireNonNull(
-                    repController.spawn(pet, definition, owner),
-                    "Representation controller spawn null entity döndü");
+            com.petsistemi.runtime.visual.PetVisualHandle visual = Objects.requireNonNull(
+                    repController.spawnVisual(pet, definition, owner),
+                    "Representation controller spawnVisual null handle döndü");
+            Entity spawnedEntity = visual.primaryEntity().orElseThrow(() ->
+                    new IllegalStateException("Bu runtime sürümü movement anchor için primary server entity gerektiriyor."));
 
             ActivePet uncommitted = new ActivePet(pet.petId(), ownerId, pet.definitionId(), pet.level(),
                     spawnedEntity.getUniqueId(), spawnedEntity, PetRuntimeState.ACTIVE);
@@ -164,15 +166,11 @@ public class PetRuntimeCoordinator {
             PetMovementType movementType = movementDef != null ? movementDef.type() : PetMovementType.GROUND_FOLLOW;
             uncommitted.setRepresentationType(repType);
             uncommitted.setRepresentationKey(definition.representationOrEntity().key());
+            uncommitted.setVisualHandle(visual);
             uncommitted.setMovementType(movementType);
             uncommitted.setMovementKey(movementDef != null ? movementDef.key() : null);
             uncommitted.setMovementDefinition(movementDef);
             uncommitted.setUpdateIntervalTicks(movementDef != null ? movementDef.updateIntervalTicks() : 5);
-
-            List<Entity> children = repController.spawnChildren(spawnedEntity, pet, definition, owner);
-            for (Entity child : children) {
-                uncommitted.addChild(child);
-            }
 
             PetMovementController movement = resolveMovement(uncommitted);
             if (movement != null) {
@@ -213,10 +211,9 @@ public class PetRuntimeCoordinator {
         if (ownerId != null) {
             ActivePet pending = pendingSpawns.remove(ownerId);
             if (pending != null) {
+                removeEntityFromRegistry(pending, pending.getSpawnedEntity());
                 removeChildren(pending);
-                if (entity == null) {
-                    entity = pending.getSpawnedEntity();
-                }
+                entity = null;
             }
         }
         if (entity != null) {
@@ -410,7 +407,7 @@ public class PetRuntimeCoordinator {
         if (rep == null) return;
         PetDefinition definition = resolveVisualDefinition(active);
         if (definition != null) {
-            rep.tickVisual(entity, active.getPetInstance(), definition, owner);
+            rep.tickVisualHandle(active.getVisualHandle(), active.getPetInstance(), definition, owner);
         }
     }
 
@@ -444,10 +441,10 @@ public class PetRuntimeCoordinator {
                 ? representationRegistry.get(active.getRepresentationKey()) : null;
         if (rep == null) return;
         PetDefinition definition = resolveVisualDefinition(active);
-        if (definition != null && active.getSpawnedEntity() != null) {
-            rep.updateVisual(active.getSpawnedEntity(), freshInstance, definition);
+        if (definition != null && active.getVisualHandle() != null) {
+            rep.updateVisualHandle(active.getVisualHandle(), freshInstance, definition);
             if (active.isResting()) {
-                rep.applyRestState(active.getSpawnedEntity(), freshInstance, definition, true);
+                rep.applyRestStateHandle(active.getVisualHandle(), freshInstance, definition, true);
             }
         }
     }
@@ -595,7 +592,8 @@ public class PetRuntimeCoordinator {
         PetRepresentationController rep = active != null && representationRegistry != null
                 ? representationRegistry.get(active.getRepresentationKey()) : resolveRepresentation(null);
         if (rep != null) {
-            rep.remove(entity);
+            if (active != null && active.getVisualHandle() != null) rep.removeVisualHandle(active.getVisualHandle());
+            else rep.remove(entity);
         } else if (entityController != null) {
             entityController.remove(entity);
         }

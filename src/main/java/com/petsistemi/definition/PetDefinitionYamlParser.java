@@ -32,6 +32,20 @@ import com.petsistemi.domain.behavior.PetBehaviorDefinition;
 import com.petsistemi.domain.ability.AbilityTargetType;
 import com.petsistemi.domain.ability.PetAbilityDefinition;
 import com.petsistemi.domain.animation.PetAnimationState;
+import com.petsistemi.domain.visual.PetVisualGraphDefinition;
+import com.petsistemi.domain.visual.PetVisualNodeDefinition;
+import com.petsistemi.domain.visual.PetVisualTransform;
+import com.petsistemi.domain.visual.PetDisplayAnimationDefinition;
+import com.petsistemi.domain.visual.PetDisplayKeyframeDefinition;
+import com.petsistemi.domain.visual.PetDisplayModelDefinition;
+import com.petsistemi.domain.visual.PetSpriteAnimationDefinition;
+import com.petsistemi.domain.visual.PetSpriteBillboard;
+import com.petsistemi.domain.visual.PetSpriteDefinition;
+import com.petsistemi.domain.visual.PetParticleModelDefinition;
+import com.petsistemi.domain.visual.PetParticleModelPartDefinition;
+import com.petsistemi.domain.visual.PetParticleShape;
+import com.petsistemi.domain.visual.PetProceduralDefinition;
+import com.petsistemi.domain.visual.PetProceduralShape;
 import com.petsistemi.runtime.behavior.BuiltInBehaviorKeys;
 import org.bukkit.NamespacedKey;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -161,6 +175,9 @@ public final class PetDefinitionYamlParser {
         if (itemMaterial == null && hasRepresentation) {
             itemMaterial = yaml.getString("representation.block-material");
         }
+        if (itemMaterial == null && hasRepresentation) {
+            itemMaterial = yaml.getString("representation.material");
+        }
         Integer customModelData = null;
         if (hasRepresentation && yaml.isSet("representation.custom-model-data")) {
             customModelData = yaml.getInt("representation.custom-model-data");
@@ -174,11 +191,292 @@ public final class PetDefinitionYamlParser {
         int childCount = Math.max(0, yaml.getInt("representation.child-count", 0));
         String childMaterial = hasRepresentation ? yaml.getString("representation.child-material") : null;
         String modelId = hasRepresentation ? trimToNull(yaml.getString("representation.model-id")) : null;
+        PetVisualGraphDefinition visualGraph = repType == RuntimeRepresentationType.COMPOSITE
+                ? parseCompositeGraph(yaml, errors) : null;
+        PetDisplayModelDefinition displayModel = repType == RuntimeRepresentationType.DISPLAY_MODEL
+                ? parseDisplayModel(yaml, errors) : null;
+        PetSpriteDefinition sprite = repType == RuntimeRepresentationType.SPRITE
+                ? parseSprite(yaml, "representation", itemMaterial, customModelData, errors) : null;
+        PetParticleModelDefinition particleModel = repType == RuntimeRepresentationType.PARTICLE_MODEL
+                ? parseParticleModel(yaml, "representation", errors) : null;
+        PetProceduralDefinition procedural = repType == RuntimeRepresentationType.PROCEDURAL
+                ? parseProcedural(yaml, "representation", errors) : null;
 
         return new PetRepresentationDefinition(
                 repType, repKey, entityType, baby, glowing, invulnerable, silent, gravity,
                 itemMaterial, customModelData, scale != null ? scale : PetVector3.ONE,
-                particleType, particleCount, particleOffset, particleSpeed, childCount, childMaterial, modelId);
+                particleType, particleCount, particleOffset, particleSpeed, childCount, childMaterial, modelId,
+                visualGraph, displayModel, sprite, particleModel, procedural);
+    }
+
+    private static PetVisualGraphDefinition parseCompositeGraph(YamlConfiguration yaml, List<String> errors) {
+        return parseVisualGraph(yaml, "representation.components", "representation.root", "COMPOSITE", errors);
+    }
+
+    private static PetDisplayModelDefinition parseDisplayModel(YamlConfiguration yaml, List<String> errors) {
+        PetVisualGraphDefinition skeleton = parseVisualGraph(
+                yaml, "representation.parts", "representation.root", "DISPLAY_MODEL", errors);
+        if (skeleton == null) return null;
+        Map<PetAnimationState, PetDisplayAnimationDefinition> animations = new java.util.EnumMap<>(PetAnimationState.class);
+        if (yaml.isConfigurationSection("representation.animations")) {
+            for (String rawState : yaml.getConfigurationSection("representation.animations").getKeys(false)) {
+                PetAnimationState state = parseEnum(rawState, PetAnimationState.class, errors,
+                        "representation.animations." + rawState);
+                if (state == null) continue;
+                String base = "representation.animations." + rawState;
+                int duration = yaml.getInt(base + ".duration-ticks", 20);
+                boolean loop = yaml.getBoolean(base + ".loop", state.defaultLoop());
+                Map<String, List<PetDisplayKeyframeDefinition>> channels = new java.util.LinkedHashMap<>();
+                if (!yaml.isConfigurationSection(base + ".bones")) {
+                    errors.add(base + ".bones zorunludur.");
+                    continue;
+                }
+                for (String bone : yaml.getConfigurationSection(base + ".bones").getKeys(false)) {
+                    List<?> rawFrames = yaml.getList(base + ".bones." + bone);
+                    List<PetDisplayKeyframeDefinition> frames = new ArrayList<>();
+                    if (rawFrames != null) {
+                        for (Object rawFrame : rawFrames) {
+                            if (!(rawFrame instanceof Map<?, ?> frame)) {
+                                errors.add(base + ".bones." + bone + " keyframe map olmalıdır.");
+                                continue;
+                            }
+                            int tick = intValue(frame.get("tick"), 0);
+                            try {
+                                frames.add(new PetDisplayKeyframeDefinition(tick, new PetVisualTransform(
+                                        vectorValue(frame.get("translation")),
+                                        vectorValue(frame.get("rotation")),
+                                        vectorValue(frame.get("scale")))));
+                            } catch (IllegalArgumentException exception) {
+                                errors.add(base + ".bones." + bone + ": " + exception.getMessage());
+                            }
+                        }
+                    }
+                    channels.put(bone, frames);
+                }
+                try {
+                    animations.put(state, new PetDisplayAnimationDefinition(duration, loop, channels));
+                } catch (IllegalArgumentException exception) {
+                    errors.add(base + ": " + exception.getMessage());
+                }
+            }
+        }
+        try {
+            return new PetDisplayModelDefinition(skeleton, animations);
+        } catch (IllegalArgumentException exception) {
+            errors.add("representation: " + exception.getMessage());
+            return null;
+        }
+    }
+
+    private static PetSpriteDefinition parseSprite(YamlConfiguration yaml, String base, String material,
+                                                   Integer fallbackFrame, List<String> errors) {
+        PetSpriteBillboard billboard = parseEnum(yaml.getString(base + ".billboard", "CENTER"),
+                PetSpriteBillboard.class, errors, base + ".billboard");
+        Map<PetAnimationState, PetSpriteAnimationDefinition> animations =
+                new java.util.EnumMap<>(PetAnimationState.class);
+        String animationsPath = base + ".animations";
+        if (yaml.isConfigurationSection(animationsPath)) {
+            for (String rawState : yaml.getConfigurationSection(animationsPath).getKeys(false)) {
+                String statePath = animationsPath + "." + rawState;
+                PetAnimationState state = parseEnum(rawState, PetAnimationState.class, errors, statePath);
+                if (state == null) continue;
+                if (!yaml.isConfigurationSection(statePath)) {
+                    errors.add(statePath + " bir animation bölümü olmalıdır.");
+                    continue;
+                }
+                List<Integer> frames = new ArrayList<>();
+                List<?> rawFrames = yaml.getList(statePath + ".frames");
+                if (rawFrames != null) {
+                    for (Object rawFrame : rawFrames) {
+                        if (rawFrame instanceof Number number) {
+                            frames.add(number.intValue());
+                        } else {
+                            errors.add(statePath + ".frames yalnızca tam sayı custom-model-data değerleri içermelidir.");
+                        }
+                    }
+                }
+                try {
+                    animations.put(state, new PetSpriteAnimationDefinition(
+                            yaml.getInt(statePath + ".frame-ticks", 4),
+                            yaml.getBoolean(statePath + ".loop", state.defaultLoop()), frames));
+                } catch (IllegalArgumentException exception) {
+                    errors.add(statePath + ": " + exception.getMessage());
+                }
+            }
+        }
+        if (animations.isEmpty() && fallbackFrame != null) {
+            try {
+                animations.put(PetAnimationState.IDLE,
+                        new PetSpriteAnimationDefinition(1, true, List.of(fallbackFrame)));
+            } catch (IllegalArgumentException exception) {
+                errors.add(base + ".custom-model-data: " + exception.getMessage());
+            }
+        }
+        try {
+            return new PetSpriteDefinition(material,
+                    billboard != null ? billboard : PetSpriteBillboard.CENTER, animations);
+        } catch (IllegalArgumentException exception) {
+            errors.add(base + ": " + exception.getMessage());
+            return null;
+        }
+    }
+
+    private static PetParticleModelDefinition parseParticleModel(YamlConfiguration yaml, String base,
+                                                                 List<String> errors) {
+        String modelPath = base + ".model";
+        List<?> rawParts = yaml.getList(modelPath);
+        if (rawParts == null) {
+            errors.add(modelPath + " bir part listesi olmalıdır.");
+            return null;
+        }
+        List<PetParticleModelPartDefinition> parts = new ArrayList<>();
+        for (int index = 0; index < rawParts.size(); index++) {
+            String path = modelPath + "[" + index + "]";
+            Object rawPart = rawParts.get(index);
+            if (!(rawPart instanceof Map<?, ?> part)) {
+                errors.add(path + " bir part map olmalıdır.");
+                continue;
+            }
+            PetParticleShape shape = parseEnum(stringValue(part.get("shape")), PetParticleShape.class,
+                    errors, path + ".shape");
+            String particle = stringValue(part.containsKey("particle")
+                    ? part.get("particle") : part.get("particle-type"));
+            int points = intValue(part.get("points"), 24);
+            double radius = doubleValue(part.get("radius"), 0.5);
+            double height = doubleValue(part.get("height"), radius * 2.0);
+            PetVector3 offset = vectorValue(part.get("offset"));
+            double rotationSpeed = doubleValue(part.get("rotation-speed"), 0.0);
+            try {
+                parts.add(new PetParticleModelPartDefinition(shape, particle, points, radius, height,
+                        offset, rotationSpeed));
+            } catch (IllegalArgumentException exception) {
+                errors.add(path + ": " + exception.getMessage());
+            }
+        }
+        try {
+            return new PetParticleModelDefinition(yaml.getInt(base + ".update-interval-ticks", 2), parts);
+        } catch (IllegalArgumentException exception) {
+            errors.add(base + ": " + exception.getMessage());
+            return null;
+        }
+    }
+
+    private static PetProceduralDefinition parseProcedural(YamlConfiguration yaml, String base,
+                                                           List<String> errors) {
+        PetProceduralShape shape = parseEnum(yaml.getString(base + ".shape"),
+                PetProceduralShape.class, errors, base + ".shape");
+        String contentPath = base + ".content";
+        PetRepresentationDefinition content = null;
+        if (!yaml.isConfigurationSection(contentPath)) {
+            errors.add(contentPath + " bölümü zorunludur.");
+        } else {
+            content = parseComponentRepresentation(yaml, contentPath, errors);
+        }
+        double radius = yaml.getDouble(base + ".radius", 1.0);
+        try {
+            return new PetProceduralDefinition(shape,
+                    yaml.getInt(base + ".points", 12), radius,
+                    yaml.getDouble(base + ".height", radius * 2.0),
+                    yaml.getDouble(base + ".rotation-speed", 1.5),
+                    yaml.getDouble(base + ".pulse-amplitude", 0.0),
+                    yaml.getDouble(base + ".pulse-speed", 4.0),
+                    yaml.getInt(base + ".update-interval-ticks", 1), content);
+        } catch (IllegalArgumentException exception) {
+            errors.add(base + ": " + exception.getMessage());
+            return null;
+        }
+    }
+
+    private static PetVisualGraphDefinition parseVisualGraph(YamlConfiguration yaml, String componentsPath,
+                                                              String rootPath, String typeName,
+                                                              List<String> errors) {
+        if (!yaml.isConfigurationSection(componentsPath)) {
+            errors.add(typeName + " için " + componentsPath + " zorunludur.");
+            return null;
+        }
+        String rootId = trimToNull(yaml.getString(rootPath));
+        if (rootId == null) {
+            errors.add(typeName + " için " + rootPath + " zorunludur.");
+            return null;
+        }
+
+        List<PetVisualNodeDefinition> nodes = new ArrayList<>();
+        for (String componentId : yaml.getConfigurationSection(componentsPath).getKeys(false)) {
+            String base = componentsPath + "." + componentId;
+            if (!yaml.isConfigurationSection(base)) {
+                errors.add(base + " bir component bölümü olmalıdır.");
+                continue;
+            }
+            PetRepresentationDefinition component = parseComponentRepresentation(yaml, base, errors);
+            String parentId = trimToNull(yaml.getString(base + ".parent"));
+            PetVector3 translation = parseVector(yaml, base + ".transform.translation");
+            if (translation == null) translation = parseVector(yaml, base + ".transform.offset");
+            if (translation == null) translation = parseVector(yaml, base + ".offset");
+            PetVector3 rotation = parseVector(yaml, base + ".transform.rotation");
+            PetVector3 transformScale = parseVector(yaml, base + ".transform.scale");
+            try {
+                nodes.add(new PetVisualNodeDefinition(componentId, parentId, component,
+                        new PetVisualTransform(translation, rotation, transformScale)));
+            } catch (IllegalArgumentException exception) {
+                errors.add(base + ": " + exception.getMessage());
+            }
+        }
+        try {
+            return new PetVisualGraphDefinition(rootId, nodes);
+        } catch (IllegalArgumentException exception) {
+            errors.add(componentsPath + ": " + exception.getMessage());
+            return null;
+        }
+    }
+
+    private static PetRepresentationDefinition parseComponentRepresentation(YamlConfiguration yaml, String base,
+                                                                              List<String> errors) {
+        String rawType = trimToNull(yaml.getString(base + ".type"));
+        if (rawType == null) {
+            errors.add(base + ".type zorunludur.");
+            rawType = "INVISIBLE";
+        }
+        rawType = switch (rawType.trim().toUpperCase(java.util.Locale.ROOT)) {
+            case "ITEM" -> "ITEM_DISPLAY";
+            case "BLOCK" -> "BLOCK_DISPLAY";
+            case "TEXT" -> "TEXT_DISPLAY";
+            default -> rawType;
+        };
+        NamespacedKey key = parseRuntimeKey(rawType, RuntimeRepresentationType.class, errors, base + ".type", false);
+        RuntimeRepresentationType type = RuntimeKeyResolver.builtInRepresentation(key);
+        if (type == null) type = RuntimeRepresentationType.ENTITY;
+
+        String itemMaterial = trimToNull(yaml.getString(base + ".item-material"));
+        if (itemMaterial == null) itemMaterial = trimToNull(yaml.getString(base + ".block-material"));
+        if (itemMaterial == null) itemMaterial = trimToNull(yaml.getString(base + ".material"));
+        Integer customModelData = null;
+        if (yaml.isSet(base + ".custom-model-data")) {
+            customModelData = yaml.getInt(base + ".custom-model-data");
+        } else if (yaml.isSet(base + ".model-data")) {
+            customModelData = yaml.getInt(base + ".model-data");
+        }
+        PetVector3 scale = parseVector(yaml, base + ".scale");
+        String entityType = yaml.getString(base + ".entity-type", "WOLF");
+        PetSpriteDefinition sprite = type == RuntimeRepresentationType.SPRITE
+                ? parseSprite(yaml, base, itemMaterial, customModelData, errors) : null;
+        PetParticleModelDefinition particleModel = type == RuntimeRepresentationType.PARTICLE_MODEL
+                ? parseParticleModel(yaml, base, errors) : null;
+        PetProceduralDefinition procedural = type == RuntimeRepresentationType.PROCEDURAL
+                ? parseProcedural(yaml, base, errors) : null;
+        return new PetRepresentationDefinition(type, key, entityType,
+                yaml.getBoolean(base + ".baby", false),
+                yaml.getBoolean(base + ".glowing", false),
+                yaml.getBoolean(base + ".invulnerable", true),
+                yaml.getBoolean(base + ".silent", true),
+                yaml.getBoolean(base + ".gravity", false),
+                itemMaterial, customModelData, scale != null ? scale : PetVector3.ONE,
+                trimToNull(yaml.getString(base + ".particle-type")),
+                Math.max(0, yaml.getInt(base + ".particle-count", 0)),
+                yaml.getDouble(base + ".particle-offset", 0.0),
+                yaml.getDouble(base + ".particle-speed", 0.0),
+                Math.max(0, yaml.getInt(base + ".child-count", 0)),
+                trimToNull(yaml.getString(base + ".child-material")),
+                trimToNull(yaml.getString(base + ".model-id")), null, null, sprite, particleModel, procedural);
     }
 
     private static PetMovementDefinition parseMovement(YamlConfiguration yaml,
@@ -684,6 +982,16 @@ public final class PetDefinitionYamlParser {
         return yaml.getBoolean(legacy, fallback);
     }
     private static PetVector3 parseVector(YamlConfiguration yaml, String path) {
+        if (yaml.isList(path)) {
+            List<?> values = yaml.getList(path);
+            if (values != null && values.size() == 3
+                    && values.get(0) instanceof Number x
+                    && values.get(1) instanceof Number y
+                    && values.get(2) instanceof Number z) {
+                return new PetVector3(x.doubleValue(), y.doubleValue(), z.doubleValue());
+            }
+            return null;
+        }
         if (!yaml.isConfigurationSection(path)) {
             return null;
         }
@@ -691,6 +999,50 @@ public final class PetDefinitionYamlParser {
         double y = yaml.getDouble(path + ".y", 0.0);
         double z = yaml.getDouble(path + ".z", 0.0);
         return new PetVector3(x, y, z);
+    }
+
+    private static int intValue(Object raw, int fallback) {
+        if (raw instanceof Number number) return number.intValue();
+        try {
+            return raw != null ? Integer.parseInt(raw.toString()) : fallback;
+        } catch (NumberFormatException ignored) {
+            return fallback;
+        }
+    }
+
+    private static double doubleValue(Object raw, double fallback) {
+        if (raw instanceof Number number) return number.doubleValue();
+        try {
+            return raw != null ? Double.parseDouble(raw.toString()) : fallback;
+        } catch (NumberFormatException ignored) {
+            return fallback;
+        }
+    }
+
+    private static String stringValue(Object raw) {
+        return raw == null ? null : trimToNull(raw.toString());
+    }
+
+    private static PetVector3 vectorValue(Object raw) {
+        if (raw instanceof List<?> values && values.size() == 3
+                && values.get(0) instanceof Number x
+                && values.get(1) instanceof Number y
+                && values.get(2) instanceof Number z) {
+            return new PetVector3(x.doubleValue(), y.doubleValue(), z.doubleValue());
+        }
+        if (raw instanceof Map<?, ?> map) {
+            return new PetVector3(numberValue(map.get("x")), numberValue(map.get("y")), numberValue(map.get("z")));
+        }
+        return null;
+    }
+
+    private static double numberValue(Object raw) {
+        if (raw instanceof Number number) return number.doubleValue();
+        try {
+            return raw != null ? Double.parseDouble(raw.toString()) : 0.0;
+        } catch (NumberFormatException ignored) {
+            return 0.0;
+        }
     }
 
     private static <E extends Enum<E>> E parseEnum(String raw, Class<E> enumType, List<String> errors, String path) {

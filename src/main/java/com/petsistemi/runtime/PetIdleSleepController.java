@@ -168,7 +168,11 @@ public class PetIdleSleepController {
                 ? representationRegistry.get(active.getRepresentationKey()) : null;
         if (rep == null) return;
         if (definition != null) {
-            rep.applyRestState(entity, active.getPetInstance(), definition, resting);
+            if (active.getVisualHandle() != null) {
+                rep.applyRestStateHandle(active.getVisualHandle(), active.getPetInstance(), definition, resting);
+            } else {
+                rep.applyRestState(entity, active.getPetInstance(), definition, resting);
+            }
         }
     }
 

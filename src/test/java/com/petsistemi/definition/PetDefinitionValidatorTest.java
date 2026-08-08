@@ -143,7 +143,9 @@ class PetDefinitionValidatorTest {
                 new PetRepresentationDefinition(RuntimeRepresentationType.INVISIBLE, "WOLF", false, false, true, false, true,
                         null, null, PetVector3.ONE),
                 new PetRepresentationDefinition(RuntimeRepresentationType.MULTI_ENTITY, "WOLF", false, false, true, false, true,
-                        "ALLIUM", null, PetVector3.ONE, null, 0, 0.0, 0.0, 3, "POPPY")
+                        "ALLIUM", null, PetVector3.ONE, null, 0, 0.0, 0.0, 3, "POPPY"),
+                validComposite(),
+                validDisplayModel()
         );
         for (PetRepresentationDefinition rep : reps) {
             List<String> errors = PetDefinitionValidator.validate(withRepresentation(rep), 1);
@@ -504,6 +506,31 @@ class PetDefinitionValidatorTest {
         List<String> errors = PetDefinitionValidator.validate(withMovementType(mov), 1);
         assertFalse(errors.isEmpty());
         assertTrue(errors.stream().anyMatch(e -> e.contains("delay-ticks")));
+    }
+
+    private static PetRepresentationDefinition validComposite() {
+        PetRepresentationDefinition body = PetRepresentationDefinition.display(
+                RuntimeRepresentationType.ITEM_DISPLAY, "PAPER", null, PetVector3.ONE);
+        PetRepresentationDefinition aura = new PetRepresentationDefinition(
+                RuntimeRepresentationType.PARTICLE, "MARKER", false, false, true, true, false,
+                null, null, PetVector3.ONE, "FLAME", 2, 0.1, 0.0, 0, null);
+        return PetRepresentationDefinition.composite(new com.petsistemi.domain.visual.PetVisualGraphDefinition(
+                "body", List.of(
+                new com.petsistemi.domain.visual.PetVisualNodeDefinition("body", null, body,
+                        com.petsistemi.domain.visual.PetVisualTransform.IDENTITY),
+                new com.petsistemi.domain.visual.PetVisualNodeDefinition("aura", "body", aura,
+                        com.petsistemi.domain.visual.PetVisualTransform.IDENTITY))));
+    }
+
+    private static PetRepresentationDefinition validDisplayModel() {
+        PetRepresentationDefinition body = PetRepresentationDefinition.display(
+                RuntimeRepresentationType.ITEM_DISPLAY, "PAPER", null, PetVector3.ONE);
+        com.petsistemi.domain.visual.PetVisualGraphDefinition skeleton =
+                new com.petsistemi.domain.visual.PetVisualGraphDefinition("body", List.of(
+                        new com.petsistemi.domain.visual.PetVisualNodeDefinition("body", null, body,
+                                com.petsistemi.domain.visual.PetVisualTransform.IDENTITY)));
+        return PetRepresentationDefinition.displayModel(
+                new com.petsistemi.domain.visual.PetDisplayModelDefinition(skeleton, Map.of()));
     }
 
     @Test

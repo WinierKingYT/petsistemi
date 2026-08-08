@@ -1,0 +1,42 @@
+schema-version: 1
+display-name: "<gradient:#76e6ff:#a56cff>Astral Spirit</gradient>"
+description:
+  - "<gray>Halka, küre ve helix parçacık şekillerinden oluşan enerji varlığı.</gray>"
+gui-material: END_ROD
+representation:
+  type: PARTICLE_MODEL
+  update-interval-ticks: 2
+  model:
+    - shape: RING
+      particle: END_ROD
+      points: 24
+      radius: 0.75
+      offset: [0.0, 0.15, 0.0]
+      rotation-speed: 2.5
+    - shape: SPHERE
+      particle: SOUL_FIRE_FLAME
+      points: 32
+      radius: 0.42
+      height: 0.85
+      offset: [0.0, 0.15, 0.0]
+      rotation-speed: -1.25
+    - shape: HELIX
+      particle: PORTAL
+      points: 20
+      radius: 0.32
+      height: 1.25
+      offset: [0.0, 0.15, 0.0]
+      rotation-speed: 3.5
+movement:
+  type: HOVER
+  height: 1.35
+  side-offset: 0.75
+  follow-speed: 0.18
+  update-interval-ticks: 1
+progression:
+  enabled: true
+  maximum-level: 100
+nameplate:
+  enabled: true
+  format:
+    - "<aqua>{pet_name}</aqua> <gray>Lv.{level}</gray>"

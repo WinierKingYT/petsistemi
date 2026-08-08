@@ -9,9 +9,9 @@ Diğer dokümanlarla ilişkisi:
 |---|---|
 | `VISION.md` | **Ne** yapılacak — 33 sistemlik ürün kataloğu, Faz A/B/C |
 | `ROADMAP-EXECUTION.md` | **Ne yapıldı** — Milestone 0-13 takibi |
-| `ENGINE-ROADMAP.md` (bu) | **Nasıl** yapılacak — motorun taşıyıcı fazları, MF1-MF8 |
+| `ENGINE-ROADMAP.md` (bu) | **Nasıl** yapılacak — motorun taşıyıcı fazları, MF1-MF9 |
 
-> Adlandırma: bu dokümanın fazları `MF1`…`MF8` ("Motor Fazı") olarak numaralanır.
+> Adlandırma: bu dokümanın fazları `MF1`…`MF9` ("Motor Fazı") olarak numaralanır.
 > `VISION.md`'deki **Faz A/B/C** ve `ROADMAP-EXECUTION.md`'deki **Milestone 0-13** ile
 > karıştırılmamalıdır — üç eksen birbirinden bağımsızdır. `VISION.md` bir özelliği
 > tarif eder; bu doküman o özelliğin hangi motor katmanı üzerine oturacağını söyler.
@@ -84,6 +84,7 @@ MF1  Namespaced Registry ──┬──→ MF2  Behavior Engine ──→ MF3  
 
 MF7  Gameplay        (bağımsız — MF2 sonrası anlamlı)
 MF8  Ekosistem       (bağımsız — en son)
+MF9  Visual Graph    (MF1 + MF4 + MF5 sonrası)
 ```
 
 MF2 ve MF6 birbirine bağlı değildir; paralel ilerleyebilirler.
@@ -337,6 +338,55 @@ tanımlanacaktır.
 > doğrulamalı namespaced Pet Pack kurulumları; HTTPS, redirect, boyut ve SHA-256 korumalı
 > marketplace ile üç açık Bukkit servisi tamamlandı. Ayrıntılar:
 > [ECOSYSTEM.md](ECOSYSTEM.md). Tam regresyon paketi 587/587 yeşildir.
+
+---
+
+## MF9 — Visual Graph Foundation
+
+> **Temel tamamlandı (2026-08-08):** Domain graph modeli, runtime `PetVisualHandle`,
+> server/virtual backend ayrımı ve legacy controller adaptörü eklendi. Coordinator,
+> active registry, refresh, evolution, transform, idle ve animation yaşam döngüleri
+> handle üzerinden çalışır; mevcut yedi representation ve üçüncü taraf entity tabanlı
+> controller sözleşmeleri korunur. Ayrıntılar: [VISUAL-GRAPH.md](VISUAL-GRAPH.md).
+>
+> **COMPOSITE tamamlandı (2026-08-08):** Adlandırılmış component YAML şeması, döngü ve
+> parent doğrulaması, controller delegasyonu, yerel transform senkronizasyonu, atomik
+> rollback ve `fire_familiar` örneği eklendi. Ayrıntılar: [COMPOSITE.md](COMPOSITE.md).
+>
+> **DISPLAY_MODEL tamamlandı (2026-08-08):** Display-only skeleton, tam parent transform
+> bileşimi, state/keyframe kanalları, interpolation ve `mechanical_bird` örneği eklendi.
+> Ayrıntılar: [DISPLAY-MODEL.md](DISPLAY-MODEL.md).
+>
+> **SPRITE tamamlandı (2026-08-08):** ItemDisplay billboard, state tabanlı resource-pack
+> frame animasyonu, loop/hold davranışı ve `pixel_slime` örneği eklendi. Ayrıntılar:
+> [SPRITE.md](SPRITE.md).
+>
+> **PARTICLE_MODEL tamamlandı (2026-08-08):** Bütçesi doğrulanan ring, sphere, helix,
+> cube ve cone örnekleyicileri; state hızları ve `astral_spirit` örneği eklendi.
+> Ayrıntılar: [PARTICLE-MODEL.md](PARTICLE-MODEL.md).
+>
+> **PROCEDURAL tamamlandı (2026-08-08):** Sekiz matematiksel dağılımdan kalıcı
+> Item/Block/Text Display graph'ı, rotation/pulse state animasyonu ve `arcane_galaxy`
+> örneği eklendi. Ayrıntılar: [PROCEDURAL.md](PROCEDURAL.md).
+
+| | |
+|---|---|
+| **Boyut** | L — foundation tamam, yeni representation controller'ları ayrı dilimler |
+| **Risk** | Orta — bütün görsel yaşam döngüsüne dokunur |
+| **Bağımlılık** | MF1 + MF4 + MF5 |
+| **Tek başına yayınlanabilir** | Evet — mevcut YAML değişmeden çalışır |
+
+MF9'un amacı enum'u çok sayıda özel durumla büyütmek değil, temsilin ne olduğu ile nasıl
+render edildiğini ayırmaktır. `PLAYER_HEAD` item içeriği, `PACKET_ENTITY` render backend'i,
+`EQUIPMENT_MODEL` ise composite template'i olarak modellenebilir.
+
+Foundation sonrasındaki uygulama sırası:
+
+1. ✅ `COMPOSITE` — farklı representation node'larını tek pet altında birleştirme
+2. ✅ `DISPLAY_MODEL` — parent-child transformlu çok parçalı display modeli
+3. ✅ `SPRITE` — billboard/animated 2D görsel ailesi
+4. ✅ `PARTICLE_MODEL` ve `PROCEDURAL` — şekil tabanlı görseller
+5. Packet backend, owner-only görünürlük ve fake-player sağlayıcısı
 
 ---
 

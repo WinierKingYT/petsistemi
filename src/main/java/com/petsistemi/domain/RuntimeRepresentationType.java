@@ -8,5 +8,10 @@ public enum RuntimeRepresentationType {
     TEXT_DISPLAY,
     PARTICLE,
     MULTI_ENTITY,
-    INVISIBLE
+    INVISIBLE,
+    COMPOSITE,
+    DISPLAY_MODEL,
+    SPRITE,
+    PARTICLE_MODEL,
+    PROCEDURAL
 }

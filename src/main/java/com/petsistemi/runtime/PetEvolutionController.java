@@ -69,10 +69,15 @@ public final class PetEvolutionController {
     }
 
     private void reRender(ActivePet active, Entity entity, PetDefinition definition) {
-        if (entity == null || definition == null || representations == null) return;
+        if (definition == null || representations == null) return;
         PetRepresentationController representation = representations.get(active.getRepresentationKey());
         if (representation == null) return;
-        representation.updateVisual(entity, active.getPetInstance(), definition);
-        if (active.isResting()) representation.applyRestState(entity, active.getPetInstance(), definition, true);
+        if (active.getVisualHandle() != null) {
+            representation.updateVisualHandle(active.getVisualHandle(), active.getPetInstance(), definition);
+            if (active.isResting()) representation.applyRestStateHandle(active.getVisualHandle(), active.getPetInstance(), definition, true);
+        } else if (entity != null) {
+            representation.updateVisual(entity, active.getPetInstance(), definition);
+            if (active.isResting()) representation.applyRestState(entity, active.getPetInstance(), definition, true);
+        }
     }
 }
