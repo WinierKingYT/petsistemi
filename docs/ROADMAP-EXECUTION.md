@@ -53,3 +53,24 @@ kataloğu ve Faz A/B/C yol haritası.
   - ⬜ Stage'li visual progression — #26
 - **Faz B**: Orta seviye sistemler (bkz. VISION.md §4).
 - **Faz C**: Yüksek riskli sistemler (binek, pet evi, packet görünürlük, evrim) — core stabil olunca.
+
+---
+
+## 🏗️ Motor Fazları (MF1-MF8)
+
+Yukarıdaki Faz A/B/C **hangi özelliklerin** geleceğini söyler. Bu özelliklerin üzerine
+oturacağı motor katmanları ayrı bir eksende ilerler ve `ENGINE-ROADMAP.md`'de tanımlıdır:
+
+| Faz | Konu | Durum |
+| :--- | :--- | :--- |
+| **MF1** | Namespaced Registry — açık movement/representation kaydı | `PLANLANDI` |
+| **MF2** | Behavior Engine — Trigger / Condition / Action | `PLANLANDI` |
+| **MF3** | Ability / Skill | `PLANLANDI` |
+| **MF4** | Animation Abstraction | `PLANLANDI` |
+| **MF5** | Model Provider adaptörleri (ModelEngine vb.) | `PLANLANDI` |
+| **MF6** | Collection GUI + oyun içi editör | `PLANLANDI` |
+| **MF7** | Gameplay (item action, orders, mount) | `TASLAK` |
+| **MF8** | Ekosistem (MySQL/network, Pet Packs) | `TASLAK` |
+
+Kilitlenen kararlar, çıkış kriterleri, kapsam dışı maddeler ve borç kaydı için bkz.
+[ENGINE-ROADMAP.md](ENGINE-ROADMAP.md).

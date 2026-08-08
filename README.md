@@ -27,6 +27,7 @@ $env:JAVA_HOME="C:\Program Files\Eclipse Adoptium\jdk-17"; ./gradlew clean test 
 - [Mimari Doküman](docs/ARCHITECTURE.md)
 - [Veritabanı](docs/DATABASE.md)
 - [Public API](docs/API.md)
+- [Motor Yol Haritası (MF1-MF8)](docs/ENGINE-ROADMAP.md)
 - [ADR 0001: SQLite Depolama](docs/adr/0001-sqlite-storage.md)
 - [ADR 0002: State Ayrımı](docs/adr/0002-selection-runtime-separation.md)
 - [ADR 0003: Single DB Executor](docs/adr/0003-single-database-executor.md)
